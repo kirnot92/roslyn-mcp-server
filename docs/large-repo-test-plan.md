@@ -14,6 +14,99 @@
 - 긴 테스트와 빠른 테스트를 분리한다.
 - 모든 대량 결과 tool은 `maxResults`, `truncated`, `completeness`, `workspaceState`를 검증한다.
 
+## 운영 방식
+
+이 문서는 한 번에 실행하는 단일 테스트 스크립트가 아니라, 구현 단계와 품질 단계에 나누어 적용하는 검증 전략이다. 각 항목은 성격에 따라 fast test, Roslyn LS integration test, opt-in real repo test, stress test로 분리해서 운영한다.
+
+- Fast/unit test 항목은 일반 개발 루프의 `dotnet test`에 포함한다.
+- Roslyn LS integration test는 `roslyn-language-server`가 설치된 환경에서만 실행하고, 없으면 명확한 이유와 설치 명령을 남긴 뒤 skip한다.
+- 실제 대규모 repository 테스트는 로컬 경로를 환경 변수로 받은 opt-in 테스트로 둔다. 테스트가 직접 clone하지 않는다.
+- stress test는 기본 테스트와 CI 성공 조건에서 제외하고, 별도 profile 또는 수동 검증으로 실행한다.
+
+기본 실행 레벨은 다음처럼 나눈다.
+
+```text
+Fast:
+dotnet test roslyn-mcp-server.sln
+
+Integration:
+roslyn-language-server 설치 환경에서 dotnet test roslyn-mcp-server.sln
+
+Real repo opt-in:
+ROSLYN_MCP_REAL_REPO_ROSLYN=D:\repos\roslyn
+ROSLYN_MCP_REAL_REPO_SDK=D:\repos\sdk
+ROSLYN_MCP_REAL_REPO_ASPNETCORE=D:\repos\aspnetcore
+dotnet test roslyn-mcp-server.sln --filter RealRepo
+
+Stress:
+별도 stress profile 또는 수동 실행
+```
+
+## 단계별 액션 플랜
+
+### M2 구현 중
+
+M2 각 단계에서는 해당 tool이 요구하는 fast test만 흡수한다. 이 시점에 실제 대규모 repository 검증 전체를 실행하려고 하지 않는다.
+
+- M2a: document sync, path/URI 변환, position 변환, LRU, 큰 파일 제한, warming metadata를 fast test로 검증한다.
+- M2b: definition/reference mapper, references result limit, expensive request limit, timeout/cancellation을 fast test로 검증한다.
+- M2c: workspace symbol mapper, query validation, symbol result limit, root 밖 URI 차단, warming 중 empty result metadata를 fast test로 검증한다.
+- M2d: diagnostics notification store, cache bound, severity filter, workspace diagnostics result limit을 fast test로 검증한다.
+
+### M2 완료 직후
+
+M2 전체 read-only tool이 들어간 뒤 이 문서를 기준으로 coverage audit을 수행한다. 목적은 실제 대형 repo를 모두 돌리는 것이 아니라, fast test와 integration test가 주요 위험을 커버하는지 확인하는 것이다.
+
+- `dotnet format roslyn-mcp-server.sln --verify-no-changes`
+- `dotnet build roslyn-mcp-server.sln`
+- `dotnet test roslyn-mcp-server.sln`
+- result limit/truncation metadata가 모든 대량 결과 tool에 있는지 확인한다.
+- `StartingLanguageServer`, `LspReady`, `WorkspaceWarming`, `Ready`, `Failed` 상태별 tool 동작을 확인한다.
+- root 밖 path/URI 차단 테스트가 read tool 전체에 적용되는지 확인한다.
+- Roslyn LS 미설치 환경에서 integration test skip 메시지가 명확한지 확인한다.
+
+### M3 시작 전 또는 초반
+
+실제 MCP client에 붙이기 전에 작은/중간 real repo로 smoke test를 수행한다. 이 단계의 성공 기준은 완전한 semantic 정확도가 아니라 hang/crash 없이 Agent CLI가 다음 행동을 결정할 수 있는 응답을 받는 것이다.
+
+권장 후보:
+
+- `PowerShell/PowerShell`
+- `microsoft/semantic-kernel`
+- `dotnet/msbuild`
+- `dotnet/aspnetcore` 중 작은 범위
+
+검증 흐름:
+
+1. MCP client에서 서버를 repo root 기준으로 실행한다.
+2. `list_workspaces`가 제한 시간 안에 반환되는지 확인한다.
+3. 명시적으로 `load_solution` 또는 `load_project`를 호출한다.
+4. `get_workspace_status`가 `LspReady`, `WorkspaceWarming`, `Ready` 중 하나로 진행되는지 확인한다.
+5. `document_symbols`, `hover`, `go_to_definition`, `find_references`, `find_symbols`, file-specific `diagnostics`를 작은 범위에서 호출한다.
+6. warming 중 결과가 `completeness` metadata와 함께 반환되는지 확인한다.
+
+### M4 품질 강화
+
+Tier 1 실제 대형 repository opt-in 테스트를 본격적으로 실행한다. 이 단계에서 기본 timeout, result limit, warming metadata, diagnostics cache 정책을 실제 결과에 맞춰 조정한다.
+
+- `dotnet/roslyn`
+- `dotnet/sdk`
+- `dotnet/aspnetcore`
+
+이 테스트는 환경 변수로 repo 경로가 지정된 경우에만 실행한다. clone, restore, workload 설치는 테스트가 자동으로 수행하지 않는다.
+
+### M4 이후 Stress Profile
+
+stress test는 기본 개발 루프와 분리한다. 매우 큰 synthetic repo나 Tier 2 repository를 사용해 crash, OOM, 무제한 응답, pending request leak이 없는지 확인한다.
+
+- synthetic 100,000 files 이상
+- 수천 `.csproj`
+- 수백 solution/slnx
+- 100개 이상 concurrent tool calls
+- 수만 diagnostics notification
+- `dotnet/runtime`
+- `Azure/azure-sdk-for-net`
+
 ## 실제 대규모 Repository 후보
 
 실제 repository 테스트는 기본 테스트가 아니라 opt-in으로 둔다. clone 비용, restore 비용, workload 요구사항, 네트워크 상태가 테스트 안정성에 영향을 주기 때문이다.
