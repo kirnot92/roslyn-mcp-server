@@ -91,8 +91,11 @@ public sealed class RoslynLanguageServerIntegrationTests
         var references = Assert.IsType<ReferencesResult>(referencesResult);
         Assert.Contains(references.Items, item => item.File == "Calculator.cs");
 
-        var workspaceSymbolsResult = await tools.FindSymbols("Calculator");
-        Assert.IsType<FindSymbolsResult>(workspaceSymbolsResult);
+        var workspaceSymbols = await WaitForWorkspaceSymbolAsync(
+            tools,
+            "Calculator",
+            item => item.Name.Contains("Calculator", StringComparison.Ordinal));
+        Assert.Contains(workspaceSymbols.Items, item => item.Location?.File == "Calculator.cs");
     }
 
     [Fact(Skip = "roslyn-language-server publishDiagnostics arrival is environment-dependent in the current smoke fixture; deferred until a stable settle strategy is defined.")]
@@ -116,4 +119,25 @@ public sealed class RoslynLanguageServerIntegrationTests
             2 * 1024 * 1024,
             16,
             2);
+
+    private static async Task<FindSymbolsResult> WaitForWorkspaceSymbolAsync(
+        NavigationTools tools,
+        string query,
+        Func<WorkspaceSymbolItem, bool> predicate)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
+        object? lastResult = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            lastResult = await tools.FindSymbols(query);
+            if (lastResult is FindSymbolsResult symbols && symbols.Items.Any(predicate))
+            {
+                return symbols;
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new XunitException($"Expected workspace symbol '{query}' before timeout. Last result: {lastResult}");
+    }
 }

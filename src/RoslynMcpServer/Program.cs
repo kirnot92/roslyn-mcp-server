@@ -38,7 +38,7 @@ builder.Services.AddSingleton<DiagnosticStore>();
 builder.Services.AddSingleton<IGitWorkspaceScanner, GitWorkspaceScanner>();
 builder.Services.AddSingleton<WorkspaceScanner>();
 builder.Services.AddSingleton<RoslynLanguageServerLocator>();
-builder.Services.AddSingleton<RoslynLanguageServerProcess>();
+builder.Services.AddSingleton<IRoslynLanguageServerProcess, RoslynLanguageServerProcess>();
 builder.Services.AddSingleton<IRoslynWorkspaceLoader, RoslynWorkspaceLoader>();
 builder.Services.AddSingleton<WorkspaceSession>();
 

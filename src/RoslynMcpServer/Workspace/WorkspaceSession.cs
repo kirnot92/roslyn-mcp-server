@@ -338,51 +338,7 @@ public sealed class WorkspaceSession(
             documents?.OpenDocumentCount ?? 0,
             diagnostics?.KnownFileCount ?? 0,
             diagnostics?.LastUpdatedAt,
-            BuildWarnings(this.handle?.Target));
-    }
-
-    private IReadOnlyList<WorkspaceWarning> BuildWarnings(WorkspaceTarget? target)
-    {
-        if (target is null)
-        {
-            return [];
-        }
-
-        string[] workspaceFiles;
-        try
-        {
-            workspaceFiles = Directory
-                .EnumerateFiles(target.WorkspaceDirectory, "*.*", SearchOption.TopDirectoryOnly)
-                .Where(IsWorkspaceFile)
-                .Select(path => pathGuard.ToRelativePath(Path.GetFullPath(path)))
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return [];
-        }
-
-        if (workspaceFiles.Length <= 1)
-        {
-            return [];
-        }
-
-        return
-        [
-            new WorkspaceWarning(
-                "workspace_directory_ambiguous",
-                "Roslyn LS is loaded by workspace directory because the installed roslyn-language-server exposes no stable explicit solution/project file option. This directory contains multiple workspace files, so the selected file may not uniquely control auto-load.",
-                workspaceFiles)
-        ];
-    }
-
-    private static bool IsWorkspaceFile(string path)
-    {
-        var extension = Path.GetExtension(path);
-        return string.Equals(extension, ".sln", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(extension, ".csproj", StringComparison.OrdinalIgnoreCase);
+            []);
     }
 
     private static UserFacingException WorkspaceLoading() =>

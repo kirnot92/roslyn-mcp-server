@@ -1,16 +1,28 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RoslynMcpServer.Cli;
+using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Lsp;
+
+public interface IRoslynLanguageServerProcess
+{
+    RoslynWorkspaceHandle Start(WorkspaceTarget target);
+}
 
 public sealed class RoslynLanguageServerProcess(
     CliOptions options,
     RoslynLanguageServerLocator locator,
     ILogger<RoslynLanguageServerProcess> logger,
-    ILoggerFactory loggerFactory)
+    ILoggerFactory loggerFactory) : IRoslynLanguageServerProcess
 {
-    public RoslynLanguageServerConnection Start(string workingDirectory)
+    public RoslynWorkspaceHandle Start(WorkspaceTarget target)
+    {
+        var connection = StartConnection(target.WorkspaceDirectory);
+        return new RoslynWorkspaceHandle(target, connection);
+    }
+
+    private RoslynLanguageServerConnection StartConnection(string workingDirectory)
     {
         var executable = locator.Locate();
         var startInfo = CreateStartInfo(executable, workingDirectory);
@@ -55,7 +67,6 @@ public sealed class RoslynLanguageServerProcess(
         var arguments = new List<string>
         {
             "--stdio",
-            "--autoLoadProjects",
             "--logLevel",
             ToLanguageServerLogLevel(options.LogLevel)
         };

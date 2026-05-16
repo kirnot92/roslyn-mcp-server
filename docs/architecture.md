@@ -25,7 +25,7 @@ roslyn-language-server
   <-> selected .sln/.slnx/.csproj and source files
 ```
 
-`roslyn-mcp-server`는 MCP 클라이언트와 stdio로 통신한다. Roslyn 기능이 필요한 시점에 `roslyn-language-server --stdio --autoLoadProjects`를 자식 프로세스로 실행하고, 별도의 LSP read loop/write queue를 통해 요청을 중계한다.
+`roslyn-mcp-server`는 MCP 클라이언트와 stdio로 통신한다. Roslyn 기능이 필요한 시점에 `roslyn-language-server --stdio`를 자식 프로세스로 실행하고, LSP initialize 뒤 선택된 `.sln`/`.slnx`에는 `solution/open`, 선택된 `.csproj`에는 `project/open` notification을 보낸다. 별도의 LSP read loop/write queue를 통해 요청을 중계한다.
 
 중요한 선택은 Roslyn LS를 서버 시작 직후 띄우지 않는 것이다. 먼저 workspace 후보를 탐색하고, 실제로 어떤 솔루션 또는 프로젝트를 사용할지 정해진 뒤 Roslyn LS를 시작한다. 이렇게 해야 여러 `.sln`이 있는 repo에서 모호한 자동 로드를 피할 수 있다.
 
@@ -338,8 +338,10 @@ M2 large repo readiness 단계에서 설치된 `roslyn-language-server 5.8.0-1.2
 
 - `roslyn-language-server --help`에는 `.sln`, `.slnx`, `.csproj` 파일 경로를 직접 받는 안정적인 CLI option이 없다.
 - workspace load에 관련된 공개 옵션은 `--autoLoadProjects`뿐이다.
-- 따라서 MCP 서버는 계속 `WorkspaceTarget.FullPath`를 검증과 사용자 상태 표시에는 사용하되, Roslyn LS에는 `WorkspaceTarget.WorkspaceDirectory`를 working directory, `rootUri`, `workspaceFolders`로 전달한다.
-- 같은 `WorkspaceDirectory`에 workspace 파일이 여러 개 있으면 `WorkspaceStatus.Warnings`에 `workspace_directory_ambiguous`를 포함해 Roslyn LS auto-load가 directory 단위로만 제어된다는 점을 알린다.
+- 그러나 실제 LSP client들은 initialize/initialized 이후 nonstandard `solution/open` 또는 `project/open` notification으로 선택 파일을 전달한다.
+- 작은 `.csproj`만 있는 fixture에서 `--autoLoadProjects`와 workspace folder만으로는 `workspace/symbol("Calculator")`가 계속 0건이었지만, `project/open` 후에는 `workspace/projectInitializationComplete`가 오고 같은 query가 1건을 반환했다.
+- `.sln`과 `.slnx` fixture도 `solution/open` 후 3초 안에 `workspace/symbol("Calculator")`가 1건을 반환했다.
+- 따라서 MCP 서버는 Roslyn LS를 `--stdio`로 실행하고, `WorkspaceTarget.WorkspaceDirectory`를 working directory/rootUri/workspaceFolders로 전달한 뒤 `WorkspaceTarget.FullPath`를 `solution/open` 또는 `project/open` notification으로 명시 전달한다.
 
 ## Agent CLI 사용 계약
 

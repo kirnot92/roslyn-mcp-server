@@ -5,13 +5,12 @@ namespace RoslynMcpServer.Lsp;
 
 public sealed class RoslynWorkspaceLoader(
     CliOptions options,
-    RoslynLanguageServerProcess process)
+    IRoslynLanguageServerProcess process)
     : IRoslynWorkspaceLoader
 {
     public async Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken)
     {
-        var connection = process.Start(target.WorkspaceDirectory);
-        var handle = new RoslynWorkspaceHandle(target, connection);
+        var handle = process.Start(target);
 
         try
         {
@@ -50,6 +49,7 @@ public sealed class RoslynWorkspaceLoader(
             }, options.StartupTimeout, cancellationToken).ConfigureAwait(false);
 
             await handle.Client.NotifyAsync("initialized", new { }, cancellationToken).ConfigureAwait(false);
+            await NotifyOpenTargetAsync(handle.Client, target, cancellationToken).ConfigureAwait(false);
             return handle;
         }
         catch
@@ -57,6 +57,14 @@ public sealed class RoslynWorkspaceLoader(
             await handle.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    private static Task NotifyOpenTargetAsync(ILspClient client, WorkspaceTarget target, CancellationToken cancellationToken)
+    {
+        var targetUri = ToFileUri(target.FullPath);
+        return target.Kind is WorkspaceKind.Project
+            ? client.NotifyAsync("project/open", new { projects = new[] { targetUri } }, cancellationToken)
+            : client.NotifyAsync("solution/open", new { solution = targetUri }, cancellationToken);
     }
 
     private static string ToFileUri(string path) => new Uri(Path.GetFullPath(path)).AbsoluteUri;

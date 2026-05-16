@@ -54,23 +54,20 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 
 문제:
 
-- `load_solution`/`load_project`는 선택 파일을 `WorkspaceTarget.FullPath`에 담지만, 현재 Roslyn LS에는 안정적인 명시 file 선택 option이 없어 loader는 `WorkspaceDirectory`를 Roslyn LS process working directory, `rootUri`, `workspaceFolders`로 사용한다.
-- 같은 directory에 여러 `.sln`, `.slnx`, `.csproj`가 있으면 서로 다른 파일을 선택해도 Roslyn LS 입장에서는 같은 workspace로 보일 수 있다.
-- 대형 repo에서는 잘못된 workspace를 load하거나 너무 넓게 auto-load할 위험이 있다.
+- `load_solution`/`load_project`는 선택 파일을 `WorkspaceTarget.FullPath`에 담지만, 초기 구현은 Roslyn LS에 해당 파일을 명시적으로 열라고 전달하지 않고 `WorkspaceDirectory`와 `--autoLoadProjects`에 의존했다.
+- 작은 `.csproj` fixture에서도 이 방식은 workspace symbol index를 만들지 못해 `find_symbols`가 0건을 반환했다.
+- 대형 repo에서는 잘못된 workspace를 load하거나 너무 넓게 auto-load할 위험도 있다.
 
 작업:
 
-- 현재 설치 가능한 `roslyn-language-server`에서 solution/project 파일을 명시적으로 선택하는 CLI option, initialization option, command가 있는지 spike한다.
-- 가능한 방식이 있으면 `WorkspaceTarget.FullPath`를 실제 Roslyn LS load에 반영한다.
-- 표준적이고 안정적인 방식이 없으면 다음 fallback 중 하나를 구현한다.
-  - 같은 `WorkspaceDirectory`에 workspace 파일이 여러 개 있으면 명시 파일 선택이 directory 단위로만 반영된다는 warning/metadata를 반환한다.
-  - 위험한 ambiguous directory에서는 load를 거부하고 더 좁은 root 또는 명시 설정을 요구한다.
-  - 문서에 현재 Roslyn LS 제약과 동작을 명확히 기록한다.
+- 현재 설치 가능한 `roslyn-language-server`에서 solution/project 파일을 명시적으로 선택하는 CLI option, initialization option, command/notification이 있는지 spike한다.
+- 실제 client들이 사용하는 `solution/open`/`project/open` notification을 확인하고 `WorkspaceTarget.FullPath`를 실제 Roslyn LS load에 반영한다.
+- Roslyn LS process는 `--stdio`로 실행하고, working directory/rootUri/workspaceFolders는 선택 파일의 directory로 둔다.
 
 검증:
 
-- 같은 directory에 두 개 이상의 workspace 파일이 있는 fixture를 추가한다.
-- 서로 다른 workspace 파일을 load할 때 구현이 같은 directory ambiguity를 감지하는지 검증한다.
+- 작은 `.csproj`, `.sln`, `.slnx` fixture에서 `project/open`/`solution/open` 후 `workspace/projectInitializationComplete`와 `workspace/symbol` 결과를 확인한다.
+- integration test가 작은 `.csproj` project에서 `find_symbols("Calculator")`의 non-empty 결과를 검증한다.
 - spike 결과를 `docs/implementation-notes.md` 또는 이 문서에 짧게 기록한다.
 
 ### 2. LSP Read Loop Fault Handling - 반영 완료

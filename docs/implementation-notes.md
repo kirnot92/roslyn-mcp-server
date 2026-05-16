@@ -20,7 +20,7 @@
 - M2c `find_symbols` 완료
 - M2d `diagnostics`, `DiagnosticStore` 완료
 - M2 large repo readiness 일부 완료
-  - explicit workspace file 선택 제약 spike와 `workspace_directory_ambiguous` warning
+  - explicit workspace file 선택을 위한 `solution/open`/`project/open` notification
   - LSP read loop fault handling
   - git scanner pathspec
   - filesystem scanner candidate-limit 조기 중단
@@ -550,8 +550,9 @@ tool 응답에는 명시적 error code를 선호한다.
   - 설치된 `roslyn-language-server --version`: `5.8.0-1.26262.10+036e7a58b9d4348a62b6854544274551ae17ae8c`
   - `roslyn-language-server --help`에서 확인되는 workspace 관련 옵션은 `--autoLoadProjects`뿐이다.
   - `.sln`, `.slnx`, `.csproj` 파일 경로를 안정적으로 직접 지정하는 CLI option은 확인되지 않았다.
-  - 따라서 현재 구현은 계속 `WorkspaceDirectory`를 process working directory, `rootUri`, `workspaceFolders`로 전달한다.
-  - 같은 directory에 workspace 파일이 2개 이상 있으면 `load_solution`/`load_project`와 `get_workspace_status` 결과의 `warnings`에 `workspace_directory_ambiguous`를 포함한다.
+  - 추가 확인 결과 Roslyn LS client들은 initialize/initialized 이후 `solution/open` 또는 `project/open` notification으로 선택 파일을 전달한다.
+  - 작은 `.csproj` fixture에서 workspace folder와 `--autoLoadProjects`만으로는 `workspace/symbol("Calculator")`가 0건이었고, `project/open` 후에는 `workspace/projectInitializationComplete`와 함께 1건이 반환됐다.
+  - 따라서 현재 구현은 Roslyn LS를 `--stdio`로 실행하고, `WorkspaceDirectory`를 process working directory, `rootUri`, `workspaceFolders`로 전달한 뒤 `WorkspaceTarget.FullPath`를 `solution/open` 또는 `project/open` notification으로 명시 전달한다.
 - LSP read loop fault handling
   - oversized/malformed response나 stream close로 read loop가 중단되면 `LspClient`가 fault 상태를 저장한다.
   - fault 이후 pending request는 실패하고, 새 request/notification은 timeout까지 기다리지 않고 즉시 실패한다.

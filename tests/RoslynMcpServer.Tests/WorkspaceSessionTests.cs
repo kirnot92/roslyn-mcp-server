@@ -72,7 +72,7 @@ public sealed class WorkspaceSessionTests
     }
 
     [Fact]
-    public async Task LoadSolution_WarnsWhenSelectedDirectoryHasMultipleWorkspaceFiles()
+    public async Task LoadSolution_DoesNotWarnWhenSelectedDirectoryHasMultipleWorkspaceFiles()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
@@ -82,9 +82,7 @@ public sealed class WorkspaceSessionTests
 
         var status = await session.LoadSolutionAsync("App.sln");
 
-        var warning = Assert.Single(status.Warnings);
-        Assert.Equal("workspace_directory_ambiguous", warning.Code);
-        Assert.Equal(["App.csproj", "App.sln", "Other.slnx"], warning.RelatedPaths);
+        Assert.Empty(status.Warnings);
         await session.DisposeAsync();
     }
 
