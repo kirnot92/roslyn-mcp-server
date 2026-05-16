@@ -185,6 +185,10 @@ public enum WorkspaceLoadState
 
 `WorkspaceScanner`는 root 아래를 재귀 탐색하되 대규모 mono-repo에서 전체 파일 트리를 매번 훑지 않는다.
 
+M1 이후 구현은 git worktree 안에서는 `GitWorkspaceScanner`를 먼저 사용한다. `GitWorkspaceScanner`는 `git -C <root> ls-files -co --exclude-standard -z` 결과에서 `.sln`, `.slnx`, `.csproj` 후보만 골라낸다. 이 방식을 우선하는 이유는 `.gitignore` 파일을 MCP 서버가 직접 재구현하는 것보다 git이 이미 알고 있는 ignore 규칙을 쓰는 편이 정확하기 때문이다. `--exclude-standard`는 repository의 `.gitignore`, 하위 `.gitignore`, `.git/info/exclude`, global exclude 규칙을 모두 반영한다.
+
+git 기반 탐색이 실패하거나 root가 git worktree 밖이면 기존 bounded recursive scanner로 fallback한다. fallback은 non-git 디렉터리에서도 동작해야 하므로 유지한다. git 기반 결과도 최종적으로 `PathGuard`를 통과시켜 root 밖 경로, reparse point, 존재하지 않는 파일을 방어한다.
+
 초기 제외 디렉터리:
 
 - `.git`
@@ -201,6 +205,8 @@ public enum WorkspaceLoadState
 - `dist`
 - `out`
 - `target`
+
+이 제외 목록은 git 기반 탐색이 아니라 fallback recursive scanner의 안전망이다. git repository에서는 `.gitignore`와 git exclude 규칙이 더 정확한 후보 필터 역할을 한다.
 
 탐색 결과는 상대 경로와 절대 경로를 모두 가진다. tool 결과에는 상대 경로를 우선 반환하고, 디버깅용으로만 절대 경로를 포함할 수 있다.
 

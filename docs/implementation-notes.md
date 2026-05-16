@@ -32,6 +32,15 @@ dotnet test roslyn-mcp-server.sln --no-build
 - `workspace/symbol`은 initialize 직후 trivial sample에서 빈 배열을 반환할 수 있으므로 readiness 판단에 사용하지 않는다.
 - 다음 구현 후보는 M2 read-only tool 전에 `DocumentStateManager`, 실제 Roslyn LS integration test, MCP tool smoke test를 보강하는 것이다.
 
+2026-05-17 추가 구현 상태:
+
+- `GitWorkspaceScanner`를 추가했다.
+- workspace 탐색은 git worktree 안에서 `git -C <root> ls-files -co --exclude-standard -z`를 먼저 사용한다.
+- 이 방식은 `.gitignore`를 직접 파싱하지 않고 git의 ignore semantics를 그대로 사용하기 위한 것이다. 따라서 하위 `.gitignore`, `.git/info/exclude`, global exclude까지 반영된다.
+- git이 없거나 root가 git worktree 밖이거나 git 탐색이 실패하면 기존 bounded recursive scanner로 fallback한다.
+- fallback scanner의 hardcoded excluded directory 목록은 non-git 디렉터리와 실패 fallback을 위한 안전망으로 남긴다.
+- git 기반 결과도 `PathGuard`와 `File.Exists` 검증을 통과해야 후보로 반환한다.
+
 ## 확정된 결정
 
 - 프로젝트 이름: `roslyn-mcp-server`

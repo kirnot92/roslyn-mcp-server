@@ -31,6 +31,7 @@ if (!string.IsNullOrWhiteSpace(options.LogFile))
 
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton(new PathGuard(options.Root));
+builder.Services.AddSingleton<GitWorkspaceScanner>();
 builder.Services.AddSingleton<WorkspaceScanner>();
 builder.Services.AddSingleton<RoslynLanguageServerLocator>();
 builder.Services.AddSingleton<RoslynLanguageServerProcess>();

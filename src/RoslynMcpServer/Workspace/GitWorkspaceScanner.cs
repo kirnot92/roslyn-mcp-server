@@ -1,0 +1,231 @@
+using System.Diagnostics;
+using RoslynMcpServer.Cli;
+
+namespace RoslynMcpServer.Workspace;
+
+public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
+{
+    public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default)
+    {
+        if (!IsInsideGitWorkTree(cancellationToken))
+        {
+            return null;
+        }
+
+        var sw = Stopwatch.StartNew();
+        using var timeoutCts = new CancellationTokenSource(options.ScanTimeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        try
+        {
+            var startInfo = CreateGitStartInfo("ls-files", "-co", "--exclude-standard", "-z");
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                return null;
+            }
+
+            var outputTask = ReadAllBytesAsync(process.StandardOutput.BaseStream, linkedCts.Token);
+            var errorTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+            try
+            {
+                process.WaitForExitAsync(linkedCts.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+            {
+                KillProcess(process);
+                return null;
+            }
+
+            if (process.ExitCode != 0)
+            {
+                _ = errorTask.GetAwaiter().GetResult();
+                return null;
+            }
+
+            var output = outputTask.GetAwaiter().GetResult();
+            sw.Stop();
+
+            return BuildScanResult(output, sw.Elapsed);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    private bool IsInsideGitWorkTree(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var process = Process.Start(CreateGitStartInfo("rev-parse", "--is-inside-work-tree"));
+            if (process is null)
+            {
+                return false;
+            }
+
+            if (!process.WaitForExit((int)Math.Min(options.ScanTimeout.TotalMilliseconds, 3000)))
+            {
+                KillProcess(process);
+                return false;
+            }
+
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            return process.ExitCode == 0 && string.Equals(output, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+
+            return false;
+        }
+    }
+
+    private WorkspaceScanResult BuildScanResult(byte[] output, TimeSpan elapsed)
+    {
+        var solutions = new List<WorkspaceCandidate>();
+        var projects = new List<WorkspaceCandidate>();
+        var seen = new HashSet<string>(OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal);
+        string? truncationReason = null;
+
+        foreach (var relativePath in SplitNullTerminatedUtf8(output))
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                continue;
+            }
+
+            var extension = Path.GetExtension(relativePath);
+            if (!IsWorkspaceExtension(extension))
+            {
+                continue;
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = pathGuard.ResolveInsideRoot(relativePath);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!File.Exists(fullPath) || !seen.Add(fullPath))
+            {
+                continue;
+            }
+
+            if (IsSolutionExtension(extension))
+            {
+                if (solutions.Count >= options.MaxSolutionCandidates)
+                {
+                    truncationReason = "solution_candidate_limit";
+                    break;
+                }
+
+                solutions.Add(ToCandidate(fullPath, string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
+                    ? WorkspaceKind.SolutionX
+                    : WorkspaceKind.Solution));
+            }
+            else
+            {
+                if (projects.Count >= options.MaxProjectCandidates)
+                {
+                    truncationReason = "project_candidate_limit";
+                    break;
+                }
+
+                projects.Add(ToCandidate(fullPath, WorkspaceKind.Project));
+            }
+        }
+
+        return new WorkspaceScanResult(
+            pathGuard.Root,
+            WorkspaceScanner.SortCandidates(solutions),
+            WorkspaceScanner.SortCandidates(projects),
+            truncationReason is not null,
+            truncationReason,
+            elapsed);
+    }
+
+    private ProcessStartInfo CreateGitStartInfo(params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo("git")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            WorkingDirectory = pathGuard.Root
+        };
+
+        startInfo.ArgumentList.Add("-C");
+        startInfo.ArgumentList.Add(pathGuard.Root);
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return startInfo;
+    }
+
+    private WorkspaceCandidate ToCandidate(string fullPath, WorkspaceKind kind)
+    {
+        var normalized = Path.GetFullPath(fullPath);
+        return new WorkspaceCandidate(kind, normalized, pathGuard.ToRelativePath(normalized));
+    }
+
+    private static IEnumerable<string> SplitNullTerminatedUtf8(byte[] bytes)
+    {
+        var start = 0;
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            if (bytes[i] != 0)
+            {
+                continue;
+            }
+
+            if (i > start)
+            {
+                yield return System.Text.Encoding.UTF8.GetString(bytes, start, i - start);
+            }
+
+            start = i + 1;
+        }
+    }
+
+    private static bool IsWorkspaceExtension(string extension) =>
+        IsSolutionExtension(extension) || string.Equals(extension, ".csproj", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSolutionExtension(string extension) =>
+        string.Equals(extension, ".sln", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase);
+
+    private static void KillProcess(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static async Task<byte[]> ReadAllBytesAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream, cancellationToken).ConfigureAwait(false);
+        return memoryStream.ToArray();
+    }
+}

@@ -3,7 +3,7 @@ using RoslynMcpServer.Cli;
 
 namespace RoslynMcpServer.Workspace;
 
-public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard)
+public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, GitWorkspaceScanner? gitScanner = null)
 {
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -24,6 +24,12 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard)
     };
 
     public WorkspaceScanResult Scan(CancellationToken cancellationToken = default)
+    {
+        var gitResult = gitScanner?.TryScan(cancellationToken);
+        return gitResult ?? ScanFileSystem(cancellationToken);
+    }
+
+    private WorkspaceScanResult ScanFileSystem(CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         var solutions = new List<WorkspaceCandidate>();
@@ -157,7 +163,7 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard)
         }
     }
 
-    private static IReadOnlyList<WorkspaceCandidate> SortCandidates(IEnumerable<WorkspaceCandidate> candidates) =>
+    public static IReadOnlyList<WorkspaceCandidate> SortCandidates(IEnumerable<WorkspaceCandidate> candidates) =>
         candidates
             .OrderBy(candidate => candidate.RelativePath.Count(c => c == '/'))
             .ThenBy(candidate => candidate.RelativePath, StringComparer.OrdinalIgnoreCase)
