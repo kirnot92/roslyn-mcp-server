@@ -13,9 +13,13 @@ public sealed record CliOptions(
     TimeSpan ScanTimeout,
     int MaxSolutionCandidates,
     int MaxProjectCandidates,
+    int MaxOpenDocuments,
+    long MaxDocumentBytes,
     int MaxInFlightLspRequests)
 {
     public const int DefaultScanMaxDepth = 6;
+    public const int DefaultMaxOpenDocuments = 200;
+    public const long DefaultMaxDocumentBytes = 2 * 1024 * 1024;
     public static readonly TimeSpan DefaultScanTimeout = TimeSpan.FromSeconds(3);
     public static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(60);
 
@@ -27,6 +31,8 @@ public sealed record CliOptions(
         string? logFile = null;
         string? languageServerLogDirectory = null;
         var startupTimeout = DefaultStartupTimeout;
+        var maxOpenDocuments = DefaultMaxOpenDocuments;
+        var maxDocumentBytes = DefaultMaxDocumentBytes;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -51,6 +57,12 @@ public sealed record CliOptions(
                 case "--startup-timeout":
                     startupTimeout = ParseTimeout(ReadValue(args, ref i, arg), arg);
                     break;
+                case "--max-open-documents":
+                    maxOpenDocuments = ParsePositiveInt(ReadValue(args, ref i, arg), arg);
+                    break;
+                case "--max-document-bytes":
+                    maxDocumentBytes = ParsePositiveLong(ReadValue(args, ref i, arg), arg);
+                    break;
                 case "-h":
                 case "--help":
                     throw new CliUsageException(Usage);
@@ -71,6 +83,8 @@ public sealed record CliOptions(
             DefaultScanTimeout,
             MaxSolutionCandidates: 100,
             MaxProjectCandidates: 500,
+            maxOpenDocuments,
+            maxDocumentBytes,
             MaxInFlightLspRequests: 16);
     }
 
@@ -83,6 +97,8 @@ public sealed record CliOptions(
           --log-file <path>
           --ls-log-dir <path>
           --startup-timeout <seconds>
+          --max-open-documents <count>
+          --max-document-bytes <bytes>
         """;
 
     private static string ReadValue(string[] args, ref int index, string optionName)
@@ -104,6 +120,26 @@ public sealed record CliOptions(
         }
 
         return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static int ParsePositiveInt(string value, string optionName)
+    {
+        if (!int.TryParse(value, out var parsed) || parsed <= 0)
+        {
+            throw new CliUsageException($"{optionName} must be a positive integer.");
+        }
+
+        return parsed;
+    }
+
+    private static long ParsePositiveLong(string value, string optionName)
+    {
+        if (!long.TryParse(value, out var parsed) || parsed <= 0)
+        {
+            throw new CliUsageException($"{optionName} must be a positive integer.");
+        }
+
+        return parsed;
     }
 
     private static LogLevel ParseLogLevel(string value) =>

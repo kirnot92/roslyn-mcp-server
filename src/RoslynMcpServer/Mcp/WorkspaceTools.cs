@@ -64,8 +64,3 @@ public sealed class WorkspaceTools(WorkspaceSession session)
         }
     }
 }
-
-public sealed record ToolError(string Error, string Message)
-{
-    public static ToolError FromException(UserFacingException exception) => new(exception.Code, exception.Message);
-}

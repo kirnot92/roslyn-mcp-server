@@ -5,7 +5,7 @@ using RoslynMcpServer.Infrastructure;
 
 namespace RoslynMcpServer.Lsp;
 
-public sealed class LspClient : IAsyncDisposable
+public sealed class LspClient : ILspClient, IAsyncDisposable
 {
     private readonly Stream _input;
     private readonly Stream _output;

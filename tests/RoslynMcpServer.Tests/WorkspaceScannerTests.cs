@@ -44,6 +44,8 @@ public sealed class WorkspaceScannerTests
             TimeSpan.FromSeconds(3),
             100,
             1,
+            200,
+            2 * 1024 * 1024,
             16);
         var scanner = new WorkspaceScanner(options, new PathGuard(root.Path));
 
@@ -67,6 +69,8 @@ public sealed class WorkspaceScannerTests
             TimeSpan.FromSeconds(3),
             100,
             500,
+            200,
+            2 * 1024 * 1024,
             16);
         return new WorkspaceScanner(options, new PathGuard(root));
     }

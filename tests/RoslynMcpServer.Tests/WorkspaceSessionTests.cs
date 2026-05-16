@@ -52,6 +52,8 @@ public sealed class WorkspaceSessionTests
             TimeSpan.FromSeconds(3),
             100,
             500,
+            200,
+            2 * 1024 * 1024,
             16);
         var guard = new PathGuard(root);
         return new WorkspaceSession(new WorkspaceScanner(options, guard), guard, loader);

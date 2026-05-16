@@ -100,6 +100,8 @@ public sealed class GitWorkspaceScannerTests
             TimeSpan.FromSeconds(3),
             100,
             500,
+            200,
+            2 * 1024 * 1024,
             16);
 
     private static bool GitIsAvailable()
