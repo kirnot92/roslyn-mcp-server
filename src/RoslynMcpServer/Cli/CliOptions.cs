@@ -15,11 +15,13 @@ public sealed record CliOptions(
     int MaxProjectCandidates,
     int MaxOpenDocuments,
     long MaxDocumentBytes,
-    int MaxInFlightLspRequests)
+    int MaxInFlightLspRequests,
+    int MaxExpensiveLspRequests)
 {
     public const int DefaultScanMaxDepth = 6;
     public const int DefaultMaxOpenDocuments = 200;
     public const long DefaultMaxDocumentBytes = 2 * 1024 * 1024;
+    public const int DefaultMaxExpensiveLspRequests = 2;
     public static readonly TimeSpan DefaultScanTimeout = TimeSpan.FromSeconds(3);
     public static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(60);
 
@@ -33,6 +35,7 @@ public sealed record CliOptions(
         var startupTimeout = DefaultStartupTimeout;
         var maxOpenDocuments = DefaultMaxOpenDocuments;
         var maxDocumentBytes = DefaultMaxDocumentBytes;
+        var maxExpensiveLspRequests = DefaultMaxExpensiveLspRequests;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -63,6 +66,9 @@ public sealed record CliOptions(
                 case "--max-document-bytes":
                     maxDocumentBytes = ParsePositiveLong(ReadValue(args, ref i, arg), arg);
                     break;
+                case "--max-expensive-lsp-requests":
+                    maxExpensiveLspRequests = ParsePositiveInt(ReadValue(args, ref i, arg), arg);
+                    break;
                 case "-h":
                 case "--help":
                     throw new CliUsageException(Usage);
@@ -85,7 +91,8 @@ public sealed record CliOptions(
             MaxProjectCandidates: 500,
             maxOpenDocuments,
             maxDocumentBytes,
-            MaxInFlightLspRequests: 16);
+            MaxInFlightLspRequests: 16,
+            maxExpensiveLspRequests);
     }
 
     public static string Usage =>
@@ -99,6 +106,7 @@ public sealed record CliOptions(
           --startup-timeout <seconds>
           --max-open-documents <count>
           --max-document-bytes <bytes>
+          --max-expensive-lsp-requests <count>
         """;
 
     private static string ReadValue(string[] args, ref int index, string optionName)

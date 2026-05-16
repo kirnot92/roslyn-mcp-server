@@ -46,7 +46,8 @@ public sealed class WorkspaceScannerTests
             1,
             200,
             2 * 1024 * 1024,
-            16);
+            16,
+            2);
         var scanner = new WorkspaceScanner(options, new PathGuard(root.Path));
 
         var result = scanner.Scan();
@@ -71,7 +72,8 @@ public sealed class WorkspaceScannerTests
             500,
             200,
             2 * 1024 * 1024,
-            16);
+            16,
+            2);
         return new WorkspaceScanner(options, new PathGuard(root));
     }
 }

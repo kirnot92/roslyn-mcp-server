@@ -90,6 +90,43 @@ public sealed class LspClientTests
     }
 
     [Fact]
+    public async Task RequestAsync_EnforcesExpensiveRequestLimit()
+    {
+        await using var harness = LspClientHarness.Create(maxInFlightRequests: 4, maxExpensiveRequests: 1);
+        var first = harness.Client.RequestAsync(
+            "textDocument/references",
+            new { },
+            TimeSpan.FromSeconds(30),
+            CancellationToken.None,
+            isExpensive: true);
+
+        using var clientRequest = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None);
+        Assert.NotNull(clientRequest);
+
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() =>
+            harness.Client.RequestAsync(
+                "workspace/symbol",
+                new { },
+                TimeSpan.FromSeconds(1),
+                CancellationToken.None,
+                isExpensive: true));
+
+        Assert.Equal("too_many_expensive_lsp_requests", ex.Code);
+
+        var hover = harness.Client.RequestAsync(
+            "textDocument/hover",
+            new { },
+            TimeSpan.FromSeconds(30),
+            CancellationToken.None);
+        using var hoverRequest = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None);
+        Assert.NotNull(hoverRequest);
+
+        harness.ServerOutput.Dispose();
+        await Assert.ThrowsAsync<IOException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
+        await Assert.ThrowsAsync<IOException>(() => hover.WaitAsync(TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
     public async Task RequestAsync_ReturnsUserFacingErrorWhenResponsePayloadExceedsLimit()
     {
         await using var harness = LspClientHarness.Create(maxInFlightRequests: 4, maxResponsePayloadBytes: 32);
@@ -117,6 +154,52 @@ public sealed class LspClientTests
         Assert.Equal("invalid_lsp_response", ex.Code);
     }
 
+    [Fact]
+    public async Task RequestAsync_RemovesPendingRequestAfterTimeoutAndAllowsNextRequest()
+    {
+        await using var harness = LspClientHarness.Create(maxInFlightRequests: 1);
+        var timedOut = harness.Client.RequestAsync(
+            "textDocument/definition",
+            new { },
+            TimeSpan.FromMilliseconds(100),
+            CancellationToken.None);
+
+        using var timedOutRequest = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None);
+        Assert.NotNull(timedOutRequest);
+
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() => timedOut.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("request_timeout", ex.Code);
+        Assert.Equal(0, harness.Client.PendingRequestCount);
+
+        var next = harness.Client.RequestAsync(
+            "textDocument/hover",
+            new { },
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None);
+
+        using var firstMessage = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        using var secondMessage = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.NotNull(firstMessage);
+        Assert.NotNull(secondMessage);
+        var messages = new[] { firstMessage.RootElement, secondMessage.RootElement };
+        Assert.Contains(messages, message =>
+            message.TryGetProperty("method", out var methodElement) &&
+            methodElement.GetString() == "$/cancelRequest");
+        var nextRequest = messages.Single(message => message.TryGetProperty("id", out _) && message.TryGetProperty("method", out _));
+        var id = nextRequest.GetProperty("id").GetInt64();
+        await LspFraming.WriteAsync(harness.ServerOutput, new
+        {
+            jsonrpc = "2.0",
+            id,
+            result = new { contents = "ok" }
+        }, CancellationToken.None);
+
+        var response = await next.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("ok", response.GetProperty("contents").GetString());
+    }
+
     private sealed class LspClientHarness : IAsyncDisposable
     {
         private LspClientHarness(BlockingStream serverInput, BlockingStream serverOutput, LspClient client)
@@ -133,6 +216,7 @@ public sealed class LspClientTests
 
         public static LspClientHarness Create(
             int maxInFlightRequests,
+            int maxExpensiveRequests = 2,
             int maxResponsePayloadBytes = LspFraming.DefaultMaxContentLength)
         {
             var clientToServer = new BlockingStream();
@@ -142,6 +226,7 @@ public sealed class LspClientTests
                 clientToServer,
                 serverToClient,
                 maxInFlightRequests,
+                maxExpensiveRequests,
                 NullLogger<LspClient>.Instance,
                 maxResponsePayloadBytes);
 

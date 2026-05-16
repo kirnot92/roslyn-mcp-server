@@ -213,6 +213,187 @@ public sealed class NavigationToolsTests
         Assert.Equal("invalid_lsp_response", error.Error);
     }
 
+    [Fact]
+    public async Task GoToDefinition_MapsSingleLocationToRootRelativeOneBasedLocation()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new Lsp.Location(
+            new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri,
+            new Lsp.Range(new Position(1, 2), new Position(1, 5))));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GoToDefinition("Program.cs", line: 1, column: 7);
+
+        var definition = Assert.IsType<DefinitionResult>(result);
+        var item = Assert.Single(definition.Items);
+        Assert.Equal("Program.cs", item.File);
+        Assert.Equal(2, item.Line);
+        Assert.Equal(3, item.Column);
+        Assert.Equal(2, item.Range.StartLine);
+        Assert.Equal(3, item.Range.StartColumn);
+    }
+
+    [Fact]
+    public async Task GoToDefinition_MapsLocationLinkUsingTargetRange()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new
+        {
+            targetUri = new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri,
+            targetRange = new Lsp.Range(new Position(4, 8), new Position(4, 14)),
+            targetSelectionRange = new Lsp.Range(new Position(4, 20), new Position(4, 21))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GoToDefinition("Program.cs", line: 1, column: 7);
+
+        var definition = Assert.IsType<DefinitionResult>(result);
+        var item = Assert.Single(definition.Items);
+        Assert.Equal(5, item.Line);
+        Assert.Equal(9, item.Column);
+    }
+
+    [Fact]
+    public async Task GoToDefinition_ReturnsEmptyResultForNullOrEmptyResponse()
+    {
+        var nullResult = await ExecuteDefinitionWithResponse(null);
+        var emptyResult = await ExecuteDefinitionWithResponse(Array.Empty<Lsp.Location>());
+
+        Assert.Empty(Assert.IsType<DefinitionResult>(nullResult).Items);
+        Assert.Empty(Assert.IsType<DefinitionResult>(emptyResult).Items);
+    }
+
+    [Fact]
+    public async Task FindReferences_PassesIncludeDeclarationInLspContext()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindReferences("Program.cs", line: 1, column: 7, includeDeclaration: false);
+
+        Assert.IsType<ReferencesResult>(result);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("textDocument/references", request.Method);
+        Assert.True(request.IsExpensive);
+        Assert.False(request.Params.GetProperty("context").GetProperty("includeDeclaration").GetBoolean());
+    }
+
+    [Fact]
+    public async Task FindReferences_TruncatesLargeResponseAndReportsMetadata()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var uri = new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri;
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new Lsp.Location(uri, new Lsp.Range(new Position(0, 0), new Position(0, 1))),
+            new Lsp.Location(uri, new Lsp.Range(new Position(1, 0), new Position(1, 1))),
+            new Lsp.Location(uri, new Lsp.Range(new Position(2, 0), new Position(2, 1)))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindReferences("Program.cs", line: 1, column: 7, maxResults: 2);
+
+        var references = Assert.IsType<ReferencesResult>(result);
+        Assert.Equal(3, references.TotalKnown);
+        Assert.Equal(2, references.Returned);
+        Assert.True(references.Truncated);
+        Assert.Equal(2, references.Items.Count);
+    }
+
+    [Fact]
+    public async Task FindReferences_IncludesPartialMetadataWhileWorkspaceIsWarming()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindReferences("Program.cs", line: 1, column: 7);
+
+        var references = Assert.IsType<ReferencesResult>(result);
+        Assert.Equal(WorkspaceLoadState.WorkspaceWarming.ToString(), references.WorkspaceState);
+        Assert.Equal("partial", references.Completeness);
+        Assert.Contains("cross-project", references.Reason);
+    }
+
+    [Fact]
+    public async Task DefinitionAndReferences_DoNotExposeUrisOutsideRoot()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        File.WriteAllText(Path.Combine(outside.Path, "Outside.cs"), "class Outside { }");
+        var insideUri = new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri;
+        var outsideUri = new Uri(Path.Combine(outside.Path, "Outside.cs")).AbsoluteUri;
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new Lsp.Location(outsideUri, new Lsp.Range(new Position(0, 0), new Position(0, 1))),
+            new Lsp.Location(insideUri, new Lsp.Range(new Position(0, 1), new Position(0, 2)))
+        });
+        client.EnqueueResponse(new[]
+        {
+            new Lsp.Location(outsideUri, new Lsp.Range(new Position(0, 0), new Position(0, 1)))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var definitionResult = await tools.GoToDefinition("Program.cs", line: 1, column: 7);
+        var referencesResult = await tools.FindReferences("Program.cs", line: 1, column: 7);
+
+        var definition = Assert.IsType<DefinitionResult>(definitionResult);
+        Assert.Single(definition.Items);
+        Assert.Equal("Program.cs", definition.Items[0].File);
+        var references = Assert.IsType<ReferencesResult>(referencesResult);
+        Assert.Empty(references.Items);
+        Assert.Equal(0, references.TotalKnown);
+    }
+
+    [Fact]
+    public async Task LocationBasedRequests_SyncDocumentBeforeLspRequest()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GoToDefinition("Program.cs", line: 1, column: 7);
+
+        Assert.IsType<DefinitionResult>(result);
+        Assert.Equal(["notify:textDocument/didOpen", "request:textDocument/definition"], client.Events);
+    }
+
     private static async Task<object> ExecuteHoverWithResponse(object? response)
     {
         using var root = TestRoot.Create();
@@ -227,11 +408,25 @@ public sealed class NavigationToolsTests
         return await tools.Hover("Program.cs", line: 1, column: 1);
     }
 
+    private static async Task<object> ExecuteDefinitionWithResponse(object? response)
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(response);
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        return await tools.GoToDefinition("Program.cs", line: 1, column: 1);
+    }
+
     private static NavigationTools CreateTools(string root, WorkspaceSession session)
     {
         var guard = new PathGuard(root);
         var mapper = new DocumentPathMapper(guard);
-        return new NavigationTools(session, new DocumentStateManager(CreateOptions(root), mapper));
+        return new NavigationTools(session, new DocumentStateManager(CreateOptions(root), mapper), mapper);
     }
 
     private static WorkspaceSession CreateSession(string root, IRoslynWorkspaceLoader loader)
@@ -254,7 +449,8 @@ public sealed class NavigationToolsTests
             500,
             200,
             2 * 1024 * 1024,
-            16);
+            16,
+            2);
 
     private sealed class ImmediateLoader(ILspClient client) : IRoslynWorkspaceLoader
     {
@@ -296,7 +492,8 @@ public sealed class NavigationToolsTests
         public event Action<string, JsonElement?>? NotificationReceived;
 
         public List<(string Method, JsonElement Params)> Notifications { get; } = [];
-        public List<(string Method, JsonElement Params)> Requests { get; } = [];
+        public List<(string Method, JsonElement Params, bool IsExpensive)> Requests { get; } = [];
+        public List<string> Events { get; } = [];
         public int PendingRequestCount => 0;
         public TaskCompletionSource? ShutdownStarted { get; init; }
         public TaskCompletionSource? ReleaseShutdown { get; init; }
@@ -308,14 +505,17 @@ public sealed class NavigationToolsTests
             string method,
             object? parameters,
             TimeSpan timeout,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool isExpensive = false)
         {
-            Requests.Add((method, JsonSerializer.SerializeToElement(parameters, JsonOptions.Default)));
+            Events.Add($"request:{method}");
+            Requests.Add((method, JsonSerializer.SerializeToElement(parameters, JsonOptions.Default), isExpensive));
             return Task.FromResult(_responses.Dequeue());
         }
 
         public Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken)
         {
+            Events.Add($"notify:{method}");
             Notifications.Add((method, JsonSerializer.SerializeToElement(parameters, JsonOptions.Default)));
             return Task.CompletedTask;
         }

@@ -55,6 +55,30 @@ public sealed record HoverResult(
     int? RetryAfterMs,
     bool Truncated);
 
+public sealed record NavigationLocation(
+    string File,
+    int Line,
+    int Column,
+    McpRange Range);
+
+public sealed record DefinitionResult(
+    IReadOnlyList<NavigationLocation> Items,
+    string WorkspaceState,
+    string Completeness,
+    string? Reason,
+    int? RetryAfterMs,
+    bool Truncated);
+
+public sealed record ReferencesResult(
+    IReadOnlyList<NavigationLocation> Items,
+    int TotalKnown,
+    int Returned,
+    string WorkspaceState,
+    string Completeness,
+    string? Reason,
+    int? RetryAfterMs,
+    bool Truncated);
+
 public static class PositionMapper
 {
     public static Position ToLspPosition(int line, int column)

@@ -32,6 +32,14 @@ public sealed record Hover(MarkupContent? Contents = null, Range? Range = null);
 
 public sealed record MarkupContent(string Kind, string Value);
 
+public sealed record Location(string Uri, Range Range);
+
+public sealed record LocationLink(string TargetUri, Range TargetRange, Range? TargetSelectionRange = null, Range? OriginSelectionRange = null);
+
+public sealed record ReferenceContext(bool IncludeDeclaration);
+
+public sealed record ReferenceParams(TextDocumentIdentifier TextDocument, Position Position, ReferenceContext Context);
+
 // Values are defined by the Language Server Protocol SymbolKind constants:
 // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind
 public enum SymbolKind

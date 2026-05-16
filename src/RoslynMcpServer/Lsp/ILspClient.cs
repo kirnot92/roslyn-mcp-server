@@ -12,7 +12,8 @@ public interface ILspClient
         string method,
         object? parameters,
         TimeSpan timeout,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        bool isExpensive = false);
 
     Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken);
 

@@ -13,6 +13,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     private readonly int _maxResponsePayloadBytes;
     private readonly ConcurrentDictionary<long, PendingRequest> _pending = new();
     private readonly SemaphoreSlim _inFlightLimit;
+    private readonly SemaphoreSlim _expensiveLimit;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly CancellationTokenSource _disposeCts = new();
     private long _nextId;
@@ -22,6 +23,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         Stream input,
         Stream output,
         int maxInFlightRequests,
+        int maxExpensiveRequests,
         ILogger logger,
         int maxResponsePayloadBytes = LspFraming.DefaultMaxContentLength)
     {
@@ -30,6 +32,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         _logger = logger;
         _maxResponsePayloadBytes = Math.Max(1, maxResponsePayloadBytes);
         _inFlightLimit = new SemaphoreSlim(Math.Max(1, maxInFlightRequests), Math.Max(1, maxInFlightRequests));
+        _expensiveLimit = new SemaphoreSlim(Math.Max(1, maxExpensiveRequests), Math.Max(1, maxExpensiveRequests));
     }
 
     public event Action<string, JsonElement?>? NotificationReceived;
@@ -42,11 +45,24 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         string method,
         object? parameters,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isExpensive = false)
     {
-        if (!await _inFlightLimit.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        if (!await _inFlightLimit.WaitAsync(0).ConfigureAwait(false))
         {
             throw new UserFacingException("too_many_lsp_requests", "Too many LSP requests are already in flight.");
+        }
+
+        var expensiveAcquired = false;
+        if (isExpensive)
+        {
+            if (!await _expensiveLimit.WaitAsync(0).ConfigureAwait(false))
+            {
+                _inFlightLimit.Release();
+                throw new UserFacingException("too_many_expensive_lsp_requests", "Too many expensive LSP requests are already in flight.");
+            }
+
+            expensiveAcquired = true;
         }
 
         var id = Interlocked.Increment(ref _nextId);
@@ -57,6 +73,12 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
 
         if (!_pending.TryAdd(id, pending))
         {
+            if (expensiveAcquired)
+            {
+                _expensiveLimit.Release();
+            }
+
+            _inFlightLimit.Release();
             throw new InvalidOperationException("Duplicate LSP request id.");
         }
 
@@ -89,6 +111,11 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         finally
         {
             _pending.TryRemove(id, out _);
+            if (expensiveAcquired)
+            {
+                _expensiveLimit.Release();
+            }
+
             _inFlightLimit.Release();
         }
     }
@@ -138,6 +165,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
 
         _disposeCts.Dispose();
         _inFlightLimit.Dispose();
+        _expensiveLimit.Dispose();
         _writeLock.Dispose();
     }
 

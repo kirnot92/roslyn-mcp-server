@@ -11,11 +11,16 @@ namespace RoslynMcpServer.Mcp;
 [McpServerToolType]
 public sealed class NavigationTools(
     WorkspaceSession session,
-    DocumentStateManager documents)
+    DocumentStateManager documents,
+    DocumentPathMapper pathMapper)
 {
     private const int MaxDocumentSymbolNodes = 1000;
     private const int MaxHoverCharacters = 20_000;
+    private const int DefaultReferencesMaxResults = 200;
+    private const int MaxReferencesMaxResults = 1000;
     private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DefinitionTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ReferencesTimeout = TimeSpan.FromSeconds(30);
 
     [McpServerTool(Name = "document_symbols")]
     [Description("Return document symbols for a C# source file.")]
@@ -88,6 +93,197 @@ public sealed class NavigationTools(
         {
             return ToolError.FromException(ex);
         }
+    }
+
+    [McpServerTool(Name = "go_to_definition")]
+    [Description("Return definition locations for a C# source location. line and column are 1-based.")]
+    public async Task<object> GoToDefinition(string file, int line, int column, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var position = PositionMapper.ToLspPosition(line, column);
+            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
+            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
+            var response = await context.Handle.Client.RequestAsync(
+                "textDocument/definition",
+                new
+                {
+                    textDocument = new TextDocumentIdentifier(document.Uri),
+                    position
+                },
+                DefinitionTimeout,
+                cancellationToken).ConfigureAwait(false);
+
+            var locations = MapLocations(response, "textDocument/definition", maxResults: null);
+            var metadata = CreateMetadata(context.State, ToolKind.Definition, truncated: false);
+            return new DefinitionResult(
+                locations.Items,
+                metadata.WorkspaceState,
+                metadata.Completeness,
+                metadata.Reason,
+                metadata.RetryAfterMs,
+                metadata.Truncated);
+        }
+        catch (UserFacingException ex)
+        {
+            return ToolError.FromException(ex);
+        }
+    }
+
+    [McpServerTool(Name = "find_references")]
+    [Description("Return references for a C# source location. line and column are 1-based.")]
+    public async Task<object> FindReferences(
+        string file,
+        int line,
+        int column,
+        bool includeDeclaration = true,
+        int? maxResults = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var effectiveMaxResults = NormalizeMaxResults(maxResults);
+            var position = PositionMapper.ToLspPosition(line, column);
+            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
+            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
+            var response = await context.Handle.Client.RequestAsync(
+                "textDocument/references",
+                new ReferenceParams(
+                    new TextDocumentIdentifier(document.Uri),
+                    position,
+                    new ReferenceContext(includeDeclaration)),
+                ReferencesTimeout,
+                cancellationToken,
+                isExpensive: true).ConfigureAwait(false);
+
+            var locations = MapLocations(response, "textDocument/references", effectiveMaxResults);
+            var metadata = CreateMetadata(context.State, ToolKind.References, locations.Truncated);
+            return new ReferencesResult(
+                locations.Items,
+                locations.TotalKnown,
+                locations.Returned,
+                metadata.WorkspaceState,
+                metadata.Completeness,
+                metadata.Reason,
+                metadata.RetryAfterMs,
+                metadata.Truncated);
+        }
+        catch (UserFacingException ex)
+        {
+            return ToolError.FromException(ex);
+        }
+    }
+
+    private LocationMapResult MapLocations(JsonElement response, string method, int? maxResults)
+    {
+        if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return new LocationMapResult([], TotalKnown: 0, Returned: 0, Truncated: false);
+        }
+
+        var items = new List<NavigationLocation>();
+        var totalKnown = 0;
+        var returned = 0;
+
+        if (response.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var element in response.EnumerateArray())
+            {
+                AddLocationIfMappable(element, method, maxResults, items, ref totalKnown, ref returned);
+            }
+
+            return new LocationMapResult(items, totalKnown, returned, maxResults.HasValue && totalKnown > returned);
+        }
+
+        if (response.ValueKind == JsonValueKind.Object)
+        {
+            AddLocationIfMappable(response, method, maxResults, items, ref totalKnown, ref returned);
+            return new LocationMapResult(items, totalKnown, returned, maxResults.HasValue && totalKnown > returned);
+        }
+
+        throw new UserFacingException("invalid_lsp_response", $"{method} returned an unexpected response shape.");
+    }
+
+    private void AddLocationIfMappable(
+        JsonElement element,
+        string method,
+        int? maxResults,
+        List<NavigationLocation> items,
+        ref int totalKnown,
+        ref int returned)
+    {
+        var location = TryMapLocation(element, method);
+        if (location is null)
+        {
+            return;
+        }
+
+        totalKnown++;
+        if (maxResults.HasValue && returned >= maxResults.Value)
+        {
+            return;
+        }
+
+        items.Add(location);
+        returned++;
+    }
+
+    private NavigationLocation? TryMapLocation(JsonElement element, string method)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{method} returned a malformed location.");
+        }
+
+        string? uri;
+        Lsp.Range? range;
+        if (element.TryGetProperty("uri", out var uriElement))
+        {
+            uri = uriElement.GetString();
+            range = TryGetRange(element, "range");
+        }
+        else if (element.TryGetProperty("targetUri", out var targetUriElement))
+        {
+            uri = targetUriElement.GetString();
+            range = TryGetRange(element, "targetRange");
+        }
+        else
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{method} returned a malformed location.");
+        }
+
+        if (string.IsNullOrWhiteSpace(uri) || range is null)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{method} returned a malformed location.");
+        }
+
+        string relativePath;
+        try
+        {
+            relativePath = pathMapper.UriToRelativePath(uri);
+        }
+        catch (UserFacingException ex) when (ex.Code is "path_outside_root" or "invalid_lsp_uri")
+        {
+            return null;
+        }
+
+        var mcpRange = PositionMapper.ToMcpRange(range);
+        return new NavigationLocation(relativePath, mcpRange.StartLine, mcpRange.StartColumn, mcpRange);
+    }
+
+    private static int NormalizeMaxResults(int? maxResults)
+    {
+        if (maxResults is null)
+        {
+            return DefaultReferencesMaxResults;
+        }
+
+        if (maxResults.Value < 1)
+        {
+            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
+        }
+
+        return Math.Min(maxResults.Value, MaxReferencesMaxResults);
     }
 
     private static DocumentSymbolMapResult MapDocumentSymbols(JsonElement response)
@@ -358,15 +554,22 @@ public sealed class NavigationTools(
             WorkspaceLoadState.WorkspaceWarming => new ReadToolMetadata(
                 state.ToString(),
                 "partial",
-                toolKind is ToolKind.DocumentSymbols
-                    ? "Workspace is still warming; symbols from projects not loaded yet may be missing."
-                    : "Workspace is still warming; hover may not include complete semantic information.",
+                toolKind switch
+                {
+                    ToolKind.DocumentSymbols => "Workspace is still warming; symbols from projects not loaded yet may be missing.",
+                    ToolKind.Hover => "Workspace is still warming; hover may not include complete semantic information.",
+                    ToolKind.Definition => "Workspace is still warming; definitions from projects not loaded yet may be missing.",
+                    ToolKind.References => "Workspace is still warming; cross-project references may be missing.",
+                    _ => "Workspace is still warming; results may be incomplete."
+                },
                 2000,
                 truncated),
             WorkspaceLoadState.LspReady => new ReadToolMetadata(
                 state.ToString(),
-                "unknown",
-                "The language server is ready, but workspace completeness is not known yet.",
+                toolKind is ToolKind.References ? "partial" : "unknown",
+                toolKind is ToolKind.References
+                    ? "The language server is ready, but cross-project references may be missing until workspace loading completes."
+                    : "The language server is ready, but workspace completeness is not known yet.",
                 2000,
                 truncated),
             _ => new ReadToolMetadata(
@@ -394,9 +597,17 @@ public sealed class NavigationTools(
         string? Kind,
         bool Truncated);
 
+    private sealed record LocationMapResult(
+        IReadOnlyList<NavigationLocation> Items,
+        int TotalKnown,
+        int Returned,
+        bool Truncated);
+
     private enum ToolKind
     {
         DocumentSymbols,
-        Hover
+        Hover,
+        Definition,
+        References
     }
 }

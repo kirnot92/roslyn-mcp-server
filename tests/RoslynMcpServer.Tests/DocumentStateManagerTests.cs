@@ -107,7 +107,8 @@ public sealed class DocumentStateManagerTests
             500,
             maxOpenDocuments,
             maxDocumentBytes,
-            16);
+            16,
+            2);
         var guard = new PathGuard(root);
         return new DocumentStateManager(options, new DocumentPathMapper(guard));
     }
@@ -124,7 +125,8 @@ public sealed class DocumentStateManagerTests
             string method,
             object? parameters,
             TimeSpan timeout,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            bool isExpensive = false) =>
             throw new NotSupportedException();
 
         public Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken)

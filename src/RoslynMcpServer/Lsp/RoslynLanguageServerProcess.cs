@@ -43,6 +43,7 @@ public sealed class RoslynLanguageServerProcess(
             process.StandardInput.BaseStream,
             process.StandardOutput.BaseStream,
             options.MaxInFlightLspRequests,
+            options.MaxExpensiveLspRequests,
             loggerFactory.CreateLogger<LspClient>());
         client.Start();
 

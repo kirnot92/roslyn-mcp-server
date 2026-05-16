@@ -12,7 +12,7 @@ namespace RoslynMcpServer.Tests;
 public sealed class RoslynLanguageServerIntegrationTests
 {
     [Fact]
-    public async Task DocumentSymbolsAndHover_WorkAgainstInstalledRoslynLanguageServer()
+    public async Task ReadTools_WorkAgainstInstalledRoslynLanguageServer()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "Sample.csproj"), """
@@ -29,6 +29,11 @@ public sealed class RoslynLanguageServerIntegrationTests
             public class Calculator
             {
                 public int Add(int left, int right) => left + right;
+            }
+
+            public class Consumer
+            {
+                public int Use() => new Calculator().Add(1, 2);
             }
             """);
 
@@ -57,7 +62,7 @@ public sealed class RoslynLanguageServerIntegrationTests
         await using var disposeSession = session.ConfigureAwait(false);
 
         var mapper = new DocumentPathMapper(guard);
-        var tools = new NavigationTools(session, new DocumentStateManager(options, mapper));
+        var tools = new NavigationTools(session, new DocumentStateManager(options, mapper), mapper);
         await session.LoadProjectAsync("Sample.csproj");
 
         var symbolsResult = await tools.DocumentSymbols("Calculator.cs");
@@ -66,6 +71,14 @@ public sealed class RoslynLanguageServerIntegrationTests
 
         var hoverResult = await tools.Hover("Calculator.cs", line: 4, column: 16);
         Assert.IsNotType<ToolError>(hoverResult);
+
+        var definitionResult = await tools.GoToDefinition("Calculator.cs", line: 9, column: 43);
+        var definition = Assert.IsType<DefinitionResult>(definitionResult);
+        Assert.Contains(definition.Items, item => item.File == "Calculator.cs" && item.Line == 4);
+
+        var referencesResult = await tools.FindReferences("Calculator.cs", line: 4, column: 17);
+        var references = Assert.IsType<ReferencesResult>(referencesResult);
+        Assert.Contains(references.Items, item => item.File == "Calculator.cs");
     }
 
     private static CliOptions CreateOptions(string root) =>
@@ -82,5 +95,6 @@ public sealed class RoslynLanguageServerIntegrationTests
             500,
             200,
             2 * 1024 * 1024,
-            16);
+            16,
+            2);
 }

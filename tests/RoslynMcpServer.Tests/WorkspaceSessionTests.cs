@@ -54,7 +54,8 @@ public sealed class WorkspaceSessionTests
             500,
             200,
             2 * 1024 * 1024,
-            16);
+            16,
+            2);
         var guard = new PathGuard(root);
         return new WorkspaceSession(new WorkspaceScanner(options, guard), guard, loader);
     }
@@ -76,6 +77,7 @@ public sealed class WorkspaceSessionTests
                 new MemoryStream(),
                 new MemoryStream(),
                 16,
+                2,
                 NullLogger<LspClient>.Instance);
             return Task.FromResult(new RoslynWorkspaceHandle(target, new RoslynLanguageServerConnection(process, client)));
         }

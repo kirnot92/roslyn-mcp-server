@@ -102,7 +102,8 @@ public sealed class GitWorkspaceScannerTests
             500,
             200,
             2 * 1024 * 1024,
-            16);
+            16,
+            2);
 
     private static bool GitIsAvailable()
     {
