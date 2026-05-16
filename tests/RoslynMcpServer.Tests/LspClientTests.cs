@@ -197,6 +197,32 @@ public sealed class LspClientTests
     }
 
     [Fact]
+    public async Task ReadLoop_RecordsReceivedNotificationMethods()
+    {
+        await using var harness = LspClientHarness.Create(maxInFlightRequests: 4);
+
+        Assert.False(harness.Client.HasReceivedNotification("workspace/projectInitializationComplete"));
+        await LspFraming.WriteAsync(harness.ServerOutput, new
+        {
+            jsonrpc = "2.0",
+            method = "workspace/projectInitializationComplete",
+            @params = new { }
+        }, CancellationToken.None);
+
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            if (harness.Client.HasReceivedNotification("workspace/projectInitializationComplete"))
+            {
+                return;
+            }
+
+            await Task.Delay(20);
+        }
+
+        Assert.Fail("Notification method was not recorded by the LSP read loop.");
+    }
+
+    [Fact]
     public async Task RequestAsync_RemovesPendingRequestAfterTimeoutAndAllowsNextRequest()
     {
         await using var harness = LspClientHarness.Create(maxInFlightRequests: 1);

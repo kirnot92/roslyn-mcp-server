@@ -10,6 +10,8 @@ public sealed class WorkspaceSession(
     DocumentStateManager? documents,
     DiagnosticStore? diagnostics) : IAsyncDisposable
 {
+    private const string ProjectInitializationCompleteMethod = "workspace/projectInitializationComplete";
+    private const string PublishDiagnosticsMethod = "textDocument/publishDiagnostics";
     private readonly SemaphoreSlim stateLock = new(1, 1);
     private WorkspaceScanResult? scanCache;
     private RoslynWorkspaceHandle? handle;
@@ -156,6 +158,7 @@ public sealed class WorkspaceSession(
             this.handle.Client.NotificationReceived += OnNotificationReceived;
             this.handle.Client.Faulted += OnClientFaulted;
             this.state = WorkspaceLoadState.WorkspaceWarming;
+            ApplyAlreadyReceivedNotifications(this.handle.Client);
         }
         catch (UserFacingException ex)
         {
@@ -264,15 +267,23 @@ public sealed class WorkspaceSession(
 
     private void OnNotificationReceived(string method, System.Text.Json.JsonElement? parameters)
     {
-        if (string.Equals(method, "workspace/projectInitializationComplete", StringComparison.Ordinal))
+        if (string.Equals(method, ProjectInitializationCompleteMethod, StringComparison.Ordinal))
         {
             this.state = WorkspaceLoadState.Ready;
             return;
         }
 
-        if (string.Equals(method, "textDocument/publishDiagnostics", StringComparison.Ordinal))
+        if (string.Equals(method, PublishDiagnosticsMethod, StringComparison.Ordinal))
         {
             diagnostics?.TryUpdateFromPublishDiagnostics(parameters);
+        }
+    }
+
+    private void ApplyAlreadyReceivedNotifications(ILspClient client)
+    {
+        if (client.HasReceivedNotification(ProjectInitializationCompleteMethod))
+        {
+            this.state = WorkspaceLoadState.Ready;
         }
     }
 

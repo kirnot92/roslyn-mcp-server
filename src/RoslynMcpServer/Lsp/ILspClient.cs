@@ -14,6 +14,7 @@ public interface ILspClient
     int PendingRequestCount { get; }
     bool IsFaulted => false;
     Exception? FaultException => null;
+    bool HasReceivedNotification(string method) => false;
 
     Task<JsonElement> RequestAsync(
         string method,

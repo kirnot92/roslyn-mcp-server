@@ -12,6 +12,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     private readonly ILogger logger;
     private readonly int maxResponsePayloadBytes;
     private readonly ConcurrentDictionary<long, PendingRequest> pendingRequests = new();
+    private readonly ConcurrentDictionary<string, byte> receivedNotifications = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim inFlightLimit;
     private readonly SemaphoreSlim expensiveLimit;
     private readonly SemaphoreSlim writeLock = new(1, 1);
@@ -42,6 +43,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     public int PendingRequestCount => this.pendingRequests.Count;
     public bool IsFaulted => this.faultException is not null;
     public Exception? FaultException => this.faultException;
+    public bool HasReceivedNotification(string method) => this.receivedNotifications.ContainsKey(method);
 
     public void Start() => this.readLoop ??= Task.Run(ReadLoopAsync);
 
@@ -232,6 +234,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
                         JsonElement? parameters = root.TryGetProperty("params", out var paramsElement)
                             ? paramsElement.Clone()
                             : null;
+                        this.receivedNotifications.TryAdd(method, 0);
                         NotificationReceived?.Invoke(method, parameters);
                     }
                 }

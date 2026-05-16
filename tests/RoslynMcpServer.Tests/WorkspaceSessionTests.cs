@@ -26,6 +26,37 @@ public sealed class WorkspaceSessionTests
     }
 
     [Fact]
+    public async Task LoadSolution_TransitionsToReadyWhenInitializationNotificationArrivedDuringLoad()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        var client = new NotificationRecordingClient("workspace/projectInitializationComplete");
+        var session = CreateSession(root.Path, new ImmediateLoader(client));
+
+        var status = await session.LoadSolutionAsync("App.sln");
+
+        Assert.Equal(WorkspaceLoadState.Ready, status.State);
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task LoadSolution_TransitionsToReadyWhenInitializationNotificationArrivesAfterLoad()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        var client = new NotificationRecordingClient();
+        var session = CreateSession(root.Path, new ImmediateLoader(client));
+
+        var loadingStatus = await session.LoadSolutionAsync("App.sln");
+        client.RaiseNotification("workspace/projectInitializationComplete");
+        var readyStatus = await session.GetStatusAsync();
+
+        Assert.Equal(WorkspaceLoadState.WorkspaceWarming, loadingStatus.State);
+        Assert.Equal(WorkspaceLoadState.Ready, readyStatus.State);
+        await session.DisposeAsync();
+    }
+
+    [Fact]
     public async Task LoadProject_RecordsFailureWhenLoaderFails()
     {
         using var root = TestRoot.Create();
@@ -159,6 +190,37 @@ public sealed class WorkspaceSessionTests
             CancellationToken cancellationToken,
             bool isExpensive = false) =>
             Task.FromException<JsonElement>(FaultException ?? new InvalidOperationException("No response configured."));
+
+        public Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task ShutdownAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class NotificationRecordingClient(params string[] initialNotifications) : ILspClient
+    {
+        private readonly HashSet<string> receivedNotifications = new(initialNotifications, StringComparer.Ordinal);
+
+        public event Action<string, JsonElement?>? NotificationReceived;
+
+        public int PendingRequestCount => 0;
+
+        public bool HasReceivedNotification(string method) => this.receivedNotifications.Contains(method);
+
+        public void RaiseNotification(string method)
+        {
+            this.receivedNotifications.Add(method);
+            this.NotificationReceived?.Invoke(method, null);
+        }
+
+        public Task<JsonElement> RequestAsync(
+            string method,
+            object? parameters,
+            TimeSpan timeout,
+            CancellationToken cancellationToken,
+            bool isExpensive = false) =>
+            Task.FromException<JsonElement>(new InvalidOperationException("No response configured."));
 
         public Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken) =>
             Task.CompletedTask;
