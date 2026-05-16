@@ -48,6 +48,46 @@ public sealed class GitWorkspaceScannerTests
         Assert.Null(result);
     }
 
+    [Fact]
+    public void TryScan_DoesNotMissSolutionWhenProjectLimitIsReachedFirst()
+    {
+        if (!GitIsAvailable())
+        {
+            return;
+        }
+
+        using var root = TestRoot.Create();
+        RunGit(root.Path, "init");
+        Directory.CreateDirectory(Path.Combine(root.Path, "a"));
+        File.WriteAllText(Path.Combine(root.Path, "a", "One.csproj"), string.Empty);
+        File.WriteAllText(Path.Combine(root.Path, "a", "Two.csproj"), string.Empty);
+        Directory.CreateDirectory(Path.Combine(root.Path, "z"));
+        File.WriteAllText(Path.Combine(root.Path, "z", "App.sln"), string.Empty);
+        var options = CreateOptions(root.Path) with { MaxProjectCandidates = 1 };
+        var scanner = new GitWorkspaceScanner(options, new PathGuard(root.Path));
+
+        var result = scanner.TryScan();
+
+        Assert.NotNull(result);
+        Assert.True(result.Truncated);
+        Assert.Equal("project_candidate_limit", result.TruncationReason);
+        Assert.Equal(["z/App.sln"], result.Solutions.Select(x => x.RelativePath).ToArray());
+        Assert.Single(result.Projects);
+    }
+
+    [Fact]
+    public void WorkspaceScanner_ReturnsScanTimeoutWhenGitConsumesBudget()
+    {
+        using var root = TestRoot.Create();
+        var options = CreateOptions(root.Path) with { ScanTimeout = TimeSpan.FromMilliseconds(1) };
+        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), new SlowNullGitScanner(options, new PathGuard(root.Path)));
+
+        var result = scanner.Scan();
+
+        Assert.True(result.Truncated);
+        Assert.Equal("scan_timeout", result.TruncationReason);
+    }
+
     private static CliOptions CreateOptions(string root) =>
         new(
             root,
@@ -100,5 +140,19 @@ public sealed class GitWorkspaceScannerTests
         using var process = Process.Start(startInfo)!;
         Assert.True(process.WaitForExit(5000));
         Assert.Equal(0, process.ExitCode);
+    }
+
+    private sealed class SlowNullGitScanner : GitWorkspaceScanner
+    {
+        public SlowNullGitScanner(CliOptions options, PathGuard pathGuard)
+            : base(options, pathGuard)
+        {
+        }
+
+        public override WorkspaceScanResult? TryScan(TimeSpan budget, CancellationToken cancellationToken = default)
+        {
+            Thread.Sleep(TimeSpan.FromMilliseconds(5));
+            return null;
+        }
     }
 }

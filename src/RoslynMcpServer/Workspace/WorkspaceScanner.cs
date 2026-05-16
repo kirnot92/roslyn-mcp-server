@@ -25,11 +25,29 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, Gi
 
     public WorkspaceScanResult Scan(CancellationToken cancellationToken = default)
     {
-        var gitResult = gitScanner?.TryScan(cancellationToken);
-        return gitResult ?? ScanFileSystem(cancellationToken);
+        var sw = Stopwatch.StartNew();
+        var gitResult = gitScanner?.TryScan(options.ScanTimeout, cancellationToken);
+        if (gitResult is not null)
+        {
+            return gitResult;
+        }
+
+        var remaining = options.ScanTimeout - sw.Elapsed;
+        if (remaining <= TimeSpan.Zero)
+        {
+            return new WorkspaceScanResult(
+                pathGuard.Root,
+                [],
+                [],
+                Truncated: true,
+                TruncationReason: "scan_timeout",
+                sw.Elapsed);
+        }
+
+        return ScanFileSystem(remaining, cancellationToken);
     }
 
-    private WorkspaceScanResult ScanFileSystem(CancellationToken cancellationToken)
+    private WorkspaceScanResult ScanFileSystem(TimeSpan scanTimeout, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         var solutions = new List<WorkspaceCandidate>();
@@ -43,7 +61,7 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, Gi
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (sw.Elapsed > options.ScanTimeout)
+            if (sw.Elapsed > scanTimeout)
             {
                 truncationReason = "scan_timeout";
                 break;
@@ -73,7 +91,7 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, Gi
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (sw.Elapsed > options.ScanTimeout)
+                if (sw.Elapsed > scanTimeout)
                 {
                     truncationReason = "scan_timeout";
                     break;
@@ -105,7 +123,7 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, Gi
                     if (solutions.Count >= options.MaxSolutionCandidates)
                     {
                         truncationReason = "solution_candidate_limit";
-                        break;
+                        continue;
                     }
 
                     solutions.Add(ToCandidate(entry, string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
@@ -117,17 +135,13 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, Gi
                     if (projects.Count >= options.MaxProjectCandidates)
                     {
                         truncationReason = "project_candidate_limit";
-                        break;
+                        continue;
                     }
 
                     projects.Add(ToCandidate(entry, WorkspaceKind.Project));
                 }
             }
 
-            if (truncationReason is not null)
-            {
-                break;
-            }
         }
 
         sw.Stop();

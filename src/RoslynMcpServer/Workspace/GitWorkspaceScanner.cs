@@ -3,17 +3,28 @@ using RoslynMcpServer.Cli;
 
 namespace RoslynMcpServer.Workspace;
 
-public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
+public class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
 {
-    public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default)
+    public virtual WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default)
     {
-        if (!IsInsideGitWorkTree(cancellationToken))
+        return TryScan(options.ScanTimeout, cancellationToken);
+    }
+
+    public virtual WorkspaceScanResult? TryScan(TimeSpan budget, CancellationToken cancellationToken = default)
+    {
+        var sw = Stopwatch.StartNew();
+        if (!IsInsideGitWorkTree(budget, cancellationToken))
         {
             return null;
         }
 
-        var sw = Stopwatch.StartNew();
-        using var timeoutCts = new CancellationTokenSource(options.ScanTimeout);
+        var remaining = budget - sw.Elapsed;
+        if (remaining <= TimeSpan.Zero)
+        {
+            return null;
+        }
+
+        using var timeoutCts = new CancellationTokenSource(remaining);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
         try
@@ -55,7 +66,7 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
         }
     }
 
-    private bool IsInsideGitWorkTree(CancellationToken cancellationToken)
+    private bool IsInsideGitWorkTree(TimeSpan budget, CancellationToken cancellationToken)
     {
         try
         {
@@ -65,7 +76,8 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
                 return false;
             }
 
-            if (!process.WaitForExit((int)Math.Min(options.ScanTimeout.TotalMilliseconds, 3000)))
+            var timeoutMs = (int)Math.Clamp(Math.Min(budget.TotalMilliseconds, 3000), 1, int.MaxValue);
+            if (!process.WaitForExit(timeoutMs))
             {
                 KillProcess(process);
                 return false;
@@ -127,7 +139,7 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
                 if (solutions.Count >= options.MaxSolutionCandidates)
                 {
                     truncationReason = "solution_candidate_limit";
-                    break;
+                    continue;
                 }
 
                 solutions.Add(ToCandidate(fullPath, string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
@@ -139,7 +151,7 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
                 if (projects.Count >= options.MaxProjectCandidates)
                 {
                     truncationReason = "project_candidate_limit";
-                    break;
+                    continue;
                 }
 
                 projects.Add(ToCandidate(fullPath, WorkspaceKind.Project));

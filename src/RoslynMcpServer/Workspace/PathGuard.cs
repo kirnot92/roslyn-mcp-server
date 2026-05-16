@@ -44,10 +44,7 @@ public sealed class PathGuard
             throw new UserFacingException("path_outside_root", $"Path is outside the workspace root: {path}");
         }
 
-        if (IsReparsePoint(candidate))
-        {
-            throw new UserFacingException("path_reparse_point", $"Reparse point paths are not supported in M1: {path}");
-        }
+        RejectReparsePointInPath(candidate, path);
 
         return candidate;
     }
@@ -80,6 +77,29 @@ public sealed class PathGuard
         var normalized = Path.GetFullPath(fullPath);
         return string.Equals(normalized, Root, _comparison) ||
             normalized.StartsWith(_rootWithSeparator, _comparison);
+    }
+
+    private void RejectReparsePointInPath(string fullPath, string originalPath)
+    {
+        var relative = Path.GetRelativePath(Root, fullPath);
+        if (relative == ".")
+        {
+            return;
+        }
+
+        var current = Root;
+        foreach (var part in relative.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, part);
+            if (IsReparsePoint(current))
+            {
+                throw new UserFacingException(
+                    "path_reparse_point",
+                    $"Reparse point paths are not supported in M1: {originalPath}");
+            }
+        }
     }
 
     private static bool IsReparsePoint(string path)

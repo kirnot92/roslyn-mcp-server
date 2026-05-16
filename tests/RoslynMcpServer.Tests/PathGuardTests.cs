@@ -28,4 +28,29 @@ public sealed class PathGuardTests
 
         Assert.Equal("path_outside_root", ex.Code);
     }
+
+    [Fact]
+    public void RequireFileInsideRoot_RejectsReparsePointAncestorWhenSupported()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(outside.Path, "Outside.sln"), string.Empty);
+        var linkPath = Path.Combine(root.Path, "link");
+
+        try
+        {
+            Directory.CreateSymbolicLink(linkPath, outside.Path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            return;
+        }
+
+        var guard = new PathGuard(root.Path);
+
+        var userError = Assert.Throws<UserFacingException>(() =>
+            guard.RequireFileInsideRoot(Path.Combine("link", "Outside.sln"), ".sln"));
+
+        Assert.Equal("path_reparse_point", userError.Code);
+    }
 }

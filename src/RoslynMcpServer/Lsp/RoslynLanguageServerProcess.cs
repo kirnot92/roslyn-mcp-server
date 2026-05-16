@@ -126,20 +126,27 @@ public sealed class RoslynLanguageServerConnection(Process process, LspClient cl
 
     public async ValueTask DisposeAsync()
     {
-        await Client.DisposeAsync().ConfigureAwait(false);
         if (!Process.HasExited)
         {
             try
             {
-                Process.Kill(entireProcessTree: true);
                 await Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
             }
-            catch (Exception)
+            catch (TimeoutException)
             {
-                // Best-effort cleanup. Shutdown is attempted before disposal by WorkspaceSession.
+                try
+                {
+                    Process.Kill(entireProcessTree: true);
+                    await Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Best-effort cleanup. Shutdown is attempted before disposal by WorkspaceSession.
+                }
             }
         }
 
+        await Client.DisposeAsync().ConfigureAwait(false);
         Process.Dispose();
     }
 }
