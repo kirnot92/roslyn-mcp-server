@@ -63,3 +63,16 @@ public enum SymbolKind
     Operator = 25,
     TypeParameter = 26
 }
+
+public static class SymbolKindExtensions
+{
+    public static string ToMcpName(this SymbolKind kind) =>
+        kind switch
+        {
+            _ when !System.Enum.IsDefined(kind) => "unknown",
+            // Keep multi-word LSP names in camelCase for stable MCP output.
+            SymbolKind.EnumMember => "enumMember",
+            SymbolKind.TypeParameter => "typeParameter",
+            _ => kind.ToString().ToLowerInvariant()
+        };
+}
