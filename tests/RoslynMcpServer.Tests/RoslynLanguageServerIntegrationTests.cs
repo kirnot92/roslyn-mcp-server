@@ -79,6 +79,9 @@ public sealed class RoslynLanguageServerIntegrationTests
         var referencesResult = await tools.FindReferences("Calculator.cs", line: 4, column: 17);
         var references = Assert.IsType<ReferencesResult>(referencesResult);
         Assert.Contains(references.Items, item => item.File == "Calculator.cs");
+
+        var workspaceSymbolsResult = await tools.FindSymbols("Calculator");
+        Assert.IsType<FindSymbolsResult>(workspaceSymbolsResult);
     }
 
     private static CliOptions CreateOptions(string root) =>

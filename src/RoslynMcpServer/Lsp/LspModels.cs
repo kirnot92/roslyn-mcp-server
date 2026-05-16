@@ -40,6 +40,8 @@ public sealed record ReferenceContext(bool IncludeDeclaration);
 
 public sealed record ReferenceParams(TextDocumentIdentifier TextDocument, Position Position, ReferenceContext Context);
 
+public sealed record WorkspaceSymbolParams(string Query);
+
 // Values are defined by the Language Server Protocol SymbolKind constants:
 // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind
 public enum SymbolKind

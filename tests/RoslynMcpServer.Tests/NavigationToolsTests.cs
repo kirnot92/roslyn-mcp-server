@@ -342,6 +342,302 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task FindSymbols_ReturnsValidationErrorForEmptyQuery()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("   ");
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_query", error.Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task FindSymbols_PassesQueryToWorkspaceSymbolRequestAndMarksItExpensive()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc");
+
+        Assert.IsType<FindSymbolsResult>(result);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("workspace/symbol", request.Method);
+        Assert.True(request.IsExpensive);
+        Assert.Equal("Calc", request.Params.GetProperty("query").GetString());
+    }
+
+    [Fact]
+    public async Task FindSymbols_ReturnsEmptyResultForNullOrEmptyResponse()
+    {
+        var nullResult = await ExecuteFindSymbolsWithResponse(null);
+        var emptyResult = await ExecuteFindSymbolsWithResponse(Array.Empty<object>());
+
+        Assert.Empty(Assert.IsType<FindSymbolsResult>(nullResult).Items);
+        Assert.Empty(Assert.IsType<FindSymbolsResult>(emptyResult).Items);
+    }
+
+    [Fact]
+    public async Task FindSymbols_MapsSymbolInformationToRootRelativeOneBasedLocation()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Calculator { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new
+            {
+                name = "Calculator",
+                kind = (int)SymbolKind.Class,
+                containerName = "Sample",
+                location = new Lsp.Location(
+                    new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri,
+                    new Lsp.Range(new Position(2, 4), new Position(2, 14)))
+            }
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calculator");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("Calculator", item.Name);
+        Assert.Equal(SymbolKind.Class, item.Kind);
+        Assert.Equal("class", item.KindName);
+        Assert.Equal("Sample", item.ContainerName);
+        Assert.Equal("Program.cs", item.Location?.File);
+        Assert.Equal(3, item.Location?.Line);
+        Assert.Equal(5, item.Location?.Column);
+        Assert.Equal(3, item.Location?.Range.StartLine);
+        Assert.Equal(5, item.Location?.Range.StartColumn);
+    }
+
+    [Fact]
+    public async Task FindSymbols_MapsWorkspaceSymbolVariantWithLocation()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Calculator { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new
+            {
+                name = "Add",
+                kind = (int)SymbolKind.Method,
+                location = new
+                {
+                    uri = new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri,
+                    range = new Lsp.Range(new Position(5, 8), new Position(5, 11))
+                }
+            }
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Add");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("Add", item.Name);
+        Assert.Equal("method", item.KindName);
+        Assert.Equal("Program.cs", item.Location?.File);
+        Assert.Equal(6, item.Location?.Line);
+        Assert.Equal(9, item.Location?.Column);
+    }
+
+    [Fact]
+    public async Task FindSymbols_ToleratesMissingOrUnsupportedLocation()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            new
+            {
+                name = "NoLocation",
+                kind = (int)SymbolKind.Class
+            },
+            new
+            {
+                name = "UriOnly",
+                kind = (int)SymbolKind.Class,
+                location = new
+                {
+                    uri = new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri
+                }
+            },
+            new
+            {
+                name = "MalformedLocation",
+                kind = (int)SymbolKind.Class,
+                location = "not a location"
+            }
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Location");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Equal(3, symbols.Items.Count);
+        Assert.All(symbols.Items, item => Assert.Null(item.Location));
+    }
+
+    [Fact]
+    public async Task FindSymbols_DoesNotExposeOutsideRootOrNonFileUriResults()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var insideUri = new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri;
+        var outsideUri = new Uri(Path.Combine(outside.Path, "Outside.cs")).AbsoluteUri;
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new
+            {
+                name = "Outside",
+                kind = (int)SymbolKind.Class,
+                location = new Lsp.Location(outsideUri, new Lsp.Range(new Position(0, 0), new Position(0, 1)))
+            },
+            new
+            {
+                name = "Remote",
+                kind = (int)SymbolKind.Class,
+                location = new Lsp.Location("https://example.test/Remote.cs", new Lsp.Range(new Position(0, 0), new Position(0, 1)))
+            },
+            new
+            {
+                name = "Inside",
+                kind = (int)SymbolKind.Class,
+                location = new Lsp.Location(insideUri, new Lsp.Range(new Position(0, 0), new Position(0, 1)))
+            }
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Class");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("Inside", item.Name);
+        Assert.Equal("Program.cs", item.Location?.File);
+        Assert.Equal(1, symbols.TotalKnown);
+        Assert.Equal(1, symbols.Returned);
+        Assert.False(symbols.Truncated);
+    }
+
+    [Fact]
+    public async Task FindSymbols_TruncatesLargeResponseAtDefaultLimit()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(CreateWorkspaceSymbols(count: 101));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Symbol");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Equal(101, symbols.TotalKnown);
+        Assert.Equal(100, symbols.Returned);
+        Assert.Equal(100, symbols.Items.Count);
+        Assert.True(symbols.Truncated);
+    }
+
+    [Fact]
+    public async Task FindSymbols_AppliesUserMaxResultsAndServerHardCap()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(CreateWorkspaceSymbols(count: 4));
+        client.EnqueueResponse(CreateWorkspaceSymbols(count: 1001));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var userLimitedResult = await tools.FindSymbols("Symbol", maxResults: 2);
+        var hardCapResult = await tools.FindSymbols("Symbol", maxResults: 5000);
+
+        var userLimited = Assert.IsType<FindSymbolsResult>(userLimitedResult);
+        Assert.Equal(4, userLimited.TotalKnown);
+        Assert.Equal(2, userLimited.Returned);
+        Assert.True(userLimited.Truncated);
+
+        var hardCapped = Assert.IsType<FindSymbolsResult>(hardCapResult);
+        Assert.Equal(1001, hardCapped.TotalKnown);
+        Assert.Equal(1000, hardCapped.Returned);
+        Assert.True(hardCapped.Truncated);
+    }
+
+    [Fact]
+    public async Task FindSymbols_IncludesPartialReasonForEmptyResultWhileWorkspaceIsWarming()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Missing");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Empty(symbols.Items);
+        Assert.Equal(WorkspaceLoadState.WorkspaceWarming.ToString(), symbols.WorkspaceState);
+        Assert.Equal("partial", symbols.Completeness);
+        Assert.Contains("symbol index", symbols.Reason);
+        Assert.Equal(0, symbols.TotalKnown);
+        Assert.Equal(0, symbols.Returned);
+        Assert.False(symbols.Truncated);
+    }
+
+    [Fact]
+    public async Task FindSymbols_ReturnsWorkspaceLoadingWhileLanguageServerStarts()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var loader = new BlockingLoader();
+        await using var session = CreateSession(root.Path, loader);
+        var tools = CreateTools(root.Path, session);
+
+        var loadTask = session.LoadProjectAsync("App.csproj");
+        await loader.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var result = await tools.FindSymbols("Program");
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("workspace_loading", error.Error);
+        Assert.Equal(WorkspaceLoadState.StartingLanguageServer.ToString(), error.WorkspaceState);
+
+        loader.Release.SetResult();
+        await loadTask.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
     public async Task DefinitionAndReferences_DoNotExposeUrisOutsideRoot()
     {
         using var root = TestRoot.Create();
@@ -421,6 +717,29 @@ public sealed class NavigationToolsTests
 
         return await tools.GoToDefinition("Program.cs", line: 1, column: 1);
     }
+
+    private static async Task<object> ExecuteFindSymbolsWithResponse(object? response)
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(response);
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        return await tools.FindSymbols("Symbol");
+    }
+
+    private static object[] CreateWorkspaceSymbols(int count) =>
+        Enumerable.Range(0, count)
+            .Select(index => new
+            {
+                name = $"Symbol{index}",
+                kind = (int)SymbolKind.Class
+            })
+            .Cast<object>()
+            .ToArray();
 
     private static NavigationTools CreateTools(string root, WorkspaceSession session)
     {

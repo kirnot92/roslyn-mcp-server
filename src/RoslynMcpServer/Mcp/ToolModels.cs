@@ -79,6 +79,23 @@ public sealed record ReferencesResult(
     int? RetryAfterMs,
     bool Truncated);
 
+public sealed record WorkspaceSymbolItem(
+    string Name,
+    SymbolKind Kind,
+    string KindName,
+    string? ContainerName,
+    NavigationLocation? Location);
+
+public sealed record FindSymbolsResult(
+    IReadOnlyList<WorkspaceSymbolItem> Items,
+    int TotalKnown,
+    int Returned,
+    string WorkspaceState,
+    string Completeness,
+    string? Reason,
+    int? RetryAfterMs,
+    bool Truncated);
+
 public static class PositionMapper
 {
     public static Position ToLspPosition(int line, int column)

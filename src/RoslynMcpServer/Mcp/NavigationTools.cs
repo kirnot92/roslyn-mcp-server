@@ -18,9 +18,12 @@ public sealed class NavigationTools(
     private const int MaxHoverCharacters = 20_000;
     private const int DefaultReferencesMaxResults = 200;
     private const int MaxReferencesMaxResults = 1000;
+    private const int DefaultSymbolMaxResults = 100;
+    private const int MaxSymbolMaxResults = 1000;
     private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DefinitionTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ReferencesTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan WorkspaceSymbolTimeout = TimeSpan.FromSeconds(30);
 
     [McpServerTool(Name = "document_symbols")]
     [Description("Return document symbols for a C# source file.")]
@@ -142,7 +145,7 @@ public sealed class NavigationTools(
     {
         try
         {
-            var effectiveMaxResults = NormalizeMaxResults(maxResults);
+            var effectiveMaxResults = NormalizeReferenceMaxResults(maxResults);
             var position = PositionMapper.ToLspPosition(line, column);
             var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
             var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
@@ -162,6 +165,43 @@ public sealed class NavigationTools(
                 locations.Items,
                 locations.TotalKnown,
                 locations.Returned,
+                metadata.WorkspaceState,
+                metadata.Completeness,
+                metadata.Reason,
+                metadata.RetryAfterMs,
+                metadata.Truncated);
+        }
+        catch (UserFacingException ex)
+        {
+            return ToolError.FromException(ex);
+        }
+    }
+
+    [McpServerTool(Name = "find_symbols")]
+    [Description("Search workspace symbols by name.")]
+    public async Task<object> FindSymbols(
+        string query,
+        int? maxResults = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            ValidateSymbolQuery(query);
+            var effectiveMaxResults = NormalizeSymbolMaxResults(maxResults);
+            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
+            var response = await context.Handle.Client.RequestAsync(
+                "workspace/symbol",
+                new WorkspaceSymbolParams(query),
+                WorkspaceSymbolTimeout,
+                cancellationToken,
+                isExpensive: true).ConfigureAwait(false);
+
+            var symbols = MapWorkspaceSymbols(response, effectiveMaxResults);
+            var metadata = CreateMetadata(context.State, ToolKind.Symbols, symbols.Truncated);
+            return new FindSymbolsResult(
+                symbols.Items,
+                symbols.TotalKnown,
+                symbols.Returned,
                 metadata.WorkspaceState,
                 metadata.Completeness,
                 metadata.Reason,
@@ -271,7 +311,7 @@ public sealed class NavigationTools(
         return new NavigationLocation(relativePath, mcpRange.StartLine, mcpRange.StartColumn, mcpRange);
     }
 
-    private static int NormalizeMaxResults(int? maxResults)
+    private static int NormalizeReferenceMaxResults(int? maxResults)
     {
         if (maxResults is null)
         {
@@ -284,6 +324,162 @@ public sealed class NavigationTools(
         }
 
         return Math.Min(maxResults.Value, MaxReferencesMaxResults);
+    }
+
+    private WorkspaceSymbolMapResult MapWorkspaceSymbols(JsonElement response, int maxResults)
+    {
+        if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return new WorkspaceSymbolMapResult([], TotalKnown: 0, Returned: 0, Truncated: false);
+        }
+
+        if (response.ValueKind != JsonValueKind.Array)
+        {
+            throw new UserFacingException("invalid_lsp_response", "workspace/symbol returned an unexpected response shape.");
+        }
+
+        var items = new List<WorkspaceSymbolItem>();
+        var totalKnown = 0;
+        var returned = 0;
+        foreach (var item in response.EnumerateArray())
+        {
+            var symbol = TryMapWorkspaceSymbol(item);
+            if (symbol is null)
+            {
+                continue;
+            }
+
+            totalKnown++;
+            if (returned >= maxResults)
+            {
+                continue;
+            }
+
+            items.Add(symbol);
+            returned++;
+        }
+
+        return new WorkspaceSymbolMapResult(items, totalKnown, returned, totalKnown > returned);
+    }
+
+    private WorkspaceSymbolItem? TryMapWorkspaceSymbol(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object ||
+            !item.TryGetProperty("name", out var nameElement) ||
+            !item.TryGetProperty("kind", out var kindElement) ||
+            !kindElement.TryGetInt32(out var kindValue))
+        {
+            return null;
+        }
+
+        var name = nameElement.GetString();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var location = TryMapWorkspaceSymbolLocation(item, out var shouldInclude);
+        if (!shouldInclude)
+        {
+            return null;
+        }
+
+        var kind = (SymbolKind)kindValue;
+        return new WorkspaceSymbolItem(
+            name,
+            kind,
+            kind.ToMcpName(),
+            item.TryGetProperty("containerName", out var containerElement) ? containerElement.GetString() : null,
+            location);
+    }
+
+    private NavigationLocation? TryMapWorkspaceSymbolLocation(JsonElement item, out bool shouldInclude)
+    {
+        shouldInclude = true;
+        if (!item.TryGetProperty("location", out var locationElement) ||
+            locationElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (locationElement.ValueKind != JsonValueKind.Object ||
+            !locationElement.TryGetProperty("uri", out var uriElement))
+        {
+            return null;
+        }
+
+        var uri = uriElement.GetString();
+        if (string.IsNullOrWhiteSpace(uri))
+        {
+            return null;
+        }
+
+        string relativePath;
+        try
+        {
+            relativePath = pathMapper.UriToRelativePath(uri);
+        }
+        catch (UserFacingException ex) when (ex.Code is "path_outside_root" or "invalid_lsp_uri")
+        {
+            shouldInclude = false;
+            return null;
+        }
+
+        var range = TryGetRangeOrNull(locationElement, "range");
+        if (range is null)
+        {
+            return null;
+        }
+
+        var mcpRange = PositionMapper.ToMcpRange(range);
+        return new NavigationLocation(relativePath, mcpRange.StartLine, mcpRange.StartColumn, mcpRange);
+    }
+
+    private static Lsp.Range? TryGetRangeOrNull(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var rangeElement) ||
+            rangeElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        try
+        {
+            return rangeElement.Deserialize<Lsp.Range>(JsonOptions.Default);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static void ValidateSymbolQuery(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            throw new UserFacingException(
+                "invalid_query",
+                "query must contain at least one non-whitespace character.");
+        }
+    }
+
+    private static int NormalizeSymbolMaxResults(int? maxResults)
+    {
+        if (maxResults is null)
+        {
+            return DefaultSymbolMaxResults;
+        }
+
+        if (maxResults.Value < 1)
+        {
+            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
+        }
+
+        return Math.Min(maxResults.Value, MaxSymbolMaxResults);
     }
 
     private static DocumentSymbolMapResult MapDocumentSymbols(JsonElement response)
@@ -547,8 +743,10 @@ public sealed class NavigationTools(
         {
             WorkspaceLoadState.Ready => new ReadToolMetadata(
                 state.ToString(),
-                "complete",
-                null,
+                toolKind is ToolKind.Symbols ? "unknown" : "complete",
+                toolKind is ToolKind.Symbols
+                    ? "The language server does not report workspace symbol index completeness."
+                    : null,
                 null,
                 truncated),
             WorkspaceLoadState.WorkspaceWarming => new ReadToolMetadata(
@@ -560,6 +758,7 @@ public sealed class NavigationTools(
                     ToolKind.Hover => "Workspace is still warming; hover may not include complete semantic information.",
                     ToolKind.Definition => "Workspace is still warming; definitions from projects not loaded yet may be missing.",
                     ToolKind.References => "Workspace is still warming; cross-project references may be missing.",
+                    ToolKind.Symbols => "Workspace is still warming; the workspace symbol index may be incomplete.",
                     _ => "Workspace is still warming; results may be incomplete."
                 },
                 2000,
@@ -567,9 +766,12 @@ public sealed class NavigationTools(
             WorkspaceLoadState.LspReady => new ReadToolMetadata(
                 state.ToString(),
                 toolKind is ToolKind.References ? "partial" : "unknown",
-                toolKind is ToolKind.References
-                    ? "The language server is ready, but cross-project references may be missing until workspace loading completes."
-                    : "The language server is ready, but workspace completeness is not known yet.",
+                toolKind switch
+                {
+                    ToolKind.References => "The language server is ready, but cross-project references may be missing until workspace loading completes.",
+                    ToolKind.Symbols => "The language server is ready, but workspace symbol index completeness is not known yet.",
+                    _ => "The language server is ready, but workspace completeness is not known yet."
+                },
                 2000,
                 truncated),
             _ => new ReadToolMetadata(
@@ -603,11 +805,18 @@ public sealed class NavigationTools(
         int Returned,
         bool Truncated);
 
+    private sealed record WorkspaceSymbolMapResult(
+        IReadOnlyList<WorkspaceSymbolItem> Items,
+        int TotalKnown,
+        int Returned,
+        bool Truncated);
+
     private enum ToolKind
     {
         DocumentSymbols,
         Hover,
         Definition,
-        References
+        References,
+        Symbols
     }
 }

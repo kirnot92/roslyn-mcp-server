@@ -81,6 +81,32 @@ M2b 이후 남은 범위:
 - warming 중 빈 workspace symbol 결과를 "없음"으로 단정하지 말고 `completeness`와 `reason`을 유지한다.
 - root 밖 URI filtering, 1-based/0-based 변환, `StartingLanguageServer`의 즉시 `workspace_loading` 계약은 M2b와 같은 기준을 따른다.
 
+## M2c 완료 메모
+
+2026-05-17 기준 M2c(`find_symbols`)가 완료되었다.
+
+- MCP read tool
+  - `find_symbols(query, maxResults?)`
+- LSP 요청
+  - `workspace/symbol`
+- 결과 mapper
+  - `SymbolInformation` 형태와 `WorkspaceSymbol` 형태를 모두 안전하게 처리한다.
+  - `location`이 없거나 range가 없는 workspace symbol은 symbol 정보만 반환하고 location은 비운다.
+  - root 밖 file URI, non-file URI, path 변환 실패 결과는 반환하지 않는다.
+  - MCP 출력 location은 root-relative path와 1-based line/column/range를 사용한다.
+- result limiting
+  - 기본 `DefaultSymbolMaxResults = 100`
+  - 서버 hard cap은 1000
+  - 사용자 `maxResults`와 hard cap 중 작은 값을 적용한다.
+  - metadata에 `totalKnown`, `returned`, `truncated`를 포함한다.
+- workspace 상태 metadata
+  - `WorkspaceWarming`: `partial`
+  - `LspReady`: `unknown`
+  - `Ready`: Roslyn LS가 workspace symbol index completeness를 알려주지 않으므로 `unknown`
+  - warming 중 빈 결과에는 symbol index가 불완전할 수 있다는 `reason`을 포함한다.
+- expensive request
+  - `find_symbols`는 M2b에서 추가한 expensive LSP request limit을 재사용한다.
+
 ## M2a 완료 메모
 
 2026-05-17 기준 M2a(Read Tool Foundation, Document Symbols, Hover)는 완료되어 `main` branch에 push되어 있다.
