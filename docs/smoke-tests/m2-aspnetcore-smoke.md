@@ -55,3 +55,28 @@ Test file: `src/Http/Http.Abstractions/src/HttpContext.cs`, selected because it 
 ## Recommendation
 - Can proceed to M3 docs/client usability: Yes for this smoke target.
 - Need fixes before broader large-repo testing: No ASP.NET Core-specific blocker found. Keep `project_candidate_limit` and warming-state guidance visible in client docs.
+
+## 30-Second Warmup Retest
+- Date: 2026-05-17 (Asia/Seoul)
+- MCP client method: same temporary stdio client script, but waited 30 seconds after `load_solution` before invoking read tools.
+- Result: `get_workspace_status` still reported `WorkspaceWarming` after the 30-second wait.
+- Semantic difference: no material improvement for the selected positions. `go_to_definition(HttpRequest)` still returned 0 locations, and `find_symbols("HttpContext")` still returned 0 items with partial/incomplete-index metadata.
+
+Comparison against the original short-wait run:
+
+| Tool | Short-Wait Result | Short-Wait Elapsed | 30s-Wait Result | 30s-Wait Elapsed | Difference |
+| --- | --- | ---: | --- | ---: | --- |
+| get_workspace_status | OK, `WorkspaceWarming` | 0.020s | OK, `WorkspaceWarming` | 0.021s | No state change after 30s |
+| document_symbols | OK, 33 items | 2.790s | OK, 33 items | 3.052s | Same result count and metadata |
+| hover | OK, partial | 2.087s | OK, partial | 5.062s | Still partial; one prior 30s-wait run hit `request_timeout` for hover at 10.040s |
+| go_to_definition | OK, 0 items | 8.032s | OK, 0 items | 4.054s | No semantic improvement |
+| find_references | OK, 3 items | 8.131s | OK, 3 items | 9.630s | Same result count and metadata |
+| find_symbols | OK, 0 items | 5.572s | OK, 0 items | 2.015s | No semantic improvement |
+| diagnostics(file) | OK, 0 items | 0.021s | OK, 0 items | 0.020s | Same currently-known diagnostics behavior |
+| diagnostics(workspace) | OK, 0 items | 0.020s | OK, 0 items | 0.021s | Same currently-known diagnostics behavior |
+
+Warmup retest findings:
+
+- Waiting 30 seconds did not move aspnetcore from `WorkspaceWarming` to `Ready` for this session.
+- The `go_to_definition` no-location result should remain classified as a successful tool execution with weak semantic usefulness, not as a transport/tool failure.
+- A transient `hover` timeout occurred in one 30-second-wait run: `request_timeout`, `LSP request timed out: textDocument/hover`. A repeated 30-second-wait run succeeded and the server remained usable afterward, so this is an issue to watch rather than a confirmed blocker.
