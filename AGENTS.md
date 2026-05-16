@@ -4,7 +4,7 @@
 
 `roslyn-mcp-server`는 Agent CLI류 도구가 Roslyn 언어 기능을 사용할 수 있도록, `roslyn-language-server`를 자식 프로세스로 실행하고 MCP tool 호출을 LSP 요청으로 변환하는 MCP 서버다.
 
-현재 이 저장소는 계획 및 초기 구현 준비 단계다.
+현재 이 저장소는 M2 read-only tool 구현과 M2 large repo readiness 일부가 반영된 초기 구현 단계다.
 
 ## 목표
 
@@ -20,7 +20,7 @@
 - 이 프로젝트를 NuGet/.NET global tool로 게시하지 않는다.
 - `roslyn-language-server`를 번들하지 않는다.
 - release 자동화는 아직 추가하지 않는다.
-- 첫 구현에서 write/refactoring tool을 구현하지 않는다.
+- 현재 구현에서 write/refactoring tool을 구현하지 않는다.
 
 ## 외부 요구사항
 
@@ -32,11 +32,11 @@ dotnet tool install --global roslyn-language-server --prerelease
 
 MCP 서버는 기본적으로 PATH에서 `roslyn-language-server`를 찾는다. 필요한 경우 `--roslyn-language-server <path>` 옵션으로 명시 경로를 받을 수 있다.
 
-## 첫 구현 범위
+## 현재 구현 범위
 
-첫 구현은 M0/M1까지만 진행한다.
+현재 `main` 기준으로 M0/M1과 M2 read-only tool 범위가 구현되어 있다.
 
-포함:
+M0/M1 포함:
 
 - C# solution과 `net10.0` app project 생성
 - MCP C# SDK 추가
@@ -52,7 +52,7 @@ MCP 서버는 기본적으로 PATH에서 `roslyn-language-server`를 찾는다. 
 - `load_solution`, `load_project`, `get_workspace_status` 구현
 - scanner, path guard, LSP framing, 기본 상태 전이에 대한 단위 테스트 추가
 
-다음 tool은 후속 구현으로 남긴다.
+M2 포함:
 
 - `go_to_definition`
 - `hover`
@@ -60,6 +60,17 @@ MCP 서버는 기본적으로 PATH에서 `roslyn-language-server`를 찾는다. 
 - `find_symbols`
 - `diagnostics`
 - `document_symbols`
+- `DocumentStateManager`, `DocumentPathMapper`, `DiagnosticStore`
+- result limit, expensive LSP request limit, warming 중 metadata
+- LSP read loop fault handling, git scanner pathspec, filesystem scanner candidate-limit 조기 중단
+
+다음 범위는 후속 구현으로 남긴다.
+
+- `solution_overview`
+- write/refactoring tool
+- rename/code action/formatting/apply 계열 tool
+- diagnostics notification offload
+- 실제 MCP client smoke와 opt-in large repo 검증
 
 ## 중요한 설계 메모
 
@@ -108,4 +119,6 @@ https://github.com/kirnot92/roslyn-mcp-server
 
 ## 현재 상태
 
-아직 production 구현은 없다. 다음 작업은 위에 적은 M0/M1 범위를 구현하는 것이다.
+M2d(`diagnostics`, `DiagnosticStore`)와 M2 large repo readiness 일부가 완료되어 있다.
+
+다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 diagnostics notification offload 설계, 실제 MCP client smoke, opt-in large repo 검증, 사용자용 설치/설정 문서 정리다.

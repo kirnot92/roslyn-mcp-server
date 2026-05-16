@@ -24,6 +24,20 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 - 문서와 구현의 차이를 줄인다.
 - 모든 변경은 테스트 가능한 단위로 작게 나눈다.
 
+## 현재 반영 상태
+
+2026-05-17 기준 다음 항목은 구현에 반영되어 있다.
+
+- Roslyn LS 명시 workspace file 선택 spike와 directory ambiguity warning
+- LSP read loop fault 상태 노출 및 `WorkspaceSession`의 `Failed` 전환
+- git scanner pathspec 적용
+- filesystem fallback scanner candidate-limit 조기 중단
+- large repo tuning CLI 옵션 공개
+
+아직 남은 항목:
+
+- diagnostics notification offload. bounded background queue와 overflow 정책을 함께 설계해야 하므로 후속 작업으로 남긴다.
+
 ## 하지 않을 것
 
 - write/refactoring tool을 추가하지 않는다.
@@ -35,11 +49,11 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 
 ## Phase 1: Blockers
 
-### 1. Explicit Workspace Selection
+### 1. Explicit Workspace Selection - 반영 완료
 
 문제:
 
-- `load_solution`/`load_project`는 선택 파일을 `WorkspaceTarget.FullPath`에 담지만, 현재 loader는 `WorkspaceDirectory`만 Roslyn LS process working directory, `rootUri`, `workspaceFolders`로 사용한다.
+- `load_solution`/`load_project`는 선택 파일을 `WorkspaceTarget.FullPath`에 담지만, 현재 Roslyn LS에는 안정적인 명시 file 선택 option이 없어 loader는 `WorkspaceDirectory`를 Roslyn LS process working directory, `rootUri`, `workspaceFolders`로 사용한다.
 - 같은 directory에 여러 `.sln`, `.slnx`, `.csproj`가 있으면 서로 다른 파일을 선택해도 Roslyn LS 입장에서는 같은 workspace로 보일 수 있다.
 - 대형 repo에서는 잘못된 workspace를 load하거나 너무 넓게 auto-load할 위험이 있다.
 
@@ -58,12 +72,12 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 - 서로 다른 workspace 파일을 load할 때 구현이 같은 directory ambiguity를 감지하는지 검증한다.
 - spike 결과를 `docs/implementation-notes.md` 또는 이 문서에 짧게 기록한다.
 
-### 2. LSP Read Loop Fault Handling
+### 2. LSP Read Loop Fault Handling - 반영 완료
 
 문제:
 
 - LSP response body가 `LspFraming.DefaultMaxContentLength`를 넘거나 malformed이면 read loop가 멈춘다.
-- 현재 pending request는 실패할 수 있지만 workspace 상태가 명확히 `Failed`로 전환되거나 Roslyn LS 재시작 경로가 보장되지는 않는다.
+- 반영 전에는 pending request가 실패할 수 있지만 workspace 상태가 명확히 `Failed`로 전환되거나 Roslyn LS 재시작 경로가 보장되지는 않았다.
 - 이후 요청은 read loop가 없는 상태에서 timeout으로 흐를 수 있다.
 
 작업:
@@ -82,11 +96,11 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 
 ## Phase 2: Scanner Hardening
 
-### 3. Git Scanner Filtering Or Streaming
+### 3. Git Scanner Filtering Or Streaming - 반영 완료
 
 문제:
 
-- 현재 git scanner는 `git ls-files -co --exclude-standard -z` 전체 출력을 메모리에 읽은 뒤 `.sln`, `.slnx`, `.csproj`만 필터링한다.
+- 반영 전 git scanner는 `git ls-files -co --exclude-standard -z` 전체 출력을 메모리에 읽은 뒤 `.sln`, `.slnx`, `.csproj`만 필터링했다.
 - 대형 repo에서는 대부분이 workspace 파일이 아니므로 불필요한 I/O와 메모리 사용이 발생한다.
 
 작업:
@@ -101,7 +115,7 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 - git-backed test fixture에서 `.sln`, `.slnx`, `.csproj` 후보를 여전히 찾는지 확인한다.
 - workspace 파일이 아닌 대량 파일이 있어도 scanner가 candidate limit과 timeout을 지키는지 확인한다.
 
-### 4. Filesystem Scanner Early Stop
+### 4. Filesystem Scanner Early Stop - 반영 완료
 
 문제:
 
@@ -121,7 +135,7 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 
 ## Phase 3: Operational Tuning
 
-### 5. Diagnostics Notification Offload
+### 5. Diagnostics Notification Offload - 후속 작업
 
 문제:
 
@@ -139,11 +153,11 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 - publish storm fake test에서 read loop가 다른 response 처리를 계속할 수 있는지 확인한다.
 - queue overflow 시 process가 crash하지 않고 metadata나 log로 드러나는지 확인한다.
 
-### 6. Large Repo CLI Tuning Options
+### 6. Large Repo CLI Tuning Options - 반영 완료
 
 문제:
 
-- `CliOptions`에는 scan depth, scan timeout, candidate limit, in-flight limit 필드가 있지만 모든 값이 CLI parser에 열려 있지는 않다.
+- 반영 전에는 `CliOptions`에 scan depth, scan timeout, candidate limit, in-flight limit 필드가 있었지만 모든 값이 CLI parser에 열려 있지는 않았다.
 - 대형 repo smoke에서 사용자가 기본값을 조정하기 어렵다.
 
 작업:

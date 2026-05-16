@@ -44,9 +44,9 @@ Stress:
 
 ## 단계별 액션 플랜
 
-### M2 구현 중
+### M2 구현 중 - 완료된 적용 기준
 
-M2 각 단계에서는 해당 tool이 요구하는 fast test만 흡수한다. 이 시점에 실제 대규모 repository 검증 전체를 실행하려고 하지 않는다.
+M2 각 단계에서는 해당 tool이 요구하는 fast test만 흡수했다. 이 시점에 실제 대규모 repository 검증 전체를 실행하려고 하지 않는다.
 
 - M2a: document sync, path/URI 변환, position 변환, LRU, 큰 파일 제한, warming metadata를 fast test로 검증한다.
 - M2b: definition/reference mapper, references result limit, expensive request limit, timeout/cancellation을 fast test로 검증한다.
@@ -453,7 +453,8 @@ dotnet tool install --global roslyn-language-server --prerelease
 - 작은 sample solution 로드
 - `workspace/projectInitializationComplete` notification 수신
 - warming/ready 상태 전이
-- 실제 `document_symbols`, `hover`, `go_to_definition`, `find_references`, `diagnostics`
+- 실제 `document_symbols`, `hover`, `go_to_definition`, `find_references`, `find_symbols`
+- `diagnostics` publish smoke는 현재 fixture에서 도착 시점이 환경 의존적이므로 안정적인 settle 전략이 정해질 때까지 deferred/skip 테스트로 둔다.
 
 Roslyn LS가 없으면 skip하고 설치 명령을 출력한다.
 

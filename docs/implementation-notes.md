@@ -10,12 +10,59 @@
 - `docs/architecture.md`
 - `docs/large-repo-test-plan.md`
 
+## 최신 상태 요약
+
+2026-05-17 현재 `main` 기준 구현 상태:
+
+- M0/M1 workspace 기반 완료
+- M2a read-tool foundation, `document_symbols`, `hover` 완료
+- M2b `go_to_definition`, `find_references` 완료
+- M2c `find_symbols` 완료
+- M2d `diagnostics`, `DiagnosticStore` 완료
+- M2 large repo readiness 일부 완료
+  - explicit workspace file 선택 제약 spike와 `workspace_directory_ambiguous` warning
+  - LSP read loop fault handling
+  - git scanner pathspec
+  - filesystem scanner candidate-limit 조기 중단
+  - large repo tuning CLI option 공개
+
+현재 MCP tool:
+
+- `list_workspaces`
+- `load_solution`
+- `load_project`
+- `get_workspace_status`
+- `document_symbols`
+- `hover`
+- `go_to_definition`
+- `find_references`
+- `find_symbols`
+- `diagnostics`
+
+현재 남은 주요 후보:
+
+- diagnostics notification offload
+- 실제 MCP client smoke
+- opt-in large repo 검증
+- 사용자용 설치/설정 문서 정리
+- `solution_overview` 필요성 재평가
+
+최근 로컬 검증 결과:
+
+```text
+dotnet test roslyn-mcp-server.sln
+```
+
+- 94 passed / 0 failed / 1 skipped / 95 total
+
+아래 milestone별 완료 메모는 당시 구현 시점의 이력으로 남긴다.
+
 ## M2b 완료 메모
 
 2026-05-17 기준 M2b(Go To Definition, Find References)는 완료되어 `main` branch에 push되어 있다.
 
 - M2b 완료 기준 commit: `79f7dbd Implement M2b definition and reference tools`
-- 다음 구현 세션은 `docs/m2-plan.md`의 M2c(`find_symbols`)부터 진행하면 된다.
+- 당시 다음 구현 세션은 `docs/m2-plan.md`의 M2c(`find_symbols`)부터 진행하는 상태였다. 현재는 M2c/M2d까지 완료되어 위 최신 상태 요약을 기준으로 본다.
 
 구현된 M2b 기능:
 
@@ -62,11 +109,11 @@ dotnet build roslyn-mcp-server.sln
 dotnet test roslyn-mcp-server.sln
 ```
 
-- 마지막 확인 결과: 50 passed / 0 failed / 0 skipped
+- 당시 확인 결과: 50 passed / 0 failed / 0 skipped
 - 현재 환경에는 `roslyn-language-server`가 설치되어 있어 Roslyn LS smoke integration test가 skip 없이 실행됐다.
 - Roslyn LS integration test는 작은 sample solution에서 `document_symbols`, `hover`, `go_to_definition`, `find_references` smoke를 확인한다.
 
-M2b 이후 남은 범위:
+M2b 직후 남은 범위:
 
 - `find_symbols`
 - `diagnostics`
@@ -165,7 +212,7 @@ dotnet test roslyn-mcp-server.sln
 dotnet format roslyn-mcp-server.sln --verify-no-changes
 ```
 
-- 마지막 확인 결과: 40 passed / 0 failed / 0 skipped
+- 당시 확인 결과: 40 passed / 0 failed / 0 skipped
 - 현재 환경에는 `roslyn-language-server`가 설치되어 있어 Roslyn LS smoke integration test가 skip 없이 실행됐다.
 - Roslyn LS가 없는 환경에서는 `RoslynLanguageServerIntegrationTests`가 설치 명령을 포함한 이유로 skip한다.
 
@@ -237,7 +284,7 @@ dotnet build roslyn-mcp-server.sln
 dotnet test roslyn-mcp-server.sln
 ```
 
-- 마지막 확인 결과: 17 passed / 0 failed
+- 당시 확인 결과: 17 passed / 0 failed
 
 남은 known issue:
 
@@ -268,7 +315,7 @@ M2에서 건드리면 안 되는 범위:
 
 ## 현재 구현 상태
 
-최신 구현 상태는 위 `M2b 완료 메모`를 기준으로 본다.
+최신 구현 상태는 이 문서 상단의 `최신 상태 요약`과 아래 `M2d 완료 메모`, `M2 large repo readiness 메모`를 기준으로 본다.
 
 ## 확정된 결정
 
@@ -291,9 +338,9 @@ dotnet tool install --global roslyn-language-server --prerelease
 - MCP 서버 자체의 사용자 배포 채널은 아직 결정하지 않음
 - 구현 작업 repository: `https://github.com/kirnot92/roslyn-mcp-server`
 
-## 첫 구현 범위
+## M0/M1 첫 구현 범위 이력
 
-첫 구현 세션은 M0/M1에서 멈춘다.
+첫 구현 세션은 M0/M1에서 멈췄고, 이후 M2 read-only tool 구현이 이어졌다. 이 섹션은 M0/M1 당시 범위 기록이다.
 
 포함:
 
@@ -317,7 +364,7 @@ dotnet tool install --global roslyn-language-server --prerelease
 - `get_workspace_status` 구현
 - scanner, path guard, LSP framing, 기본 상태 전이에 대한 단위 테스트 추가
 
-첫 구현에서 제외:
+M0/M1 당시 제외:
 
 - `document_symbols`
 - `hover`
@@ -407,7 +454,7 @@ DefaultReferencesMaxResults = 200
 DefaultDiagnosticsMaxResults = 200
 ```
 
-첫 구현에서 모든 result-limit 기능을 완성할 필요는 없다. 다만 나중에 이 제한들을 추가하기 어렵게 만드는 API는 만들지 않는다.
+M0/M1 당시에는 모든 result-limit 기능을 완성할 필요는 없었다. 다만 나중에 이 제한들을 추가하기 어렵게 만드는 API는 만들지 않는다는 원칙을 두었다.
 
 ## 로깅 규칙
 

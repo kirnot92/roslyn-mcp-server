@@ -2,15 +2,24 @@
 
 ## 현재 기준
 
-M0/M1은 완료된 상태로 본다. 최신 코드 구조 기준으로는 다음이 구현되어 있다.
+이 문서는 M2 read-only tool 구현 계획과 리뷰 기준을 남긴 이력 문서다. 2026-05-17 현재 `main` 기준으로 M2a, M2b, M2c, M2d는 완료된 상태로 본다.
+
+M0/M1에서 구현된 기반:
 
 - `WorkspaceSession`: workspace 후보 cache, `load_solution`, `load_project`, 상태 전이, Roslyn LS handle 관리
 - `WorkspaceScanner`, `GitWorkspaceScanner`, `PathGuard`
 - `LspClient`: LSP framing, request/response correlation, notification dispatch, server-to-client request 응답, timeout/cancellation, in-flight 제한
 - `WorkspaceTools`: `list_workspaces`, `load_solution`, `load_project`, `get_workspace_status`
-- 아직 없음: `NavigationTools`, `DiagnosticsTools`, `DocumentStateManager`, `DiagnosticStore`, typed LSP navigation/diagnostic mapper
+M2에서 구현된 항목:
 
-M2의 핵심은 읽기 tool을 추가하되, 대규모 repo와 warming 상태에서 결과가 예측 가능하게 동작하도록 공통 기반을 먼저 넣는 것이다.
+- `DocumentStateManager`, `DocumentPathMapper`, `PositionMapper`
+- `NavigationTools`: `document_symbols`, `hover`, `go_to_definition`, `find_references`, `find_symbols`
+- `DiagnosticsTools`, `DiagnosticStore`
+- typed LSP navigation/diagnostic mapper
+- result limit, truncation metadata, expensive request limit
+- warming 중 `workspaceState`, `completeness`, `reason`, `retryAfterMs` metadata
+
+M2의 핵심은 읽기 tool을 추가하되, 대규모 repo와 warming 상태에서 결과가 예측 가능하게 동작하도록 공통 기반을 먼저 넣는 것이었다.
 
 ## 초안 조정 결론
 

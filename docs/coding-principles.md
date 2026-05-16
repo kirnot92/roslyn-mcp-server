@@ -39,6 +39,14 @@
 
 기본 파라미터를 남겨야 한다면 public API 호환성이나 framework convention처럼 명확한 이유가 있어야 한다.
 
+현재 코드에서 허용하는 예외:
+
+- MCP tool method의 optional 입력값. 예: `refresh = false`, `maxResults = null`
+- .NET async API의 `CancellationToken cancellationToken = default`
+- framework 또는 외부 SDK가 관용적으로 기대하는 signature
+
+이 예외를 쓰더라도 production 내부 API에는 호출 의도가 흐려지는 기본 파라미터를 새로 늘리지 않는다.
+
 ## 테스트 seam
 
 테스트 double을 만들기 위해 production class를 `virtual`/상속 가능하게 바꾸지 않는다.
