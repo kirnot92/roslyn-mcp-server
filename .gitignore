@@ -8,4 +8,5 @@ TestResults/
 *.suo
 *.log
 .tmp-spike/
+.local/
 docs/reviews/
