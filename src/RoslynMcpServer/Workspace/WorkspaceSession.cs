@@ -68,6 +68,7 @@ public sealed class WorkspaceSession(
         if (this.handle is not null &&
             currentState is WorkspaceLoadState.LspReady or WorkspaceLoadState.WorkspaceWarming or WorkspaceLoadState.Ready)
         {
+            ThrowIfCurrentClientFaulted();
             return new ReadToolContext(this.handle, currentState);
         }
 
@@ -87,6 +88,7 @@ public sealed class WorkspaceSession(
             if (this.handle is not null &&
                 currentState is WorkspaceLoadState.LspReady or WorkspaceLoadState.WorkspaceWarming or WorkspaceLoadState.Ready)
             {
+                ThrowIfCurrentClientFaulted();
                 return new ReadToolContext(this.handle, currentState);
             }
 
@@ -152,6 +154,7 @@ public sealed class WorkspaceSession(
             var handle = await loader.LoadAsync(target, cancellationToken).ConfigureAwait(false);
             this.handle = handle;
             this.handle.Client.NotificationReceived += OnNotificationReceived;
+            this.handle.Client.Faulted += OnClientFaulted;
             this.state = WorkspaceLoadState.WorkspaceWarming;
         }
         catch (UserFacingException ex)
@@ -176,6 +179,7 @@ public sealed class WorkspaceSession(
         if (oldHandle is not null)
         {
             oldHandle.Client.NotificationReceived -= OnNotificationReceived;
+            oldHandle.Client.Faulted -= OnClientFaulted;
             this.handle = null;
         }
 
@@ -272,8 +276,46 @@ public sealed class WorkspaceSession(
         }
     }
 
-    private WorkspaceStatus ToStatus(WorkspaceScanResult scan) =>
-        new(
+    private void OnClientFaulted(Exception exception) => MarkClientFaulted(exception);
+
+    private void ThrowIfCurrentClientFaulted()
+    {
+        if (this.handle?.Client.IsFaulted != true)
+        {
+            return;
+        }
+
+        var exception = this.handle.Client.FaultException ??
+            new UserFacingException(
+                "lsp_connection_failed",
+                "LSP connection failed. Call load_solution or load_project to restart the workspace.");
+        MarkClientFaulted(exception);
+        throw new UserFacingException(
+            "workspace_failed",
+            this.failureMessage ?? "Workspace failed. Call load_solution or load_project to retry.",
+            exception);
+    }
+
+    private void MarkClientFaulted(Exception exception)
+    {
+        var userFacingException = exception as UserFacingException;
+        this.state = WorkspaceLoadState.Failed;
+        this.failureCode = userFacingException?.Code ?? "lsp_connection_failed";
+        this.failureMessage = userFacingException?.Message ??
+            "LSP connection failed. Call load_solution or load_project to restart the workspace.";
+    }
+
+    private WorkspaceStatus ToStatus(WorkspaceScanResult scan)
+    {
+        if (this.handle?.Client.IsFaulted == true)
+        {
+            MarkClientFaulted(this.handle.Client.FaultException ??
+                new UserFacingException(
+                    "lsp_connection_failed",
+                    "LSP connection failed. Call load_solution or load_project to restart the workspace."));
+        }
+
+        return new(
             pathGuard.Root,
             this.state,
             this.handle?.Target,
@@ -284,7 +326,53 @@ public sealed class WorkspaceSession(
             this.failureMessage,
             documents?.OpenDocumentCount ?? 0,
             diagnostics?.KnownFileCount ?? 0,
-            diagnostics?.LastUpdatedAt);
+            diagnostics?.LastUpdatedAt,
+            BuildWarnings(this.handle?.Target));
+    }
+
+    private IReadOnlyList<WorkspaceWarning> BuildWarnings(WorkspaceTarget? target)
+    {
+        if (target is null)
+        {
+            return [];
+        }
+
+        string[] workspaceFiles;
+        try
+        {
+            workspaceFiles = Directory
+                .EnumerateFiles(target.WorkspaceDirectory, "*.*", SearchOption.TopDirectoryOnly)
+                .Where(IsWorkspaceFile)
+                .Select(path => pathGuard.ToRelativePath(Path.GetFullPath(path)))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+
+        if (workspaceFiles.Length <= 1)
+        {
+            return [];
+        }
+
+        return
+        [
+            new WorkspaceWarning(
+                "workspace_directory_ambiguous",
+                "Roslyn LS is loaded by workspace directory because the installed roslyn-language-server exposes no stable explicit solution/project file option. This directory contains multiple workspace files, so the selected file may not uniquely control auto-load.",
+                workspaceFiles)
+        ];
+    }
+
+    private static bool IsWorkspaceFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return string.Equals(extension, ".sln", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".csproj", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static UserFacingException WorkspaceLoading() =>
         new(

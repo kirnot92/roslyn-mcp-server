@@ -65,7 +65,8 @@ public sealed class LspClientTests
 
         harness.ServerOutput.Dispose();
 
-        await Assert.ThrowsAsync<IOException>(() => responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("lsp_connection_closed", ex.Code);
     }
 
     [Fact]
@@ -86,7 +87,8 @@ public sealed class LspClientTests
 
         Assert.Equal("too_many_lsp_requests", ex.Code);
         harness.ServerOutput.Dispose();
-        await Assert.ThrowsAsync<IOException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
+        var closed = await Assert.ThrowsAsync<UserFacingException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("lsp_connection_closed", closed.Code);
     }
 
     [Fact]
@@ -122,8 +124,10 @@ public sealed class LspClientTests
         Assert.NotNull(hoverRequest);
 
         harness.ServerOutput.Dispose();
-        await Assert.ThrowsAsync<IOException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
-        await Assert.ThrowsAsync<IOException>(() => hover.WaitAsync(TimeSpan.FromSeconds(2)));
+        var firstClosed = await Assert.ThrowsAsync<UserFacingException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
+        var hoverClosed = await Assert.ThrowsAsync<UserFacingException>(() => hover.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("lsp_connection_closed", firstClosed.Code);
+        Assert.Equal("lsp_connection_closed", hoverClosed.Code);
     }
 
     [Fact]
@@ -152,6 +156,44 @@ public sealed class LspClientTests
 
         var ex = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal("invalid_lsp_response", ex.Code);
+    }
+
+    [Fact]
+    public async Task RequestAsync_FailsNewRequestsImmediatelyAfterReadLoopFault()
+    {
+        await using var harness = LspClientHarness.Create(maxInFlightRequests: 4, maxResponsePayloadBytes: 32);
+        var responseTask = harness.Client.RequestAsync(
+            "textDocument/documentSymbol",
+            new { },
+            TimeSpan.FromSeconds(30),
+            CancellationToken.None);
+
+        using var clientRequest = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None);
+        Assert.NotNull(clientRequest);
+        var id = clientRequest.RootElement.GetProperty("id").GetInt64();
+
+        await LspFraming.WriteAsync(harness.ServerOutput, new
+        {
+            jsonrpc = "2.0",
+            id,
+            result = new
+            {
+                value = new string('x', 128)
+            }
+        }, CancellationToken.None);
+
+        var first = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("invalid_lsp_response", first.Code);
+        Assert.True(harness.Client.IsFaulted);
+
+        var second = await Assert.ThrowsAsync<UserFacingException>(() =>
+            harness.Client.RequestAsync(
+                "textDocument/hover",
+                new { },
+                TimeSpan.FromSeconds(30),
+                CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("invalid_lsp_response", second.Code);
+        Assert.Equal(0, harness.Client.PendingRequestCount);
     }
 
     [Fact]

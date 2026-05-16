@@ -101,6 +101,14 @@ public sealed record CliOptions(
     int MaxInFlightLspRequests);
 ```
 
+M2 large repo readiness 이후 다음 대형 repo tuning option도 CLI parser에 공개되어 있다.
+
+- `--scan-max-depth`
+- `--scan-timeout`
+- `--max-solution-candidates`
+- `--max-project-candidates`
+- `--max-in-flight-lsp-requests`
+
 예상 형태는 다음과 같다.
 
 ```csharp
@@ -185,9 +193,11 @@ public enum WorkspaceLoadState
 
 `WorkspaceScanner`는 root 아래를 재귀 탐색하되 대규모 mono-repo에서 전체 파일 트리를 매번 훑지 않는다.
 
-M1 이후 구현은 git worktree 안에서는 `GitWorkspaceScanner`를 먼저 사용한다. `GitWorkspaceScanner`는 `git -C <root> ls-files -co --exclude-standard -z` 결과에서 `.sln`, `.slnx`, `.csproj` 후보만 골라낸다. 이 방식을 우선하는 이유는 `.gitignore` 파일을 MCP 서버가 직접 재구현하는 것보다 git이 이미 알고 있는 ignore 규칙을 쓰는 편이 정확하기 때문이다. `--exclude-standard`는 repository의 `.gitignore`, 하위 `.gitignore`, `.git/info/exclude`, global exclude 규칙을 모두 반영한다.
+M1 이후 구현은 git worktree 안에서는 `GitWorkspaceScanner`를 먼저 사용한다. `GitWorkspaceScanner`는 `git -C <root> ls-files -co --exclude-standard -z -- '*.sln' '*.slnx' '*.csproj'` 결과에서 `.sln`, `.slnx`, `.csproj` 후보만 골라낸다. 이 방식을 우선하는 이유는 `.gitignore` 파일을 MCP 서버가 직접 재구현하는 것보다 git이 이미 알고 있는 ignore 규칙을 쓰는 편이 정확하기 때문이다. `--exclude-standard`는 repository의 `.gitignore`, 하위 `.gitignore`, `.git/info/exclude`, global exclude 규칙을 모두 반영한다. pathspec은 대형 repo에서 workspace 파일이 아닌 전체 git file list를 불필요하게 materialize하지 않기 위한 것이다.
 
 git 기반 탐색이 실패하거나 root가 git worktree 밖이면 기존 bounded recursive scanner로 fallback한다. fallback은 non-git 디렉터리에서도 동작해야 하므로 유지한다. git 기반 결과도 최종적으로 `PathGuard`를 통과시켜 root 밖 경로, reparse point, 존재하지 않는 파일을 방어한다.
+
+filesystem fallback은 solution/project candidate limit이 모두 찬 경우 조기 중단하고 `candidate_limit` truncation reason을 반환할 수 있다.
 
 초기 제외 디렉터리:
 
@@ -313,6 +323,15 @@ Windows 환경의 `roslyn-language-server` global tool에서 다음을 확인했
 - 같은 sample에서 project directory를 workspace folder로 둔 경우 `documentSymbol`은 정상 응답했지만 짧은 관찰 구간에는 `workspace/projectInitializationComplete`가 오지 않았다.
 - `workspace/symbol`은 initialize 직후와 warming 중 모두 오류 없이 응답했지만 trivial query에서는 빈 배열을 반환했다. 따라서 M1 loader는 `workspace/symbol` 결과를 readiness 판단으로 사용하지 않는다.
 - solution/project 파일 경로를 직접 지정하는 표준 LSP parameter는 확인되지 않았다. M1 구현은 선택된 `.sln`, `.slnx`, `.csproj` 파일을 검증한 뒤 해당 파일의 directory를 Roslyn LS working directory, `rootUri`, `workspaceFolders`로 사용한다. 명시 파일 선택의 더 정밀한 방식이 확인되면 `IRoslynWorkspaceLoader` 내부만 교체한다.
+
+### 2026-05-17 explicit workspace selection 재확인
+
+M2 large repo readiness 단계에서 설치된 `roslyn-language-server 5.8.0-1.26262.10+036e7a58b9d4348a62b6854544274551ae17ae8c`를 다시 확인했다.
+
+- `roslyn-language-server --help`에는 `.sln`, `.slnx`, `.csproj` 파일 경로를 직접 받는 안정적인 CLI option이 없다.
+- workspace load에 관련된 공개 옵션은 `--autoLoadProjects`뿐이다.
+- 따라서 MCP 서버는 계속 `WorkspaceTarget.FullPath`를 검증과 사용자 상태 표시에는 사용하되, Roslyn LS에는 `WorkspaceTarget.WorkspaceDirectory`를 working directory, `rootUri`, `workspaceFolders`로 전달한다.
+- 같은 `WorkspaceDirectory`에 workspace 파일이 여러 개 있으면 `WorkspaceStatus.Warnings`에 `workspace_directory_ambiguous`를 포함해 Roslyn LS auto-load가 directory 단위로만 제어된다는 점을 알린다.
 
 ## Agent CLI 사용 계약
 

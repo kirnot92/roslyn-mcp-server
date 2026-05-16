@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcpServer.Cli;
@@ -37,6 +38,41 @@ public sealed class WorkspaceSessionTests
         Assert.Equal("roslyn_language_server_not_found", ex.Code);
         Assert.Equal(WorkspaceLoadState.Failed, status.State);
         Assert.Equal("roslyn_language_server_not_found", status.FailureCode);
+    }
+
+    [Fact]
+    public async Task LoadSolution_WarnsWhenSelectedDirectoryHasMultipleWorkspaceFiles()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        File.WriteAllText(Path.Combine(root.Path, "Other.slnx"), string.Empty);
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), string.Empty);
+        var session = CreateSession(root.Path, new FakeLoader());
+
+        var status = await session.LoadSolutionAsync("App.sln");
+
+        var warning = Assert.Single(status.Warnings);
+        Assert.Equal("workspace_directory_ambiguous", warning.Code);
+        Assert.Equal(["App.csproj", "App.sln", "Other.slnx"], warning.RelatedPaths);
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ClientFault_TransitionsWorkspaceStatusToFailed()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        var client = new FaultableClient();
+        var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadSolutionAsync("App.sln");
+
+        client.Fail(new UserFacingException("invalid_lsp_response", "LSP message body exceeded 32 bytes."));
+        var status = await session.GetStatusAsync();
+
+        Assert.Equal(WorkspaceLoadState.Failed, status.State);
+        Assert.Equal("invalid_lsp_response", status.FailureCode);
+        Assert.Contains("32 bytes", status.FailureMessage);
+        await session.DisposeAsync();
     }
 
     private static WorkspaceSession CreateSession(string root, IRoslynWorkspaceLoader loader)
@@ -87,5 +123,47 @@ public sealed class WorkspaceSessionTests
     {
         public Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken) =>
             throw new UserFacingException("roslyn_language_server_not_found", RoslynLanguageServerLocator.InstallMessage);
+    }
+
+    private sealed class ImmediateLoader(ILspClient client) : IRoslynWorkspaceLoader
+    {
+        public Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken) =>
+            Task.FromResult(new RoslynWorkspaceHandle(target, client));
+    }
+
+    private sealed class FaultableClient : ILspClient
+    {
+        public event Action<string, JsonElement?>? NotificationReceived
+        {
+            add { }
+            remove { }
+        }
+
+        public event Action<Exception>? Faulted;
+
+        public int PendingRequestCount => 0;
+        public bool IsFaulted { get; private set; }
+        public Exception? FaultException { get; private set; }
+
+        public void Fail(Exception exception)
+        {
+            FaultException = exception;
+            IsFaulted = true;
+            Faulted?.Invoke(exception);
+        }
+
+        public Task<JsonElement> RequestAsync(
+            string method,
+            object? parameters,
+            TimeSpan timeout,
+            CancellationToken cancellationToken,
+            bool isExpensive = false) =>
+            Task.FromException<JsonElement>(FaultException ?? new InvalidOperationException("No response configured."));
+
+        public Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task ShutdownAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 }

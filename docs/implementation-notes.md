@@ -494,3 +494,27 @@ tool 응답에는 명시적 error code를 선호한다.
 - 결과 metadata에는 `workspaceState`, `completeness`, `totalKnown`, `returned`, `truncated`, `lastUpdatedAt`를 포함한다.
 - `get_workspace_status`는 열린 문서 수, known diagnostics file count, 마지막 diagnostic update 시간을 반환한다.
 - Roslyn LS integration smoke는 의도적 compile error 파일에 대해 diagnostics tool 호출 경로를 확인한다.
+
+## M2 large repo readiness 메모
+
+2026-05-17 기준 M2 read-only tools 이후 large repo smoke 전에 Phase 1 blocker와 scanner hardening 일부를 반영했다.
+
+- Roslyn LS 명시 workspace 파일 선택 spike
+  - 설치된 `roslyn-language-server --version`: `5.8.0-1.26262.10+036e7a58b9d4348a62b6854544274551ae17ae8c`
+  - `roslyn-language-server --help`에서 확인되는 workspace 관련 옵션은 `--autoLoadProjects`뿐이다.
+  - `.sln`, `.slnx`, `.csproj` 파일 경로를 안정적으로 직접 지정하는 CLI option은 확인되지 않았다.
+  - 따라서 현재 구현은 계속 `WorkspaceDirectory`를 process working directory, `rootUri`, `workspaceFolders`로 전달한다.
+  - 같은 directory에 workspace 파일이 2개 이상 있으면 `load_solution`/`load_project`와 `get_workspace_status` 결과의 `warnings`에 `workspace_directory_ambiguous`를 포함한다.
+- LSP read loop fault handling
+  - oversized/malformed response나 stream close로 read loop가 중단되면 `LspClient`가 fault 상태를 저장한다.
+  - fault 이후 pending request는 실패하고, 새 request/notification은 timeout까지 기다리지 않고 즉시 실패한다.
+  - `WorkspaceSession`은 `ILspClient.Faulted`를 받아 workspace 상태를 `Failed`로 전환하고 `FailureCode`/`FailureMessage`에 원인을 남긴다.
+- Scanner hardening
+  - git scanner는 `git ls-files -co --exclude-standard -z -- '*.sln' '*.slnx' '*.csproj'` 형태의 pathspec을 사용해 workspace 후보 파일만 요청한다.
+  - filesystem fallback scanner는 solution/project candidate limit이 모두 찬 경우 조기 중단하고 `candidate_limit` truncation reason을 반환한다.
+- CLI tuning
+  - `--scan-max-depth`, `--scan-timeout`, `--max-solution-candidates`, `--max-project-candidates`, `--max-in-flight-lsp-requests`를 parser와 usage에 열었다.
+
+아직 남긴 항목:
+
+- diagnostics notification offload는 후속으로 남겼다. bounded background queue와 overflow 정책을 함께 설계해야 하므로 단순 수정으로 넣지 않는다.

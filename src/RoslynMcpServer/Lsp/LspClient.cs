@@ -17,6 +17,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     private readonly SemaphoreSlim writeLock = new(1, 1);
     private readonly CancellationTokenSource disposeCts = new();
     private long nextId;
+    private Exception? faultException;
     private Task? readLoop;
 
     public LspClient(
@@ -36,8 +37,11 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     }
 
     public event Action<string, JsonElement?>? NotificationReceived;
+    public event Action<Exception>? Faulted;
 
     public int PendingRequestCount => this.pendingRequests.Count;
+    public bool IsFaulted => this.faultException is not null;
+    public Exception? FaultException => this.faultException;
 
     public void Start() => this.readLoop ??= Task.Run(ReadLoopAsync);
 
@@ -48,6 +52,8 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         CancellationToken cancellationToken,
         bool isExpensive = false)
     {
+        ThrowIfFaulted();
+
         if (!await this.inFlightLimit.WaitAsync(0).ConfigureAwait(false))
         {
             throw new UserFacingException("too_many_lsp_requests", "Too many LSP requests are already in flight.");
@@ -84,6 +90,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
 
         try
         {
+            ThrowIfFaulted();
             await WriteMessageAsync(new
             {
                 jsonrpc = "2.0",
@@ -121,12 +128,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     }
 
     public Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken) =>
-        WriteMessageAsync(new
-        {
-            jsonrpc = "2.0",
-            method,
-            @params = parameters ?? new { }
-        }, cancellationToken);
+        NotifyCoreAsync(method, parameters, cancellationToken);
 
     public async Task ShutdownAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
@@ -235,7 +237,9 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
                 }
             }
 
-            CompletePending(new IOException("LSP stream closed."));
+            MarkFaulted(new UserFacingException(
+                "lsp_connection_closed",
+                "LSP connection closed. Call load_solution or load_project to restart the workspace."));
         }
         catch (OperationCanceledException) when (this.disposeCts.IsCancellationRequested)
         {
@@ -246,8 +250,19 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
             var userFacingException = ex is InvalidDataException
                 ? new UserFacingException("invalid_lsp_response", ex.Message, ex)
                 : ex;
-            CompletePending(userFacingException);
+            MarkFaulted(userFacingException);
         }
+    }
+
+    private Task NotifyCoreAsync(string method, object? parameters, CancellationToken cancellationToken)
+    {
+        ThrowIfFaulted();
+        return WriteMessageAsync(new
+        {
+            jsonrpc = "2.0",
+            method,
+            @params = parameters ?? new { }
+        }, cancellationToken);
     }
 
     private Task ReplyToServerRequestAsync(long id, string? method, CancellationToken cancellationToken)
@@ -292,6 +307,31 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
             {
                 pending.Completion.TrySetException(exception);
             }
+        }
+    }
+
+    private void MarkFaulted(Exception exception)
+    {
+        var userFacingException = exception is UserFacingException
+            ? exception
+            : new UserFacingException(
+                "lsp_connection_failed",
+                "LSP connection failed. Call load_solution or load_project to restart the workspace.",
+                exception);
+
+        if (Interlocked.CompareExchange(ref this.faultException, userFacingException, null) is null)
+        {
+            this.Faulted?.Invoke(userFacingException);
+        }
+
+        CompletePending(userFacingException);
+    }
+
+    private void ThrowIfFaulted()
+    {
+        if (this.faultException is not null)
+        {
+            throw this.faultException;
         }
     }
 

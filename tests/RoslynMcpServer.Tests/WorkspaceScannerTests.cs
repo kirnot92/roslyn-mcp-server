@@ -57,6 +57,40 @@ public sealed class WorkspaceScannerTests
         Assert.Single(result.Projects);
     }
 
+    [Fact]
+    public void Scan_StopsWhenSolutionAndProjectLimitsAreBothReached()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), string.Empty);
+        Directory.CreateDirectory(Path.Combine(root.Path, "src"));
+        File.WriteAllText(Path.Combine(root.Path, "src", "Other.sln"), string.Empty);
+        File.WriteAllText(Path.Combine(root.Path, "src", "Other.csproj"), string.Empty);
+        var options = new CliOptions(
+            root.Path,
+            null,
+            LogLevel.Information,
+            null,
+            null,
+            TimeSpan.FromSeconds(60),
+            6,
+            TimeSpan.FromSeconds(3),
+            1,
+            1,
+            200,
+            2 * 1024 * 1024,
+            16,
+            2);
+        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), gitScanner: null);
+
+        var result = scanner.Scan();
+
+        Assert.True(result.Truncated);
+        Assert.Equal("candidate_limit", result.TruncationReason);
+        Assert.Equal(["App.sln"], result.Solutions.Select(x => x.RelativePath).ToArray());
+        Assert.Equal(["App.csproj"], result.Projects.Select(x => x.RelativePath).ToArray());
+    }
+
     private static WorkspaceScanner CreateScanner(string root)
     {
         var options = new CliOptions(

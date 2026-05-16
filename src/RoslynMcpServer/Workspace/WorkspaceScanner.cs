@@ -64,8 +64,9 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
 
         var queue = new Queue<(string Directory, int Depth)>();
         queue.Enqueue((pathGuard.Root, 0));
+        var stopScanning = false;
 
-        while (queue.Count > 0)
+        while (queue.Count > 0 && !stopScanning)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -131,22 +132,32 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
                     if (solutions.Count >= options.MaxSolutionCandidates)
                     {
                         truncationReason = "solution_candidate_limit";
+                        stopScanning = CandidateLimitsReached(solutions, projects);
                         continue;
                     }
 
                     solutions.Add(ToCandidate(entry, string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
                         ? WorkspaceKind.SolutionX
                         : WorkspaceKind.Solution));
+                    stopScanning = CandidateLimitsReached(solutions, projects);
                 }
                 else if (string.Equals(extension, ".csproj", StringComparison.OrdinalIgnoreCase))
                 {
                     if (projects.Count >= options.MaxProjectCandidates)
                     {
                         truncationReason = "project_candidate_limit";
+                        stopScanning = CandidateLimitsReached(solutions, projects);
                         continue;
                     }
 
                     projects.Add(ToCandidate(entry, WorkspaceKind.Project));
+                    stopScanning = CandidateLimitsReached(solutions, projects);
+                }
+
+                if (stopScanning)
+                {
+                    truncationReason ??= "candidate_limit";
+                    break;
                 }
             }
 
@@ -190,4 +201,10 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
             .OrderBy(candidate => candidate.RelativePath.Count(c => c == '/'))
             .ThenBy(candidate => candidate.RelativePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+    private bool CandidateLimitsReached(
+        IReadOnlyCollection<WorkspaceCandidate> solutions,
+        IReadOnlyCollection<WorkspaceCandidate> projects) =>
+        solutions.Count >= options.MaxSolutionCandidates &&
+        projects.Count >= options.MaxProjectCandidates;
 }

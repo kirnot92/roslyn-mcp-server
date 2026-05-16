@@ -33,8 +33,13 @@ public sealed record CliOptions(
         string? logFile = null;
         string? languageServerLogDirectory = null;
         var startupTimeout = DefaultStartupTimeout;
+        var scanMaxDepth = DefaultScanMaxDepth;
+        var scanTimeout = DefaultScanTimeout;
+        var maxSolutionCandidates = 100;
+        var maxProjectCandidates = 500;
         var maxOpenDocuments = DefaultMaxOpenDocuments;
         var maxDocumentBytes = DefaultMaxDocumentBytes;
+        var maxInFlightLspRequests = 16;
         var maxExpensiveLspRequests = DefaultMaxExpensiveLspRequests;
 
         for (var i = 0; i < args.Length; i++)
@@ -60,11 +65,26 @@ public sealed record CliOptions(
                 case "--startup-timeout":
                     startupTimeout = ParseTimeout(ReadValue(args, ref i, arg), arg);
                     break;
+                case "--scan-max-depth":
+                    scanMaxDepth = ParseNonNegativeInt(ReadValue(args, ref i, arg), arg);
+                    break;
+                case "--scan-timeout":
+                    scanTimeout = ParseTimeout(ReadValue(args, ref i, arg), arg);
+                    break;
+                case "--max-solution-candidates":
+                    maxSolutionCandidates = ParsePositiveInt(ReadValue(args, ref i, arg), arg);
+                    break;
+                case "--max-project-candidates":
+                    maxProjectCandidates = ParsePositiveInt(ReadValue(args, ref i, arg), arg);
+                    break;
                 case "--max-open-documents":
                     maxOpenDocuments = ParsePositiveInt(ReadValue(args, ref i, arg), arg);
                     break;
                 case "--max-document-bytes":
                     maxDocumentBytes = ParsePositiveLong(ReadValue(args, ref i, arg), arg);
+                    break;
+                case "--max-in-flight-lsp-requests":
+                    maxInFlightLspRequests = ParsePositiveInt(ReadValue(args, ref i, arg), arg);
                     break;
                 case "--max-expensive-lsp-requests":
                     maxExpensiveLspRequests = ParsePositiveInt(ReadValue(args, ref i, arg), arg);
@@ -85,13 +105,13 @@ public sealed record CliOptions(
             logFile is null ? null : Path.GetFullPath(logFile),
             languageServerLogDirectory is null ? null : Path.GetFullPath(languageServerLogDirectory),
             startupTimeout,
-            DefaultScanMaxDepth,
-            DefaultScanTimeout,
-            MaxSolutionCandidates: 100,
-            MaxProjectCandidates: 500,
+            scanMaxDepth,
+            scanTimeout,
+            maxSolutionCandidates,
+            maxProjectCandidates,
             maxOpenDocuments,
             maxDocumentBytes,
-            MaxInFlightLspRequests: 16,
+            maxInFlightLspRequests,
             maxExpensiveLspRequests);
     }
 
@@ -104,8 +124,13 @@ public sealed record CliOptions(
           --log-file <path>
           --ls-log-dir <path>
           --startup-timeout <seconds>
+          --scan-max-depth <depth>
+          --scan-timeout <seconds>
+          --max-solution-candidates <count>
+          --max-project-candidates <count>
           --max-open-documents <count>
           --max-document-bytes <bytes>
+          --max-in-flight-lsp-requests <count>
           --max-expensive-lsp-requests <count>
         """;
 
@@ -135,6 +160,16 @@ public sealed record CliOptions(
         if (!int.TryParse(value, out var parsed) || parsed <= 0)
         {
             throw new CliUsageException($"{optionName} must be a positive integer.");
+        }
+
+        return parsed;
+    }
+
+    private static int ParseNonNegativeInt(string value, string optionName)
+    {
+        if (!int.TryParse(value, out var parsed) || parsed < 0)
+        {
+            throw new CliUsageException($"{optionName} must be a non-negative integer.");
         }
 
         return parsed;

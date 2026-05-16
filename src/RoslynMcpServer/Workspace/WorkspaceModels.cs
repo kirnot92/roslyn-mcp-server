@@ -48,4 +48,10 @@ public sealed record WorkspaceStatus(
     string? FailureMessage,
     int OpenDocumentCount,
     int KnownDiagnosticsFileCount,
-    DateTimeOffset? LastDiagnosticUpdateAt);
+    DateTimeOffset? LastDiagnosticUpdateAt,
+    IReadOnlyList<WorkspaceWarning> Warnings);
+
+public sealed record WorkspaceWarning(
+    string Code,
+    string Message,
+    IReadOnlyList<string> RelatedPaths);

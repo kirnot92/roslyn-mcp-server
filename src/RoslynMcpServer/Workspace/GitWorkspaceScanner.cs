@@ -35,7 +35,15 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
         {
             // --exclude-standard lets git apply repository, local, and global
             // ignore rules. -z keeps paths unambiguous for spaces and newlines.
-            var startInfo = CreateGitStartInfo("ls-files", "-co", "--exclude-standard", "-z");
+            var startInfo = CreateGitStartInfo(
+                "ls-files",
+                "-co",
+                "--exclude-standard",
+                "-z",
+                "--",
+                "*.sln",
+                "*.slnx",
+                "*.csproj");
             using var process = Process.Start(startInfo);
             if (process is null)
             {
