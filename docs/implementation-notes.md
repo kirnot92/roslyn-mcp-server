@@ -10,6 +10,77 @@
 - `docs/architecture.md`
 - `docs/large-repo-test-plan.md`
 
+## M2b 완료 메모
+
+2026-05-17 기준 M2b(Go To Definition, Find References)는 완료되어 `main` branch에 push되어 있다.
+
+- M2b 완료 기준 commit: `79f7dbd Implement M2b definition and reference tools`
+- 다음 구현 세션은 `docs/m2-plan.md`의 M2c(`find_symbols`)부터 진행하면 된다.
+
+구현된 M2b 기능:
+
+- MCP read tools
+  - `go_to_definition(file, line, column)`
+  - `find_references(file, line, column, includeDeclaration = true, maxResults?)`
+- LSP 요청
+  - `textDocument/definition`
+  - `textDocument/references`
+- location mapper
+  - `Location`, `Location[]`, `LocationLink`, `LocationLink[]`
+  - `null`/empty response는 empty result로 정리
+  - `LocationLink`는 `targetRange`를 MCP location/range 기준으로 사용
+  - root 밖 URI 또는 non-file URI는 user-facing 결과에 노출하지 않고 버린다.
+- references result limiting
+  - 기본 `DefaultReferencesMaxResults = 200`
+  - 사용자 `maxResults`와 서버 hard cap 중 작은 값을 적용
+  - 반환 metadata에 `totalKnown`, `returned`, `truncated` 포함
+- expensive LSP request 제한
+  - `find_references`는 expensive request로 분류한다.
+  - `CliOptions.MaxExpensiveLspRequests`를 추가했고 기본값은 2다.
+  - 전체 in-flight 제한(`MaxInFlightLspRequests`)과 별도로 expensive semaphore를 적용한다.
+- 기존 M2a foundation 재사용
+  - 모든 위치 기반 요청은 LSP 요청 전에 `DocumentStateManager.EnsureOpenAsync`를 호출한다.
+  - 사용자 입력 file path는 `DocumentPathMapper`/`PathGuard`를 통과한다.
+  - MCP 입출력 line/column은 1-based, LSP 내부 position/range는 0-based로 유지한다.
+
+M2b metadata 계약:
+
+- `go_to_definition`
+  - `Ready`: `complete`
+  - `WorkspaceWarming`: `partial`
+  - `LspReady`: `unknown`
+- `find_references`
+  - `Ready`: `complete`
+  - `WorkspaceWarming`/`LspReady`: `partial`
+  - warming/early ready 상태에서는 cross-project reference 누락 가능성을 `reason`에 포함한다.
+
+M2b 테스트 상태:
+
+```text
+dotnet format roslyn-mcp-server.sln --verify-no-changes
+dotnet build roslyn-mcp-server.sln
+dotnet test roslyn-mcp-server.sln
+```
+
+- 마지막 확인 결과: 50 passed / 0 failed / 0 skipped
+- 현재 환경에는 `roslyn-language-server`가 설치되어 있어 Roslyn LS smoke integration test가 skip 없이 실행됐다.
+- Roslyn LS integration test는 작은 sample solution에서 `document_symbols`, `hover`, `go_to_definition`, `find_references` smoke를 확인한다.
+
+M2b 이후 남은 범위:
+
+- `find_symbols`
+- `diagnostics`
+- `DiagnosticStore`
+- incremental text edit sync
+- write/refactoring tool
+
+후속 구현 주의사항:
+
+- M2c `find_symbols`는 workspace-wide expensive request로 보고, M2b에서 추가한 expensive LSP request 제한을 재사용한다.
+- 대량 workspace symbol 결과도 `totalKnown`, `returned`, `truncated` metadata를 포함해야 한다.
+- warming 중 빈 workspace symbol 결과를 "없음"으로 단정하지 말고 `completeness`와 `reason`을 유지한다.
+- root 밖 URI filtering, 1-based/0-based 변환, `StartingLanguageServer`의 즉시 `workspace_loading` 계약은 M2b와 같은 기준을 따른다.
+
 ## M2a 완료 메모
 
 2026-05-17 기준 M2a(Read Tool Foundation, Document Symbols, Hover)는 완료되어 `main` branch에 push되어 있다.
@@ -20,7 +91,8 @@
   - `5f87914 Move symbol kind formatter to LSP model`
   - `8c94803 Clarify protocol constant helper placement`
   - `8b1aaf6 Clarify scan budget fallback comments`
-- 다음 구현 세션은 `docs/m2-plan.md`의 M2b(`go_to_definition`, `find_references`)부터 진행하면 된다.
+  - `fbf7653 Address M2a review feedback`
+- M2b까지 완료되었으므로 최신 진행 기준은 위 `M2b 완료 메모`를 본다.
 
 구현된 M2a 기능:
 
@@ -52,6 +124,14 @@
   - `document_symbols(file)`
   - `hover(file, line, column)`
 
+M2a review 반영 메모:
+
+- workspace reload 중에는 기존 Roslyn LS shutdown이 끝나기 전이라도 세션 상태를 즉시 `StartingLanguageServer`로 바꾸고 기존 handle을 fast path에서 제거한다. 이 동안 `document_symbols`/`hover`는 이전 LSP client로 요청하지 않고 `workspace_loading`을 반환해야 한다.
+- `hover` mapper는 LSP `null` response와 missing `contents`를 빈 결과로 처리한다. object가 아닌 hover response 또는 malformed `range`는 raw exception이 아니라 `invalid_lsp_response` user-facing error로 정리한다.
+- LSP framing은 `Content-Length`가 전역 body 상한(`LspFraming.DefaultMaxContentLength`, 현재 16MB)을 넘으면 body allocation 전에 거부한다. `LspClient`는 이 경우 pending request를 `invalid_lsp_response`로 완료한다.
+- `document_symbols` mapper는 전체 `DocumentSymbol` tree DTO를 먼저 만들지 않고 MCP 반환 상한(`MaxDocumentSymbolNodes`)까지만 item을 만든다. `totalKnown`은 가능한 범위에서 계속 세고 `returned`와 비교해 `truncated`를 설정한다.
+- `hover` contents array는 `MaxHoverCharacters`를 넘으면 추가 string 조립을 중단하고 `truncated` metadata를 설정한다.
+
 M2a 테스트 상태:
 
 ```text
@@ -59,11 +139,11 @@ dotnet test roslyn-mcp-server.sln
 dotnet format roslyn-mcp-server.sln --verify-no-changes
 ```
 
-- 마지막 확인 결과: 33 passed / 0 failed / 0 skipped
+- 마지막 확인 결과: 40 passed / 0 failed / 0 skipped
 - 현재 환경에는 `roslyn-language-server`가 설치되어 있어 Roslyn LS smoke integration test가 skip 없이 실행됐다.
 - Roslyn LS가 없는 환경에서는 `RoslynLanguageServerIntegrationTests`가 설치 명령을 포함한 이유로 skip한다.
 
-M2a 이후 남은 범위:
+M2a 직후 남은 범위:
 
 - `go_to_definition`
 - `find_references`
@@ -138,7 +218,7 @@ dotnet test roslyn-mcp-server.sln
 - MCP client와의 end-to-end smoke test는 아직 없다.
 - `Ready` 상태는 `workspace/projectInitializationComplete` notification에 의존하지만, notification이 항상 빨리 오지 않을 수 있다.
 - solution/project 파일을 Roslyn LS에 직접 지정하는 전용 option/command는 아직 확인되지 않았다.
-- 현재 Roslyn LS integration test는 작은 sample 기반 `document_symbols`/`hover` smoke만 있다. M2b 이후 definition/reference smoke를 추가한다.
+- 현재 Roslyn LS integration test는 작은 sample 기반 `document_symbols`/`hover`/`go_to_definition`/`find_references` smoke를 포함한다.
 
 M2에서 주의할 점:
 
@@ -162,7 +242,7 @@ M2에서 건드리면 안 되는 범위:
 
 ## 현재 구현 상태
 
-최신 구현 상태는 위 `M2a 완료 메모`를 기준으로 본다.
+최신 구현 상태는 위 `M2b 완료 메모`를 기준으로 본다.
 
 ## 확정된 결정
 
