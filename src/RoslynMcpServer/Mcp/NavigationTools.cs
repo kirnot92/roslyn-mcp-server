@@ -20,6 +20,7 @@ public sealed class NavigationTools(
     private const int MaxReferencesMaxResults = 1000;
     private const int DefaultSymbolMaxResults = 100;
     private const int MaxSymbolMaxResults = 1000;
+    private const int MinSymbolQueryLength = 2;
     private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DefinitionTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ReferencesTimeout = TimeSpan.FromSeconds(30);
@@ -186,7 +187,7 @@ public sealed class NavigationTools(
     {
         try
         {
-            ValidateSymbolQuery(query);
+            query = ValidateSymbolQuery(query);
             var effectiveMaxResults = NormalizeSymbolMaxResults(maxResults);
             var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
             var response = await context.Handle.Client.RequestAsync(
@@ -367,6 +368,8 @@ public sealed class NavigationTools(
         if (item.ValueKind != JsonValueKind.Object ||
             !item.TryGetProperty("name", out var nameElement) ||
             !item.TryGetProperty("kind", out var kindElement) ||
+            nameElement.ValueKind != JsonValueKind.String ||
+            kindElement.ValueKind != JsonValueKind.Number ||
             !kindElement.TryGetInt32(out var kindValue))
         {
             return null;
@@ -389,7 +392,7 @@ public sealed class NavigationTools(
             name,
             kind,
             kind.ToMcpName(),
-            item.TryGetProperty("containerName", out var containerElement) ? containerElement.GetString() : null,
+            TryGetOptionalString(item, "containerName"),
             location);
     }
 
@@ -404,6 +407,11 @@ public sealed class NavigationTools(
 
         if (locationElement.ValueKind != JsonValueKind.Object ||
             !locationElement.TryGetProperty("uri", out var uriElement))
+        {
+            return null;
+        }
+
+        if (uriElement.ValueKind != JsonValueKind.String)
         {
             return null;
         }
@@ -457,7 +465,7 @@ public sealed class NavigationTools(
         }
     }
 
-    private static void ValidateSymbolQuery(string query)
+    private static string ValidateSymbolQuery(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -465,6 +473,16 @@ public sealed class NavigationTools(
                 "invalid_query",
                 "query must contain at least one non-whitespace character.");
         }
+
+        var normalizedQuery = query.Trim();
+        if (normalizedQuery.Length < MinSymbolQueryLength)
+        {
+            throw new UserFacingException(
+                "invalid_query",
+                $"query must contain at least {MinSymbolQueryLength} non-whitespace characters.");
+        }
+
+        return normalizedQuery;
     }
 
     private static int NormalizeSymbolMaxResults(int? maxResults)
@@ -737,6 +755,11 @@ public sealed class NavigationTools(
             : value.ValueKind == JsonValueKind.String
                 ? value.GetString()
                 : value.ToString();
+
+    private static string? TryGetOptionalString(JsonElement item, string propertyName) =>
+        item.TryGetProperty(propertyName, out var element) && element.ValueKind == JsonValueKind.String
+            ? element.GetString()
+            : null;
 
     private static ReadToolMetadata CreateMetadata(WorkspaceLoadState state, ToolKind toolKind, bool truncated) =>
         state switch
