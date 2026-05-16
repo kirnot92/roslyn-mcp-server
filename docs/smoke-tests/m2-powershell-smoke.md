@@ -59,3 +59,27 @@ Test file: `src/powershell/Program.cs`, selected because it is a small real entr
 ## Recommendation
 - Can proceed to M3 docs/client usability: Partial. The stdio/read-tool path is usable after increasing scan timeout or explicitly loading `PowerShell.sln`.
 - Need fixes before broader large-repo testing: Yes. Investigate default `list_workspaces` timeout/candidate loss before running wider default-config real-repo validation.
+
+## Blocker Retest
+- Date: 2026-05-17 (Asia/Seoul)
+- roslyn-mcp-server commit: `ab27d2a Fix git workspace discovery under stdio`
+- MCP client method: same temporary stdio client script, default server options without `--scan-timeout` override
+- Result: Default `list_workspaces(refresh: true)` returned successfully in 0.101s wall time, with server scan elapsed `00:00:00.0696729`.
+- Workspace candidates: 3 solutions, 42 projects
+- truncated: false
+- truncationReason: none
+- Verdict: The previous default-discovery blocker is no longer reproduced on `PowerShell/PowerShell`.
+
+Retest tool summary:
+
+| Tool | Result | Elapsed | Count | Workspace State | Completeness | Truncated | Notes |
+| --- | --- | ---: | ---: | --- | --- | --- | --- |
+| list_workspaces | OK | 0.101s | 45 |  |  | false | Default options; 3 solutions, 42 projects |
+| load_solution | OK | 0.445s | 0 | WorkspaceWarming |  |  | Loaded `PowerShell.sln` |
+| document_symbols | OK | 1.874s | 2 | WorkspaceWarming | partial | false | `totalKnown: 2`, `returned: 2` |
+| hover | OK | 6.546s | 0 | WorkspaceWarming | partial | false | Returned hover metadata/text for `ManagedPSEntry` |
+| go_to_definition | OK | 0.061s | 0 | Ready | complete | false | No locations, no error |
+| find_references | OK | 0.729s | 1 | Ready | complete | false | `totalKnown: 1`, `returned: 1` |
+| find_symbols | OK | 0.021s | 0 | Ready | unknown | false | `totalKnown: 0`, reason present |
+| diagnostics(file) | OK | 0.021s | 0 | Ready | unknown | false | No known diagnostics yet |
+| diagnostics(workspace) | OK | 0.021s | 0 | Ready | unknown | false | Current known diagnostics only |
