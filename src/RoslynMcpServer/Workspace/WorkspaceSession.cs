@@ -6,7 +6,9 @@ namespace RoslynMcpServer.Workspace;
 public sealed class WorkspaceSession(
     WorkspaceScanner scanner,
     PathGuard pathGuard,
-    IRoslynWorkspaceLoader loader) : IAsyncDisposable
+    IRoslynWorkspaceLoader loader,
+    DocumentStateManager? documents,
+    DiagnosticStore? diagnostics) : IAsyncDisposable
 {
     private readonly SemaphoreSlim stateLock = new(1, 1);
     private WorkspaceScanResult? scanCache;
@@ -16,6 +18,14 @@ public sealed class WorkspaceSession(
     private string? failureMessage;
 
     public WorkspaceLoadState State => this.state;
+
+    public WorkspaceSession(
+        WorkspaceScanner scanner,
+        PathGuard pathGuard,
+        IRoslynWorkspaceLoader loader)
+        : this(scanner, pathGuard, loader, documents: null, diagnostics: null)
+    {
+    }
 
     public WorkspaceScanResult ListWorkspaces(bool refresh = false, CancellationToken cancellationToken = default)
     {
@@ -169,6 +179,7 @@ public sealed class WorkspaceSession(
             this.handle = null;
         }
 
+        diagnostics?.Clear();
         this.state = WorkspaceLoadState.StartingLanguageServer;
         this.failureCode = null;
         this.failureMessage = null;
@@ -252,6 +263,12 @@ public sealed class WorkspaceSession(
         if (string.Equals(method, "workspace/projectInitializationComplete", StringComparison.Ordinal))
         {
             this.state = WorkspaceLoadState.Ready;
+            return;
+        }
+
+        if (string.Equals(method, "textDocument/publishDiagnostics", StringComparison.Ordinal))
+        {
+            diagnostics?.TryUpdateFromPublishDiagnostics(parameters);
         }
     }
 
@@ -264,7 +281,10 @@ public sealed class WorkspaceSession(
             this.handle?.PendingRequestCount ?? 0,
             scan,
             this.failureCode,
-            this.failureMessage);
+            this.failureMessage,
+            documents?.OpenDocumentCount ?? 0,
+            diagnostics?.KnownFileCount ?? 0,
+            diagnostics?.LastUpdatedAt);
 
     private static UserFacingException WorkspaceLoading() =>
         new(

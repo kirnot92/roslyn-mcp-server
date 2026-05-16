@@ -42,6 +42,29 @@ public sealed record ReferenceParams(TextDocumentIdentifier TextDocument, Positi
 
 public sealed record WorkspaceSymbolParams(string Query);
 
+// Values are defined by the Language Server Protocol DiagnosticSeverity constants:
+// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnosticSeverity
+public enum DiagnosticSeverity
+{
+    Error = 1,
+    Warning = 2,
+    Information = 3,
+    Hint = 4
+}
+
+public static class DiagnosticSeverityExtensions
+{
+    public static string ToMcpName(this DiagnosticSeverity? severity) =>
+        severity switch
+        {
+            DiagnosticSeverity.Error => "error",
+            DiagnosticSeverity.Warning => "warning",
+            DiagnosticSeverity.Information => "information",
+            DiagnosticSeverity.Hint => "hint",
+            _ => "unknown"
+        };
+}
+
 // Values are defined by the Language Server Protocol SymbolKind constants:
 // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind
 public enum SymbolKind

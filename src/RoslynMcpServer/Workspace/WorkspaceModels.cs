@@ -45,4 +45,7 @@ public sealed record WorkspaceStatus(
     int PendingLspRequests,
     WorkspaceScanResult Workspaces,
     string? FailureCode,
-    string? FailureMessage);
+    string? FailureMessage,
+    int OpenDocumentCount,
+    int KnownDiagnosticsFileCount,
+    DateTimeOffset? LastDiagnosticUpdateAt);

@@ -96,6 +96,27 @@ public sealed record FindSymbolsResult(
     int? RetryAfterMs,
     bool Truncated);
 
+public sealed record DiagnosticItem(
+    string File,
+    McpRange Range,
+    int Line,
+    int Column,
+    string Severity,
+    string? Code,
+    string? Source,
+    string Message);
+
+public sealed record DiagnosticsResult(
+    IReadOnlyList<DiagnosticItem> Items,
+    int TotalKnown,
+    int Returned,
+    string WorkspaceState,
+    string Completeness,
+    string? Reason,
+    int? RetryAfterMs,
+    bool Truncated,
+    DateTimeOffset? LastUpdatedAt);
+
 public static class PositionMapper
 {
     public static Position ToLspPosition(int line, int column)

@@ -480,3 +480,17 @@ tool 응답에는 명시적 error code를 선호한다.
 - `Azure/azure-sdk-for-net`
 
 자세한 내용은 `docs/large-repo-test-plan.md`를 참고한다.
+
+## M2d 완료 메모
+
+2026-05-17 기준 M2d(`diagnostics`와 `DiagnosticStore`)를 완료했다.
+
+- `textDocument/publishDiagnostics` notification을 받아 파일별 diagnostics를 저장한다.
+- 같은 파일의 새 notification은 기존 diagnostics를 교체하고, empty notification은 기존 diagnostics를 clear한다.
+- diagnostics cache는 파일 수와 파일별 상세 diagnostics 수를 제한하며, 상한 초과 시 오래된 entry를 eviction한다.
+- `diagnostics(file?, severity?, maxResults?, scope?)` tool을 추가했다.
+- file-specific 호출은 `DocumentStateManager.EnsureOpenAsync(file)`를 먼저 호출하고 현재 알려진 diagnostics만 반환한다.
+- workspace 조회는 명시적 `scope: "workspace"`에서만 허용하며 기본 limit은 `DefaultDiagnosticsMaxResults = 200`이다.
+- 결과 metadata에는 `workspaceState`, `completeness`, `totalKnown`, `returned`, `truncated`, `lastUpdatedAt`를 포함한다.
+- `get_workspace_status`는 열린 문서 수, known diagnostics file count, 마지막 diagnostic update 시간을 반환한다.
+- Roslyn LS integration smoke는 의도적 compile error 파일에 대해 diagnostics tool 호출 경로를 확인한다.

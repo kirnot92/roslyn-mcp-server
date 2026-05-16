@@ -36,6 +36,13 @@ public sealed class RoslynLanguageServerIntegrationTests
                 public int Use() => new Calculator().Add(1, 2);
             }
             """);
+        File.WriteAllText(Path.Combine(root.Path, "Broken.cs"), """
+            namespace Sample;
+            public class Broken
+            {
+                public int Value => MissingSymbol;
+            }
+            """);
 
         var options = CreateOptions(root.Path);
         var locator = new RoslynLanguageServerLocator(options);
@@ -49,6 +56,9 @@ public sealed class RoslynLanguageServerIntegrationTests
         }
 
         var guard = new PathGuard(root.Path);
+        var mapper = new DocumentPathMapper(guard);
+        var documents = new DocumentStateManager(options, mapper);
+        var diagnosticStore = new DiagnosticStore(mapper, new SystemClock());
         var session = new WorkspaceSession(
             new WorkspaceScanner(options, guard, new GitWorkspaceScanner(options, guard)),
             guard,
@@ -58,11 +68,13 @@ public sealed class RoslynLanguageServerIntegrationTests
                     options,
                     locator,
                     NullLogger<RoslynLanguageServerProcess>.Instance,
-                    NullLoggerFactory.Instance)));
+                    NullLoggerFactory.Instance)),
+            documents,
+            diagnosticStore);
         await using var disposeSession = session.ConfigureAwait(false);
 
-        var mapper = new DocumentPathMapper(guard);
-        var tools = new NavigationTools(session, new DocumentStateManager(options, mapper), mapper);
+        var tools = new NavigationTools(session, documents, mapper);
+        var diagnosticsTools = new DiagnosticsTools(session, documents, mapper, diagnosticStore);
         await session.LoadProjectAsync("Sample.csproj");
 
         var symbolsResult = await tools.DocumentSymbols("Calculator.cs");
@@ -82,6 +94,22 @@ public sealed class RoslynLanguageServerIntegrationTests
 
         var workspaceSymbolsResult = await tools.FindSymbols("Calculator");
         Assert.IsType<FindSymbolsResult>(workspaceSymbolsResult);
+
+        DiagnosticsResult? diagnostics = null;
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            var diagnosticsResult = await diagnosticsTools.Diagnostics(file: "Broken.cs");
+            diagnostics = Assert.IsType<DiagnosticsResult>(diagnosticsResult);
+            if (diagnostics.Items.Any(item => item.File == "Broken.cs"))
+            {
+                break;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+        }
+
+        Assert.NotNull(diagnostics);
+        Assert.All(diagnostics.Items, item => Assert.Equal("Broken.cs", item.File));
     }
 
     private static CliOptions CreateOptions(string root) =>
