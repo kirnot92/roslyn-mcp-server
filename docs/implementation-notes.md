@@ -10,6 +10,78 @@
 - `docs/architecture.md`
 - `docs/large-repo-test-plan.md`
 
+## M2a 완료 메모
+
+2026-05-17 기준 M2a(Read Tool Foundation, Document Symbols, Hover)는 완료되어 `main` branch에 push되어 있다.
+
+- M2a 완료 기준 commit: `4f9d1e7 Implement M2a read tools`
+- 이후 후속 정리 commit:
+  - `b1429ac Document LSP symbol constants`
+  - `5f87914 Move symbol kind formatter to LSP model`
+  - `8c94803 Clarify protocol constant helper placement`
+  - `8b1aaf6 Clarify scan budget fallback comments`
+- 다음 구현 세션은 `docs/m2-plan.md`의 M2b(`go_to_definition`, `find_references`)부터 진행하면 된다.
+
+구현된 M2a 기능:
+
+- `DocumentStateManager`
+  - 최초 접근 시 disk read 후 `textDocument/didOpen`
+  - timestamp/length 변경 시 full document `textDocument/didChange`
+  - `MaxOpenDocuments` 초과 시 LRU `textDocument/didClose`
+  - `MaxDocumentBytes` 초과 시 `document_too_large` user-facing error
+  - 같은 파일 path casing 차이로 중복 open하지 않도록 OS별 path comparer 사용
+- `DocumentPathMapper`
+  - root-relative file input -> guarded full path -> file URI
+  - LSP file URI -> guarded root-relative path
+- position/range mapper
+  - MCP tool 입출력은 1-based line/column
+  - LSP 내부 `Position`/`Range`는 0-based
+  - 1 미만 line/column은 `invalid_position`
+- read-tool 공통 state gate
+  - `NotLoaded`에서 workspace 후보가 하나면 자동 load
+  - solution이 여러 개면 `workspace_not_loaded`
+  - `StartingLanguageServer`에서는 queue하지 않고 즉시 `workspace_loading`
+  - `WorkspaceWarming`/`LspReady`에서는 best-effort 실행 및 metadata 반환
+- common metadata/result DTO
+  - `workspaceState`, `completeness`, `reason`, `retryAfterMs`, `truncated`
+- typed LSP model 추가
+  - text document sync model, `Position`, `Range`, `DocumentSymbol`, `Hover`, `MarkupContent`
+  - LSP `SymbolKind` enum은 `LspModels.cs`에 두고 spec 링크를 주석으로 남김
+  - MCP 출력용 symbol kind 문자열은 `SymbolKindExtensions.ToMcpName(this SymbolKind kind)`에서 처리
+- MCP read tools
+  - `document_symbols(file)`
+  - `hover(file, line, column)`
+
+M2a 테스트 상태:
+
+```text
+dotnet test roslyn-mcp-server.sln
+dotnet format roslyn-mcp-server.sln --verify-no-changes
+```
+
+- 마지막 확인 결과: 33 passed / 0 failed / 0 skipped
+- 현재 환경에는 `roslyn-language-server`가 설치되어 있어 Roslyn LS smoke integration test가 skip 없이 실행됐다.
+- Roslyn LS가 없는 환경에서는 `RoslynLanguageServerIntegrationTests`가 설치 명령을 포함한 이유로 skip한다.
+
+M2a 이후 남은 범위:
+
+- `go_to_definition`
+- `find_references`
+- `find_symbols`
+- `diagnostics`
+- `DiagnosticStore`
+- incremental text edit sync
+- write/refactoring tool
+
+후속 구현 주의사항:
+
+- 위치 기반 tool은 LSP 요청 전에 항상 `DocumentStateManager.EnsureOpenAsync`를 호출한다.
+- `StartingLanguageServer`에서 navigation 요청을 내부 queue에 쌓지 않는다.
+- warming 중 빈 결과는 "없음"으로 단정하지 말고 `completeness`/`reason`을 유지한다.
+- 모든 사용자 입력 file path는 `PathGuard` 또는 `DocumentPathMapper`를 통과해야 한다.
+- LSP spec 숫자 enum/상수는 tool class에 inline magic number로 두지 않는다. `docs/coding-principles.md`의 "외부 protocol 상수" 원칙을 따른다.
+- 테스트 seam이 필요하면 production class를 `virtual`/상속 가능하게 열지 말고 작은 interface를 둔다.
+
 ## M0/M1 완료 메모
 
 2026-05-17 기준 M0/M1 구현은 완료되어 `main` branch에 push되어 있다.
@@ -32,6 +104,13 @@
 - `IRoslynWorkspaceLoader` 뒤의 `load_solution`, `load_project`
 - `get_workspace_status`
 - scanner, path guard, LSP framing/client, 기본 workspace 상태 전이 테스트
+
+Workspace scan 참고:
+
+- git worktree에서는 `GitWorkspaceScanner`가 `git ls-files -co --exclude-standard -z`를 우선 사용한다.
+- 이 방식은 `.gitignore`, 하위 `.gitignore`, `.git/info/exclude`, global exclude를 git이 직접 적용하므로 filesystem scan보다 정확하다.
+- git이 없거나 git worktree 밖이거나 scan budget을 다 쓰기 전에 실패하면 `WorkspaceScanner`가 bounded filesystem scan으로 fallback한다.
+- git이 scan budget을 소진한 경우에는 다시 filesystem tree walk를 시작하지 않고 `scan_timeout`을 반환한다.
 
 Roslyn LS spike 결과 요약:
 
@@ -56,11 +135,10 @@ dotnet test roslyn-mcp-server.sln
 
 남은 known issue:
 
-- 실제 Roslyn LS integration test harness는 아직 없다.
 - MCP client와의 end-to-end smoke test는 아직 없다.
-- `DocumentStateManager`가 아직 없어서 위치 기반 read tool 구현 전 파일 open/sync 계약을 추가해야 한다.
 - `Ready` 상태는 `workspace/projectInitializationComplete` notification에 의존하지만, notification이 항상 빨리 오지 않을 수 있다.
 - solution/project 파일을 Roslyn LS에 직접 지정하는 전용 option/command는 아직 확인되지 않았다.
+- 현재 Roslyn LS integration test는 작은 sample 기반 `document_symbols`/`hover` smoke만 있다. M2b 이후 definition/reference smoke를 추가한다.
 
 M2에서 주의할 점:
 
@@ -84,7 +162,7 @@ M2에서 건드리면 안 되는 범위:
 
 ## 현재 구현 상태
 
-최신 구현 상태는 위 `M0/M1 완료 메모`를 기준으로 본다.
+최신 구현 상태는 위 `M2a 완료 메모`를 기준으로 본다.
 
 ## 확정된 결정
 
