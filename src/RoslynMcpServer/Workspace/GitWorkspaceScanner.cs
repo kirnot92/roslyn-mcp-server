@@ -5,7 +5,8 @@ namespace RoslynMcpServer.Workspace;
 
 // Uses git's tracked/untracked file view as the primary workspace discovery
 // path. Returning null is intentional: WorkspaceScanner will fall back to a
-// bounded filesystem scan when git is unavailable, slow, or outside a worktree.
+// bounded filesystem scan when git is unavailable, outside a worktree, or
+// fails before exhausting the scan budget.
 public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard) : IGitWorkspaceScanner
 {
     public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default)

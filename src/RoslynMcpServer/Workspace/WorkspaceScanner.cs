@@ -5,7 +5,8 @@ namespace RoslynMcpServer.Workspace;
 
 // Git-aware scanning is preferred when available because git already applies
 // repository ignore rules. This scanner owns the bounded filesystem fallback
-// for non-git roots or environments where git probing fails.
+// for non-git roots or environments where git probing fails before consuming
+// the scan budget.
 public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IGitWorkspaceScanner? gitScanner = null)
 {
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
@@ -37,6 +38,8 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
             return gitResult;
         }
 
+        // If git used the whole budget, return a timeout instead of starting a
+        // second full tree walk that is likely to be just as expensive.
         var remaining = options.ScanTimeout - sw.Elapsed;
         if (remaining <= TimeSpan.Zero)
         {
