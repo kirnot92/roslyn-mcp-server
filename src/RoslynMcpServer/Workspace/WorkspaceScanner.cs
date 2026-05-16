@@ -3,6 +3,9 @@ using RoslynMcpServer.Cli;
 
 namespace RoslynMcpServer.Workspace;
 
+// Git-aware scanning is preferred when available because git already applies
+// repository ignore rules. This scanner owns the bounded filesystem fallback
+// for non-git roots or environments where git probing fails.
 public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IGitWorkspaceScanner? gitScanner = null)
 {
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
@@ -26,6 +29,8 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
     public WorkspaceScanResult Scan(CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
+        // Try git first so .gitignore, .git/info/exclude, and global excludes
+        // shape workspace discovery without reimplementing those rules here.
         var gitResult = gitScanner?.TryScan(options.ScanTimeout, cancellationToken);
         if (gitResult is not null)
         {

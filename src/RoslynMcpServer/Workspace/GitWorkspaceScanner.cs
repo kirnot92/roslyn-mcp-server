@@ -3,6 +3,9 @@ using RoslynMcpServer.Cli;
 
 namespace RoslynMcpServer.Workspace;
 
+// Uses git's tracked/untracked file view as the primary workspace discovery
+// path. Returning null is intentional: WorkspaceScanner will fall back to a
+// bounded filesystem scan when git is unavailable, slow, or outside a worktree.
 public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard) : IGitWorkspaceScanner
 {
     public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default)
@@ -29,6 +32,8 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
 
         try
         {
+            // --exclude-standard lets git apply repository, local, and global
+            // ignore rules. -z keeps paths unambiguous for spaces and newlines.
             var startInfo = CreateGitStartInfo("ls-files", "-co", "--exclude-standard", "-z");
             using var process = Process.Start(startInfo);
             if (process is null)
