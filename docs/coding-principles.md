@@ -23,6 +23,22 @@
 로컬 변수나 생성자 매개변수와 이름이 충돌하면 `_`를 붙이지 말고 의미가 드러나는 다른 camelCase 이름을 사용한다.
 멤버 변수와 같은 이름의 로컬 변수 또는 매개변수가 필요한 경우에도 멤버 변수 참조에는 `this.memberName`을 사용한다.
 
+## 기본 파라미터
+
+기본 파라미터는 되도록 사용하지 않는다. 호출자가 값을 생략해도 되는 API가 필요하면 overload를 두거나, 호출 위치에서 의도를 명시한다.
+
+나쁜 방향:
+
+- `public WorkspaceScanResult Scan(CancellationToken cancellationToken = default)`
+- `new WorkspaceScanner(options, guard)`
+
+좋은 방향:
+
+- `public WorkspaceScanResult Scan(CancellationToken cancellationToken)`
+- `new WorkspaceScanner(options, guard, gitScanner: null)`
+
+기본 파라미터를 남겨야 한다면 public API 호환성이나 framework convention처럼 명확한 이유가 있어야 한다.
+
 ## 테스트 seam
 
 테스트 double을 만들기 위해 production class를 `virtual`/상속 가능하게 바꾸지 않는다.
