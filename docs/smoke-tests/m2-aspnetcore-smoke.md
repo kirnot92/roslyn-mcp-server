@@ -80,3 +80,29 @@ Warmup retest findings:
 - Waiting 30 seconds did not move aspnetcore from `WorkspaceWarming` to `Ready` for this session.
 - The `go_to_definition` no-location result should remain classified as a successful tool execution with weak semantic usefulness, not as a transport/tool failure.
 - A transient `hover` timeout occurred in one 30-second-wait run: `request_timeout`, `LSP request timed out: textDocument/hover`. A repeated 30-second-wait run succeeded and the server remained usable afterward, so this is an issue to watch rather than a confirmed blocker.
+
+## 3-Minute Warmup Retest
+- Date: 2026-05-17 (Asia/Seoul)
+- roslyn-mcp-server commit: `893768452f534fe84ad5864f4ec6b9867dee029f`
+- aspnetcore commit: `93a1b5295d92954d46e26f2bbb3abde15f332a4b`
+- MCP client method: same temporary stdio client script with `ASPNETCORE_SMOKE_WARMUP_SECONDS=180`.
+- Result: `get_workspace_status` still reported `WorkspaceWarming` after the 180-second wait.
+- Workspace discovery note: after increasing the default project candidate limit to 1000, default `list_workspaces(refresh: true)` returned 2 solutions and 609 projects in 0.888s wall time, server scan elapsed `00:00:00.8339725`, `truncated: false`.
+- Semantic difference: no improvement for `find_symbols("HttpContext")`; it still returned 0 items with `WorkspaceWarming`, `completeness: partial`, and the incomplete-index reason.
+
+| Tool | 3m-Wait Result | 3m-Wait Elapsed | Count | Workspace State | Completeness | Notes |
+| --- | --- | ---: | ---: | --- | --- | --- |
+| get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  | Still warming after 180s |
+| document_symbols | OK | 4.077s | 33 | WorkspaceWarming | partial | Same result count as short-wait run |
+| hover | FAIL | 10.032s | 0 |  |  | `request_timeout`: `textDocument/hover` |
+| go_to_definition | OK | 16.590s | 0 | WorkspaceWarming | partial | Still no locations for `HttpRequest` |
+| find_references | OK | 13.340s | 3 | WorkspaceWarming | partial | Same result count as short-wait run |
+| find_symbols | OK | 2.539s | 0 | WorkspaceWarming | partial | `totalKnown: 0`, `returned: 0`, incomplete-index reason present |
+| diagnostics(file) | OK | 0.020s | 0 | WorkspaceWarming | unknown | No known diagnostics yet |
+| diagnostics(workspace) | OK | 0.020s | 0 | WorkspaceWarming | partial | Current known diagnostics only |
+
+3-minute retest findings:
+
+- The previous `find_symbols("HttpContext")` 0-result behavior is not explained by only a short warmup window. It still reproduces after 3 minutes while the workspace remains warming.
+- The result remains a successful MCP/LSP tool execution with weak semantic usefulness, not a transport failure: the response includes `WorkspaceWarming`, `partial`, `totalKnown`, `returned`, and a reason.
+- `hover` timed out again in this long-wait run. This reinforces the earlier note that `textDocument/hover` can intermittently hit the 10-second request timeout on aspnetcore while warming, while the server remains usable for subsequent tools.
