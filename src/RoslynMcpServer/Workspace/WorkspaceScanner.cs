@@ -3,7 +3,7 @@ using RoslynMcpServer.Cli;
 
 namespace RoslynMcpServer.Workspace;
 
-public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, GitWorkspaceScanner? gitScanner = null)
+public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IGitWorkspaceScanner? gitScanner = null)
 {
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {

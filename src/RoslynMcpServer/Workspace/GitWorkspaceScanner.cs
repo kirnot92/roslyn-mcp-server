@@ -3,14 +3,14 @@ using RoslynMcpServer.Cli;
 
 namespace RoslynMcpServer.Workspace;
 
-public class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
+public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard) : IGitWorkspaceScanner
 {
-    public virtual WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default)
+    public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default)
     {
         return TryScan(options.ScanTimeout, cancellationToken);
     }
 
-    public virtual WorkspaceScanResult? TryScan(TimeSpan budget, CancellationToken cancellationToken = default)
+    public WorkspaceScanResult? TryScan(TimeSpan budget, CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
         if (!IsInsideGitWorkTree(budget, cancellationToken))

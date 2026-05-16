@@ -80,7 +80,7 @@ public sealed class GitWorkspaceScannerTests
     {
         using var root = TestRoot.Create();
         var options = CreateOptions(root.Path) with { ScanTimeout = TimeSpan.FromMilliseconds(1) };
-        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), new SlowNullGitScanner(options, new PathGuard(root.Path)));
+        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), new SlowNullGitScanner());
 
         var result = scanner.Scan();
 
@@ -142,14 +142,12 @@ public sealed class GitWorkspaceScannerTests
         Assert.Equal(0, process.ExitCode);
     }
 
-    private sealed class SlowNullGitScanner : GitWorkspaceScanner
+    private sealed class SlowNullGitScanner : IGitWorkspaceScanner
     {
-        public SlowNullGitScanner(CliOptions options, PathGuard pathGuard)
-            : base(options, pathGuard)
-        {
-        }
+        public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default) =>
+            TryScan(TimeSpan.FromMilliseconds(1), cancellationToken);
 
-        public override WorkspaceScanResult? TryScan(TimeSpan budget, CancellationToken cancellationToken = default)
+        public WorkspaceScanResult? TryScan(TimeSpan budget, CancellationToken cancellationToken = default)
         {
             Thread.Sleep(TimeSpan.FromMilliseconds(5));
             return null;
