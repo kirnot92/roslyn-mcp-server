@@ -8,24 +8,24 @@ public sealed class WorkspaceSession(
     PathGuard pathGuard,
     IRoslynWorkspaceLoader loader) : IAsyncDisposable
 {
-    private readonly SemaphoreSlim _stateLock = new(1, 1);
-    private WorkspaceScanResult? _scanCache;
-    private RoslynWorkspaceHandle? _handle;
-    private WorkspaceLoadState _state = WorkspaceLoadState.NotLoaded;
-    private string? _failureCode;
-    private string? _failureMessage;
+    private readonly SemaphoreSlim stateLock = new(1, 1);
+    private WorkspaceScanResult? scanCache;
+    private RoslynWorkspaceHandle? handle;
+    private WorkspaceLoadState state = WorkspaceLoadState.NotLoaded;
+    private string? failureCode;
+    private string? failureMessage;
 
-    public WorkspaceLoadState State => _state;
+    public WorkspaceLoadState State => state;
 
     public WorkspaceScanResult ListWorkspaces(bool refresh = false, CancellationToken cancellationToken = default)
     {
-        if (!refresh && _scanCache is not null)
+        if (!refresh && scanCache is not null)
         {
-            return _scanCache;
+            return scanCache;
         }
 
-        _scanCache = scanner.Scan(cancellationToken);
-        return _scanCache;
+        scanCache = scanner.Scan(cancellationToken);
+        return scanCache;
     }
 
     public Task<WorkspaceStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -42,7 +42,7 @@ public sealed class WorkspaceSession(
 
     public async Task<ReadToolContext> PrepareReadToolAsync(CancellationToken cancellationToken = default)
     {
-        var currentState = _state;
+        var currentState = state;
         if (currentState is WorkspaceLoadState.StartingLanguageServer)
         {
             throw WorkspaceLoading();
@@ -52,60 +52,60 @@ public sealed class WorkspaceSession(
         {
             throw new UserFacingException(
                 "workspace_failed",
-                _failureMessage ?? "Workspace failed to load. Call load_solution or load_project to retry.");
+                failureMessage ?? "Workspace failed to load. Call load_solution or load_project to retry.");
         }
 
-        if (_handle is not null &&
+        if (handle is not null &&
             currentState is WorkspaceLoadState.LspReady or WorkspaceLoadState.WorkspaceWarming or WorkspaceLoadState.Ready)
         {
-            return new ReadToolContext(_handle, currentState);
+            return new ReadToolContext(handle, currentState);
         }
 
-        if (!await _stateLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        if (!await stateLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
             throw WorkspaceLoading();
         }
 
         try
         {
-            currentState = _state;
+            currentState = state;
             if (currentState is WorkspaceLoadState.StartingLanguageServer)
             {
                 throw WorkspaceLoading();
             }
 
-            if (_handle is not null &&
+            if (handle is not null &&
                 currentState is WorkspaceLoadState.LspReady or WorkspaceLoadState.WorkspaceWarming or WorkspaceLoadState.Ready)
             {
-                return new ReadToolContext(_handle, currentState);
+                return new ReadToolContext(handle, currentState);
             }
 
             if (currentState is WorkspaceLoadState.Failed)
             {
                 throw new UserFacingException(
                     "workspace_failed",
-                    _failureMessage ?? "Workspace failed to load. Call load_solution or load_project to retry.");
+                    failureMessage ?? "Workspace failed to load. Call load_solution or load_project to retry.");
             }
 
             var target = SelectAutoLoadTarget(ListWorkspaces(refresh: false, cancellationToken));
             await LoadTargetCoreAsync(target, cancellationToken).ConfigureAwait(false);
-            return new ReadToolContext(_handle!, _state);
+            return new ReadToolContext(handle!, state);
         }
         finally
         {
-            _stateLock.Release();
+            stateLock.Release();
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_handle is not null)
+        if (handle is not null)
         {
-            await _handle.Client.ShutdownAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
-            await _handle.DisposeAsync().ConfigureAwait(false);
+            await handle.Client.ShutdownAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
+            await handle.DisposeAsync().ConfigureAwait(false);
         }
 
-        _stateLock.Dispose();
+        stateLock.Dispose();
     }
 
     private async Task<WorkspaceStatus> LoadAsync(
@@ -114,7 +114,7 @@ public sealed class WorkspaceSession(
         WorkspaceKind requestedKind,
         CancellationToken cancellationToken)
     {
-        await _stateLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await stateLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var target = CreateTarget(path, allowedExtensions, requestedKind);
@@ -124,7 +124,7 @@ public sealed class WorkspaceSession(
         }
         finally
         {
-            _stateLock.Release();
+            stateLock.Release();
         }
     }
 
@@ -133,45 +133,45 @@ public sealed class WorkspaceSession(
         var oldHandle = BeginRestart();
         await StopHandleAsync(oldHandle).ConfigureAwait(false);
 
-        _state = WorkspaceLoadState.StartingLanguageServer;
-        _failureCode = null;
-        _failureMessage = null;
+        state = WorkspaceLoadState.StartingLanguageServer;
+        failureCode = null;
+        failureMessage = null;
 
         try
         {
             var handle = await loader.LoadAsync(target, cancellationToken).ConfigureAwait(false);
-            _handle = handle;
-            _handle.Client.NotificationReceived += OnNotificationReceived;
-            _state = WorkspaceLoadState.WorkspaceWarming;
+            this.handle = handle;
+            this.handle.Client.NotificationReceived += OnNotificationReceived;
+            state = WorkspaceLoadState.WorkspaceWarming;
         }
         catch (UserFacingException ex)
         {
-            _state = WorkspaceLoadState.Failed;
-            _failureCode = ex.Code;
-            _failureMessage = ex.Message;
+            state = WorkspaceLoadState.Failed;
+            failureCode = ex.Code;
+            failureMessage = ex.Message;
             throw;
         }
         catch (Exception ex)
         {
-            _state = WorkspaceLoadState.Failed;
-            _failureCode = "workspace_failed";
-            _failureMessage = ex.Message;
+            state = WorkspaceLoadState.Failed;
+            failureCode = "workspace_failed";
+            failureMessage = ex.Message;
             throw;
         }
     }
 
     private RoslynWorkspaceHandle? BeginRestart()
     {
-        var oldHandle = _handle;
+        var oldHandle = handle;
         if (oldHandle is not null)
         {
             oldHandle.Client.NotificationReceived -= OnNotificationReceived;
-            _handle = null;
+            handle = null;
         }
 
-        _state = WorkspaceLoadState.StartingLanguageServer;
-        _failureCode = null;
-        _failureMessage = null;
+        state = WorkspaceLoadState.StartingLanguageServer;
+        failureCode = null;
+        failureMessage = null;
 
         return oldHandle;
     }
@@ -251,20 +251,20 @@ public sealed class WorkspaceSession(
     {
         if (string.Equals(method, "workspace/projectInitializationComplete", StringComparison.Ordinal))
         {
-            _state = WorkspaceLoadState.Ready;
+            state = WorkspaceLoadState.Ready;
         }
     }
 
     private WorkspaceStatus ToStatus(WorkspaceScanResult scan) =>
         new(
             pathGuard.Root,
-            _state,
-            _handle?.Target,
-            _handle?.IsRunning ?? false,
-            _handle?.PendingRequestCount ?? 0,
+            state,
+            handle?.Target,
+            handle?.IsRunning ?? false,
+            handle?.PendingRequestCount ?? 0,
             scan,
-            _failureCode,
-            _failureMessage);
+            failureCode,
+            failureMessage);
 
     private static UserFacingException WorkspaceLoading() =>
         new(

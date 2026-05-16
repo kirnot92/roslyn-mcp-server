@@ -460,10 +460,10 @@ public sealed class NavigationToolsTests
 
     private sealed class SequentialLoader(params ILspClient[] clients) : IRoslynWorkspaceLoader
     {
-        private readonly Queue<ILspClient> _clients = new(clients);
+        private readonly Queue<ILspClient> remainingClients = new(clients);
 
         public Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken) =>
-            Task.FromResult(new RoslynWorkspaceHandle(target, _clients.Dequeue()));
+            Task.FromResult(new RoslynWorkspaceHandle(target, remainingClients.Dequeue()));
     }
 
     private sealed class BlockingLoader : IRoslynWorkspaceLoader
@@ -487,7 +487,7 @@ public sealed class NavigationToolsTests
 
     private sealed class FakeLspClient : ILspClient
     {
-        private readonly Queue<JsonElement> _responses = new();
+        private readonly Queue<JsonElement> responses = new();
 
         public event Action<string, JsonElement?>? NotificationReceived;
 
@@ -499,7 +499,7 @@ public sealed class NavigationToolsTests
         public TaskCompletionSource? ReleaseShutdown { get; init; }
 
         public void EnqueueResponse(object? response) =>
-            _responses.Enqueue(JsonSerializer.SerializeToElement(response, JsonOptions.Default));
+            responses.Enqueue(JsonSerializer.SerializeToElement(response, JsonOptions.Default));
 
         public Task<JsonElement> RequestAsync(
             string method,
@@ -510,7 +510,7 @@ public sealed class NavigationToolsTests
         {
             Events.Add($"request:{method}");
             Requests.Add((method, JsonSerializer.SerializeToElement(parameters, JsonOptions.Default), isExpensive));
-            return Task.FromResult(_responses.Dequeue());
+            return Task.FromResult(responses.Dequeue());
         }
 
         public Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken)

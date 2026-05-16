@@ -9,8 +9,8 @@ public interface IRoslynWorkspaceLoader
 
 public sealed class RoslynWorkspaceHandle : IAsyncDisposable
 {
-    private readonly IAsyncDisposable? _disposable;
-    private readonly Func<bool> _isRunning;
+    private readonly IAsyncDisposable? disposable;
+    private readonly Func<bool> isRunning;
 
     public RoslynWorkspaceHandle(WorkspaceTarget target, RoslynLanguageServerConnection connection)
         : this(target, connection.Client, connection, () => connection.IsRunning)
@@ -30,14 +30,14 @@ public sealed class RoslynWorkspaceHandle : IAsyncDisposable
     {
         Target = target;
         Client = client;
-        _disposable = disposable;
-        _isRunning = isRunning;
+        this.disposable = disposable;
+        this.isRunning = isRunning;
     }
 
     public WorkspaceTarget Target { get; }
     public ILspClient Client { get; }
-    public bool IsRunning => _isRunning();
+    public bool IsRunning => isRunning();
     public int PendingRequestCount => Client.PendingRequestCount;
 
-    public ValueTask DisposeAsync() => _disposable?.DisposeAsync() ?? ValueTask.CompletedTask;
+    public ValueTask DisposeAsync() => disposable?.DisposeAsync() ?? ValueTask.CompletedTask;
 }

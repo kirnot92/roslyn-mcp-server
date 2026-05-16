@@ -243,7 +243,7 @@ public sealed class LspClientTests
 
     private sealed class BlockingStream : Stream
     {
-        private readonly Channel<byte> _channel = Channel.CreateUnbounded<byte>();
+        private readonly Channel<byte> channel = Channel.CreateUnbounded<byte>();
 
         public override bool CanRead => true;
         public override bool CanSeek => false;
@@ -275,7 +275,7 @@ public sealed class LspClientTests
             byte first;
             try
             {
-                first = await _channel.Reader.ReadAsync(cancellationToken);
+                first = await channel.Reader.ReadAsync(cancellationToken);
             }
             catch (ChannelClosedException)
             {
@@ -284,7 +284,7 @@ public sealed class LspClientTests
 
             buffer.Span[0] = first;
             var read = 1;
-            while (read < buffer.Length && _channel.Reader.TryRead(out var next))
+            while (read < buffer.Length && channel.Reader.TryRead(out var next))
             {
                 buffer.Span[read++] = next;
             }
@@ -296,7 +296,7 @@ public sealed class LspClientTests
         {
             for (var i = 0; i < count; i++)
             {
-                _channel.Writer.TryWrite(buffer[offset + i]);
+                channel.Writer.TryWrite(buffer[offset + i]);
             }
         }
 
@@ -304,7 +304,7 @@ public sealed class LspClientTests
         {
             foreach (var item in buffer.ToArray())
             {
-                await _channel.Writer.WriteAsync(item, cancellationToken);
+                await channel.Writer.WriteAsync(item, cancellationToken);
             }
         }
 
@@ -316,7 +316,7 @@ public sealed class LspClientTests
         {
             if (disposing)
             {
-                _channel.Writer.TryComplete();
+                channel.Writer.TryComplete();
             }
 
             base.Dispose(disposing);

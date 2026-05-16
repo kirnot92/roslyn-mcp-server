@@ -4,9 +4,9 @@ namespace RoslynMcpServer.Infrastructure;
 
 public sealed class FileLoggerProvider : ILoggerProvider
 {
-    private readonly StreamWriter _writer;
-    private readonly LogLevel _minimumLevel;
-    private readonly object _lock = new();
+    private readonly StreamWriter writer;
+    private readonly LogLevel minimumLevel;
+    private readonly object syncRoot = new();
 
     public FileLoggerProvider(string path, LogLevel minimumLevel)
     {
@@ -16,16 +16,16 @@ public sealed class FileLoggerProvider : ILoggerProvider
             Directory.CreateDirectory(directory);
         }
 
-        _writer = new StreamWriter(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read))
+        writer = new StreamWriter(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read))
         {
             AutoFlush = true
         };
-        _minimumLevel = minimumLevel;
+        this.minimumLevel = minimumLevel;
     }
 
-    public ILogger CreateLogger(string categoryName) => new FileLogger(categoryName, _writer, _lock, _minimumLevel);
+    public ILogger CreateLogger(string categoryName) => new FileLogger(categoryName, writer, syncRoot, minimumLevel);
 
-    public void Dispose() => _writer.Dispose();
+    public void Dispose() => writer.Dispose();
 
     private sealed class FileLogger(
         string categoryName,

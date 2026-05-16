@@ -3,6 +3,22 @@
 이 문서는 사용자가 요구한 코드 작성의 주요 원칙들을 정리한 것이다.
 사용자가 대화에서 명시한 원칙만 여기에 적는다.
 
+## 멤버 변수 이름
+
+멤버 변수는 앞에 `_`를 붙이지 않고 camelCase로 작성한다.
+
+나쁜 방향:
+
+- `private readonly SemaphoreSlim _stateLock = new(1, 1);`
+- `private WorkspaceLoadState _state = WorkspaceLoadState.NotLoaded;`
+
+좋은 방향:
+
+- `private readonly SemaphoreSlim stateLock = new(1, 1);`
+- `private WorkspaceLoadState state = WorkspaceLoadState.NotLoaded;`
+
+로컬 변수나 생성자 매개변수와 이름이 충돌하면 `_`를 붙이지 말고 의미가 드러나는 다른 camelCase 이름을 사용한다.
+
 ## 테스트 seam
 
 테스트 double을 만들기 위해 production class를 `virtual`/상속 가능하게 바꾸지 않는다.

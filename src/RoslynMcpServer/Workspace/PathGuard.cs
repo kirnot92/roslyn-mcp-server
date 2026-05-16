@@ -4,8 +4,8 @@ namespace RoslynMcpServer.Workspace;
 
 public sealed class PathGuard
 {
-    private readonly string _rootWithSeparator;
-    private readonly StringComparison _comparison;
+    private readonly string rootWithSeparator;
+    private readonly StringComparison comparison;
 
     public PathGuard(string root)
     {
@@ -20,10 +20,10 @@ public sealed class PathGuard
             throw new UserFacingException("root_not_directory", $"Workspace root is not a directory: {Root}");
         }
 
-        _comparison = OperatingSystem.IsWindows()
+        comparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
-        _rootWithSeparator = EnsureTrailingSeparator(Root);
+        rootWithSeparator = EnsureTrailingSeparator(Root);
     }
 
     public string Root { get; }
@@ -75,8 +75,8 @@ public sealed class PathGuard
     public bool IsInsideRoot(string fullPath)
     {
         var normalized = Path.GetFullPath(fullPath);
-        return string.Equals(normalized, Root, _comparison) ||
-            normalized.StartsWith(_rootWithSeparator, _comparison);
+        return string.Equals(normalized, Root, comparison) ||
+            normalized.StartsWith(rootWithSeparator, comparison);
     }
 
     private void RejectReparsePointInPath(string fullPath, string originalPath)
