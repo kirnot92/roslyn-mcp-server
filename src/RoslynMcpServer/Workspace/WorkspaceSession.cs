@@ -130,7 +130,9 @@ public sealed class WorkspaceSession(
 
     private async Task LoadTargetCoreAsync(WorkspaceTarget target, CancellationToken cancellationToken)
     {
-        await StopCurrentAsync().ConfigureAwait(false);
+        var oldHandle = BeginRestart();
+        await StopHandleAsync(oldHandle).ConfigureAwait(false);
+
         _state = WorkspaceLoadState.StartingLanguageServer;
         _failureCode = null;
         _failureMessage = null;
@@ -156,6 +158,22 @@ public sealed class WorkspaceSession(
             _failureMessage = ex.Message;
             throw;
         }
+    }
+
+    private RoslynWorkspaceHandle? BeginRestart()
+    {
+        var oldHandle = _handle;
+        if (oldHandle is not null)
+        {
+            oldHandle.Client.NotificationReceived -= OnNotificationReceived;
+            _handle = null;
+        }
+
+        _state = WorkspaceLoadState.StartingLanguageServer;
+        _failureCode = null;
+        _failureMessage = null;
+
+        return oldHandle;
     }
 
     private WorkspaceTarget CreateTarget(string path, string[] allowedExtensions, WorkspaceKind requestedKind)
@@ -218,17 +236,15 @@ public sealed class WorkspaceSession(
             "No workspace is loaded and no .sln, .slnx, or .csproj candidate was found.");
     }
 
-    private async Task StopCurrentAsync()
+    private async Task StopHandleAsync(RoslynWorkspaceHandle? handle)
     {
-        if (_handle is null)
+        if (handle is null)
         {
             return;
         }
 
-        _handle.Client.NotificationReceived -= OnNotificationReceived;
-        await _handle.Client.ShutdownAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
-        await _handle.DisposeAsync().ConfigureAwait(false);
-        _handle = null;
+        await handle.Client.ShutdownAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
+        await handle.DisposeAsync().ConfigureAwait(false);
     }
 
     private void OnNotificationReceived(string method, System.Text.Json.JsonElement? parameters)

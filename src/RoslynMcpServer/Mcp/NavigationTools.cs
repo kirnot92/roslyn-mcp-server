@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using RoslynMcpServer.Infrastructure;
@@ -33,16 +34,13 @@ public sealed class NavigationTools(
                 NavigationTimeout,
                 cancellationToken).ConfigureAwait(false);
 
-            var symbols = ParseDocumentSymbols(response);
-            var totalKnown = CountSymbols(symbols);
-            var returned = 0;
-            var items = MapDocumentSymbols(symbols, ref returned);
-            var metadata = CreateMetadata(context.State, ToolKind.DocumentSymbols, truncated: totalKnown > returned);
+            var mappedSymbols = MapDocumentSymbols(response);
+            var metadata = CreateMetadata(context.State, ToolKind.DocumentSymbols, mappedSymbols.Truncated);
 
             return new DocumentSymbolsResult(
-                items,
-                totalKnown,
-                returned,
+                mappedSymbols.Items,
+                mappedSymbols.TotalKnown,
+                mappedSymbols.Returned,
                 metadata.WorkspaceState,
                 metadata.Completeness,
                 metadata.Reason,
@@ -74,18 +72,12 @@ public sealed class NavigationTools(
                 NavigationTimeout,
                 cancellationToken).ConfigureAwait(false);
 
-            var (contents, kind, range) = MapHover(response);
-            var truncated = contents?.Length > MaxHoverCharacters;
-            if (truncated)
-            {
-                contents = contents![..MaxHoverCharacters];
-            }
-
-            var metadata = CreateMetadata(context.State, ToolKind.Hover, truncated);
+            var hover = MapHover(response);
+            var metadata = CreateMetadata(context.State, ToolKind.Hover, hover.Truncated);
             return new HoverResult(
-                contents,
-                kind,
-                range,
+                hover.Contents,
+                hover.Kind,
+                hover.Range,
                 metadata.WorkspaceState,
                 metadata.Completeness,
                 metadata.Reason,
@@ -98,40 +90,11 @@ public sealed class NavigationTools(
         }
     }
 
-    private static IReadOnlyList<DocumentSymbolItem> MapDocumentSymbols(
-        IReadOnlyList<DocumentSymbol> symbols,
-        ref int returned)
-    {
-        var items = new List<DocumentSymbolItem>();
-        foreach (var symbol in symbols)
-        {
-            if (returned >= MaxDocumentSymbolNodes)
-            {
-                break;
-            }
-
-            returned++;
-            var children = symbol.Children is null
-                ? []
-                : MapDocumentSymbols(symbol.Children, ref returned);
-            items.Add(new DocumentSymbolItem(
-                symbol.Name,
-                symbol.Kind,
-                symbol.Kind.ToMcpName(),
-                PositionMapper.ToMcpRange(symbol.Range),
-                PositionMapper.ToMcpRange(symbol.SelectionRange),
-                symbol.Detail,
-                children));
-        }
-
-        return items;
-    }
-
-    private static IReadOnlyList<DocumentSymbol> ParseDocumentSymbols(JsonElement response)
+    private static DocumentSymbolMapResult MapDocumentSymbols(JsonElement response)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
-            return [];
+            return new DocumentSymbolMapResult([], TotalKnown: 0, Returned: 0, Truncated: false);
         }
 
         if (response.ValueKind != JsonValueKind.Array)
@@ -139,20 +102,25 @@ public sealed class NavigationTools(
             throw new UserFacingException("invalid_lsp_response", "textDocument/documentSymbol returned an unexpected response shape.");
         }
 
-        var symbols = new List<DocumentSymbol>();
+        var items = new List<DocumentSymbolItem>();
+        var totalKnown = 0;
+        var returned = 0;
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = ParseDocumentSymbol(item);
+            var symbol = TryMapDocumentSymbol(item, ref totalKnown, ref returned);
             if (symbol is not null)
             {
-                symbols.Add(symbol);
+                items.Add(symbol);
             }
         }
 
-        return symbols;
+        return new DocumentSymbolMapResult(items, totalKnown, returned, totalKnown > returned);
     }
 
-    private static DocumentSymbol? ParseDocumentSymbol(JsonElement item)
+    private static DocumentSymbolItem? TryMapDocumentSymbol(
+        JsonElement item,
+        ref int totalKnown,
+        ref int returned)
     {
         if (item.ValueKind != JsonValueKind.Object ||
             !item.TryGetProperty("name", out var nameElement) ||
@@ -170,29 +138,39 @@ public sealed class NavigationTools(
             return null;
         }
 
+        totalKnown++;
+        var shouldReturn = returned < MaxDocumentSymbolNodes;
+        if (shouldReturn)
+        {
+            returned++;
+        }
+
         var selectionRange = TryGetRange(item, "selectionRange") ?? range;
-        IReadOnlyList<DocumentSymbol>? children = null;
+        var children = new List<DocumentSymbolItem>();
         if (item.TryGetProperty("children", out var childrenElement) &&
             childrenElement.ValueKind == JsonValueKind.Array)
         {
-            var parsedChildren = new List<DocumentSymbol>();
             foreach (var child in childrenElement.EnumerateArray())
             {
-                var parsedChild = ParseDocumentSymbol(child);
-                if (parsedChild is not null)
+                var parsedChild = TryMapDocumentSymbol(child, ref totalKnown, ref returned);
+                if (parsedChild is not null && shouldReturn)
                 {
-                    parsedChildren.Add(parsedChild);
+                    children.Add(parsedChild);
                 }
             }
-
-            children = parsedChildren;
         }
 
-        return new DocumentSymbol(
+        if (!shouldReturn)
+        {
+            return null;
+        }
+
+        return new DocumentSymbolItem(
             nameElement.GetString() ?? string.Empty,
             kind,
-            range,
-            selectionRange,
+            kind.ToMcpName(),
+            PositionMapper.ToMcpRange(range),
+            PositionMapper.ToMcpRange(selectionRange),
             item.TryGetProperty("detail", out var detailElement) ? detailElement.GetString() : null,
             children);
     }
@@ -216,46 +194,73 @@ public sealed class NavigationTools(
             return null;
         }
 
-        return rangeElement.Deserialize<Lsp.Range>(JsonOptions.Default);
-    }
-
-    private static int CountSymbols(IReadOnlyList<DocumentSymbol> symbols)
-    {
-        var count = 0;
-        foreach (var symbol in symbols)
+        try
         {
-            count++;
-            if (symbol.Children is not null)
-            {
-                count += CountSymbols(symbol.Children);
-            }
+            return rangeElement.Deserialize<Lsp.Range>(JsonOptions.Default);
         }
-
-        return count;
+        catch (JsonException ex)
+        {
+            throw new UserFacingException("invalid_lsp_response", "LSP returned a malformed range.", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new UserFacingException("invalid_lsp_response", "LSP returned a malformed range.", ex);
+        }
     }
 
-    private static (string? Contents, string? Kind, McpRange? Range) MapHover(JsonElement response)
+    private static HoverMapResult MapHover(JsonElement response)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
-            return (null, null, null);
+            return new HoverMapResult(null, null, null, Truncated: false);
+        }
+
+        if (response.ValueKind != JsonValueKind.Object)
+        {
+            throw new UserFacingException("invalid_lsp_response", "textDocument/hover returned an unexpected response shape.");
         }
 
         var contents = response.TryGetProperty("contents", out var contentsElement)
-            ? MapHoverContents(contentsElement)
-            : (Contents: (string?)null, Kind: (string?)null);
+            ? MapHoverContents(contentsElement, MaxHoverCharacters)
+            : new HoverContentMapResult(null, null, Truncated: false);
         var range = response.TryGetProperty("range", out var rangeElement)
-            ? rangeElement.Deserialize<Lsp.Range>(JsonOptions.Default)
+            ? ReadHoverRange(rangeElement)
             : null;
 
-        return (contents.Contents, contents.Kind, range is null ? null : PositionMapper.ToMcpRange(range));
+        return new HoverMapResult(contents.Contents, contents.Kind, range is null ? null : PositionMapper.ToMcpRange(range), contents.Truncated);
     }
 
-    private static (string? Contents, string? Kind) MapHoverContents(JsonElement contents)
+    private static Lsp.Range? ReadHoverRange(JsonElement rangeElement)
+    {
+        if (rangeElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (rangeElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new UserFacingException("invalid_lsp_response", "textDocument/hover returned a malformed range.");
+        }
+
+        try
+        {
+            return rangeElement.Deserialize<Lsp.Range>(JsonOptions.Default);
+        }
+        catch (JsonException ex)
+        {
+            throw new UserFacingException("invalid_lsp_response", "textDocument/hover returned a malformed range.", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new UserFacingException("invalid_lsp_response", "textDocument/hover returned a malformed range.", ex);
+        }
+    }
+
+    private static HoverContentMapResult MapHoverContents(JsonElement contents, int maxCharacters)
     {
         if (contents.ValueKind == JsonValueKind.String)
         {
-            return (contents.GetString(), "plaintext");
+            return LimitHoverText(contents.GetString(), "plaintext", maxCharacters);
         }
 
         if (contents.ValueKind == JsonValueKind.Object)
@@ -263,36 +268,83 @@ public sealed class NavigationTools(
             if (contents.TryGetProperty("kind", out var kindElement) &&
                 contents.TryGetProperty("value", out var valueElement))
             {
-                return (valueElement.GetString(), kindElement.GetString());
+                return LimitHoverText(ValueToString(valueElement), kindElement.GetString(), maxCharacters);
             }
 
             if (contents.TryGetProperty("language", out _) &&
                 contents.TryGetProperty("value", out valueElement))
             {
-                return (valueElement.GetString(), "markedString");
+                return LimitHoverText(ValueToString(valueElement), "markedString", maxCharacters);
             }
         }
 
         if (contents.ValueKind == JsonValueKind.Array)
         {
-            var parts = new List<string>();
+            var builder = new StringBuilder(Math.Min(maxCharacters, 1024));
             string? kind = null;
+            var truncated = false;
             foreach (var item in contents.EnumerateArray())
             {
-                var mapped = MapHoverContents(item);
+                if (builder.Length >= maxCharacters)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                var separatorLength = builder.Length == 0 ? 0 : Environment.NewLine.Length;
+                var remaining = maxCharacters - builder.Length - separatorLength;
+                if (remaining <= 0)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                var mapped = MapHoverContents(item, remaining);
                 if (!string.IsNullOrEmpty(mapped.Contents))
                 {
-                    parts.Add(mapped.Contents);
+                    if (builder.Length > 0)
+                    {
+                        builder.AppendLine();
+                    }
+
+                    builder.Append(mapped.Contents);
                 }
 
                 kind ??= mapped.Kind;
+                if (mapped.Truncated)
+                {
+                    truncated = true;
+                    break;
+                }
             }
 
-            return (string.Join(Environment.NewLine, parts), kind);
+            return new HoverContentMapResult(builder.ToString(), kind, truncated);
         }
 
-        return (contents.ToString(), null);
+        return LimitHoverText(contents.ToString(), null, maxCharacters);
     }
+
+    private static HoverContentMapResult LimitHoverText(string? value, string? kind, int maxCharacters)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return new HoverContentMapResult(value, kind, Truncated: false);
+        }
+
+        if (value.Length <= maxCharacters)
+        {
+            return new HoverContentMapResult(value, kind, Truncated: false);
+        }
+
+        return new HoverContentMapResult(value[..maxCharacters], kind, Truncated: true);
+    }
+
+    private static string? ValueToString(JsonElement value) =>
+        value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
+            ? null
+            : value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : value.ToString();
 
     private static ReadToolMetadata CreateMetadata(WorkspaceLoadState state, ToolKind toolKind, bool truncated) =>
         state switch
@@ -305,7 +357,7 @@ public sealed class NavigationTools(
                 truncated),
             WorkspaceLoadState.WorkspaceWarming => new ReadToolMetadata(
                 state.ToString(),
-                toolKind is ToolKind.DocumentSymbols ? "partial" : "partial",
+                "partial",
                 toolKind is ToolKind.DocumentSymbols
                     ? "Workspace is still warming; symbols from projects not loaded yet may be missing."
                     : "Workspace is still warming; hover may not include complete semantic information.",
@@ -324,6 +376,23 @@ public sealed class NavigationTools(
                 null,
                 truncated)
         };
+
+    private sealed record DocumentSymbolMapResult(
+        IReadOnlyList<DocumentSymbolItem> Items,
+        int TotalKnown,
+        int Returned,
+        bool Truncated);
+
+    private sealed record HoverMapResult(
+        string? Contents,
+        string? Kind,
+        McpRange? Range,
+        bool Truncated);
+
+    private sealed record HoverContentMapResult(
+        string? Contents,
+        string? Kind,
+        bool Truncated);
 
     private enum ToolKind
     {

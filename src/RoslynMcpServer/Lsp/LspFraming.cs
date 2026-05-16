@@ -6,6 +6,7 @@ namespace RoslynMcpServer.Lsp;
 
 public static class LspFraming
 {
+    public const int DefaultMaxContentLength = 16 * 1024 * 1024;
     private static readonly byte[] Separator = "\r\n\r\n"u8.ToArray();
 
     public static async Task WriteAsync(Stream stream, object payload, CancellationToken cancellationToken)
@@ -17,7 +18,13 @@ public static class LspFraming
         await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public static async Task<JsonDocument?> ReadAsync(Stream stream, CancellationToken cancellationToken)
+    public static Task<JsonDocument?> ReadAsync(Stream stream, CancellationToken cancellationToken) =>
+        ReadAsync(stream, DefaultMaxContentLength, cancellationToken);
+
+    public static async Task<JsonDocument?> ReadAsync(
+        Stream stream,
+        int maxContentLength,
+        CancellationToken cancellationToken)
     {
         var headerBytes = new List<byte>(128);
         while (!EndsWith(headerBytes, Separator))
@@ -38,6 +45,11 @@ public static class LspFraming
 
         var headerText = Encoding.ASCII.GetString(CollectionsMarshal.AsSpan(headerBytes));
         var contentLength = ParseContentLength(headerText);
+        if (contentLength > maxContentLength)
+        {
+            throw new InvalidDataException($"LSP message body exceeded {maxContentLength} bytes.");
+        }
+
         var body = new byte[contentLength];
         var offset = 0;
         while (offset < body.Length)

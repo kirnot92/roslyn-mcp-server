@@ -33,6 +33,36 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task DocumentSymbols_ReturnsWorkspaceLoadingWhileExistingLanguageServerShutsDownForReload()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Other.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var oldClient = new FakeLspClient
+        {
+            ShutdownStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+            ReleaseShutdown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
+        };
+        var newClient = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new SequentialLoader(oldClient, newClient));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var reloadTask = session.LoadProjectAsync("Other.csproj");
+        await oldClient.ShutdownStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var result = await tools.DocumentSymbols("Program.cs");
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("workspace_loading", error.Error);
+        Assert.Empty(oldClient.Requests);
+
+        oldClient.ReleaseShutdown.SetResult();
+        await reloadTask.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
     public async Task DocumentSymbols_ReturnsWorkspaceNotLoadedWhenMultipleSolutionsExist()
     {
         using var root = TestRoot.Create();
@@ -141,6 +171,62 @@ public sealed class NavigationToolsTests
         Assert.Equal(4, request.Params.GetProperty("position").GetProperty("character").GetInt32());
     }
 
+    [Fact]
+    public async Task Hover_ReturnsEmptyResultForNullResponse()
+    {
+        var result = await ExecuteHoverWithResponse(null);
+
+        var hover = Assert.IsType<HoverResult>(result);
+        Assert.Null(hover.Contents);
+        Assert.Null(hover.Kind);
+        Assert.Null(hover.Range);
+    }
+
+    [Fact]
+    public async Task Hover_ReturnsEmptyResultWhenContentsAreMissing()
+    {
+        var result = await ExecuteHoverWithResponse(new { });
+
+        var hover = Assert.IsType<HoverResult>(result);
+        Assert.Null(hover.Contents);
+    }
+
+    [Fact]
+    public async Task Hover_ReturnsInvalidLspResponseForNonObjectResponse()
+    {
+        var result = await ExecuteHoverWithResponse("unexpected");
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_lsp_response", error.Error);
+    }
+
+    [Fact]
+    public async Task Hover_ReturnsInvalidLspResponseForMalformedRange()
+    {
+        var result = await ExecuteHoverWithResponse(new
+        {
+            contents = "text",
+            range = "not a range"
+        });
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_lsp_response", error.Error);
+    }
+
+    private static async Task<object> ExecuteHoverWithResponse(object? response)
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(response);
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        return await tools.Hover("Program.cs", line: 1, column: 1);
+    }
+
     private static NavigationTools CreateTools(string root, WorkspaceSession session)
     {
         var guard = new PathGuard(root);
@@ -176,6 +262,14 @@ public sealed class NavigationToolsTests
             Task.FromResult(new RoslynWorkspaceHandle(target, client));
     }
 
+    private sealed class SequentialLoader(params ILspClient[] clients) : IRoslynWorkspaceLoader
+    {
+        private readonly Queue<ILspClient> _clients = new(clients);
+
+        public Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken) =>
+            Task.FromResult(new RoslynWorkspaceHandle(target, _clients.Dequeue()));
+    }
+
     private sealed class BlockingLoader : IRoslynWorkspaceLoader
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -204,6 +298,8 @@ public sealed class NavigationToolsTests
         public List<(string Method, JsonElement Params)> Notifications { get; } = [];
         public List<(string Method, JsonElement Params)> Requests { get; } = [];
         public int PendingRequestCount => 0;
+        public TaskCompletionSource? ShutdownStarted { get; init; }
+        public TaskCompletionSource? ReleaseShutdown { get; init; }
 
         public void EnqueueResponse(object? response) =>
             _responses.Enqueue(JsonSerializer.SerializeToElement(response, JsonOptions.Default));
@@ -224,7 +320,14 @@ public sealed class NavigationToolsTests
             return Task.CompletedTask;
         }
 
-        public Task ShutdownAsync(TimeSpan timeout, CancellationToken cancellationToken) => Task.CompletedTask;
+        public async Task ShutdownAsync(TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            ShutdownStarted?.SetResult();
+            if (ReleaseShutdown is not null)
+            {
+                await ReleaseShutdown.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            }
+        }
 
         public void RaiseNotification(string method, JsonElement? parameters = null) =>
             NotificationReceived?.Invoke(method, parameters);

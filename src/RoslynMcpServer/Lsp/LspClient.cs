@@ -10,6 +10,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     private readonly Stream _input;
     private readonly Stream _output;
     private readonly ILogger _logger;
+    private readonly int _maxResponsePayloadBytes;
     private readonly ConcurrentDictionary<long, PendingRequest> _pending = new();
     private readonly SemaphoreSlim _inFlightLimit;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -17,11 +18,17 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     private long _nextId;
     private Task? _readLoop;
 
-    public LspClient(Stream input, Stream output, int maxInFlightRequests, ILogger logger)
+    public LspClient(
+        Stream input,
+        Stream output,
+        int maxInFlightRequests,
+        ILogger logger,
+        int maxResponsePayloadBytes = LspFraming.DefaultMaxContentLength)
     {
         _input = input;
         _output = output;
         _logger = logger;
+        _maxResponsePayloadBytes = Math.Max(1, maxResponsePayloadBytes);
         _inFlightLimit = new SemaphoreSlim(Math.Max(1, maxInFlightRequests), Math.Max(1, maxInFlightRequests));
     }
 
@@ -153,7 +160,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         {
             while (!_disposeCts.IsCancellationRequested)
             {
-                using var document = await LspFraming.ReadAsync(_output, _disposeCts.Token).ConfigureAwait(false);
+                using var document = await LspFraming.ReadAsync(_output, _maxResponsePayloadBytes, _disposeCts.Token).ConfigureAwait(false);
                 if (document is null)
                 {
                     break;
@@ -208,7 +215,10 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "LSP read loop stopped.");
-            CompletePending(ex);
+            var userFacingException = ex is InvalidDataException
+                ? new UserFacingException("invalid_lsp_response", ex.Message, ex)
+                : ex;
+            CompletePending(userFacingException);
         }
     }
 

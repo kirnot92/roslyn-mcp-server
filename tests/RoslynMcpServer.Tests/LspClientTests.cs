@@ -89,6 +89,34 @@ public sealed class LspClientTests
         await Assert.ThrowsAsync<IOException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
     }
 
+    [Fact]
+    public async Task RequestAsync_ReturnsUserFacingErrorWhenResponsePayloadExceedsLimit()
+    {
+        await using var harness = LspClientHarness.Create(maxInFlightRequests: 4, maxResponsePayloadBytes: 32);
+        var responseTask = harness.Client.RequestAsync(
+            "textDocument/documentSymbol",
+            new { },
+            TimeSpan.FromSeconds(30),
+            CancellationToken.None);
+
+        using var clientRequest = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None);
+        Assert.NotNull(clientRequest);
+        var id = clientRequest.RootElement.GetProperty("id").GetInt64();
+
+        await LspFraming.WriteAsync(harness.ServerOutput, new
+        {
+            jsonrpc = "2.0",
+            id,
+            result = new
+            {
+                value = new string('x', 128)
+            }
+        }, CancellationToken.None);
+
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("invalid_lsp_response", ex.Code);
+    }
+
     private sealed class LspClientHarness : IAsyncDisposable
     {
         private LspClientHarness(BlockingStream serverInput, BlockingStream serverOutput, LspClient client)
@@ -103,7 +131,9 @@ public sealed class LspClientTests
         public BlockingStream ServerOutput { get; }
         public LspClient Client { get; }
 
-        public static LspClientHarness Create(int maxInFlightRequests)
+        public static LspClientHarness Create(
+            int maxInFlightRequests,
+            int maxResponsePayloadBytes = LspFraming.DefaultMaxContentLength)
         {
             var clientToServer = new BlockingStream();
             var serverToClient = new BlockingStream();
@@ -112,7 +142,8 @@ public sealed class LspClientTests
                 clientToServer,
                 serverToClient,
                 maxInFlightRequests,
-                NullLogger<LspClient>.Instance);
+                NullLogger<LspClient>.Instance,
+                maxResponsePayloadBytes);
 
             return new LspClientHarness(clientToServer, serverToClient, client);
         }

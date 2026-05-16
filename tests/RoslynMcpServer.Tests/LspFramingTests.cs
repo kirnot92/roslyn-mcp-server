@@ -37,4 +37,15 @@ public sealed class LspFramingTests
 
         Assert.Null(document);
     }
+
+    [Fact]
+    public async Task Read_RejectsMessageBodyOverConfiguredLimitBeforeAllocation()
+    {
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Content-Length: 4\r\n\r\n{}{}"));
+
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            LspFraming.ReadAsync(stream, maxContentLength: 3, cancellationToken: CancellationToken.None));
+
+        Assert.Contains("exceeded", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
