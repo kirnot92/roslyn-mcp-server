@@ -502,7 +502,7 @@ Roslyn LS가 없으면 skip하고 설치 명령을 출력한다.
 ScanMaxDepth = 6
 ScanTimeout = 3s
 MaxSolutionCandidates = 100
-MaxProjectCandidates = 500
+MaxProjectCandidates = 1000
 MaxOpenDocuments = 200
 MaxDocumentBytes = 2MB
 MaxInFlightLspRequests = 16

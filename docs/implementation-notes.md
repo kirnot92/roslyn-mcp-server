@@ -444,7 +444,7 @@ https://github.com/kirnot92/roslyn-mcp-server
 ScanMaxDepth = 6
 ScanTimeout = 3s
 MaxSolutionCandidates = 100
-MaxProjectCandidates = 500
+MaxProjectCandidates = 1000
 MaxOpenDocuments = 200
 MaxDocumentBytes = 2MB
 MaxInFlightLspRequests = 16

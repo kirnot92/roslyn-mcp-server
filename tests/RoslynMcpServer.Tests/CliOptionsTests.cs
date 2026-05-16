@@ -5,6 +5,19 @@ namespace RoslynMcpServer.Tests;
 public sealed class CliOptionsTests
 {
     [Fact]
+    public void Parse_UsesLargeRepoFriendlyDefaults()
+    {
+        using var root = TestRoot.Create();
+
+        var options = CliOptions.Parse(["--root", root.Path]);
+
+        Assert.Equal(CliOptions.DefaultMaxSolutionCandidates, options.MaxSolutionCandidates);
+        Assert.Equal(100, options.MaxSolutionCandidates);
+        Assert.Equal(CliOptions.DefaultMaxProjectCandidates, options.MaxProjectCandidates);
+        Assert.Equal(1000, options.MaxProjectCandidates);
+    }
+
+    [Fact]
     public void Parse_AcceptsLargeRepoTuningOptions()
     {
         using var root = TestRoot.Create();

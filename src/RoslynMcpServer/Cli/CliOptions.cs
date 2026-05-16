@@ -19,6 +19,8 @@ public sealed record CliOptions(
     int MaxExpensiveLspRequests)
 {
     public const int DefaultScanMaxDepth = 6;
+    public const int DefaultMaxSolutionCandidates = 100;
+    public const int DefaultMaxProjectCandidates = 1000;
     public const int DefaultMaxOpenDocuments = 200;
     public const long DefaultMaxDocumentBytes = 2 * 1024 * 1024;
     public const int DefaultMaxExpensiveLspRequests = 2;
@@ -35,8 +37,8 @@ public sealed record CliOptions(
         var startupTimeout = DefaultStartupTimeout;
         var scanMaxDepth = DefaultScanMaxDepth;
         var scanTimeout = DefaultScanTimeout;
-        var maxSolutionCandidates = 100;
-        var maxProjectCandidates = 500;
+        var maxSolutionCandidates = DefaultMaxSolutionCandidates;
+        var maxProjectCandidates = DefaultMaxProjectCandidates;
         var maxOpenDocuments = DefaultMaxOpenDocuments;
         var maxDocumentBytes = DefaultMaxDocumentBytes;
         var maxInFlightLspRequests = 16;

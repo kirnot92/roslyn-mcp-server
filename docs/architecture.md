@@ -234,7 +234,7 @@ filesystem fallback은 solution/project candidate limit이 모두 찬 경우 조
 - symlink, junction, reparse point 디렉터리는 기본적으로 따라가지 않는다.
 - 기본 최대 탐색 깊이를 둔다. 예: root 기준 6단계. `--scan-max-depth`로 조정할 수 있게 한다.
 - 기본 시간 예산을 둔다. 예: 3초. 시간 예산을 넘기면 지금까지 찾은 후보와 `truncated: true`를 반환한다.
-- 후보 개수 상한을 둔다. 예: solution 100개, project 500개. 상한을 넘기면 더 깊은 탐색을 멈추고 명시적 경로 입력을 유도한다.
+- 후보 개수 상한을 둔다. 예: solution 100개, project 1000개. 상한을 넘기면 더 깊은 탐색을 멈추고 명시적 경로 입력을 유도한다.
 - root 바로 아래와 1단계 하위 디렉터리의 `.sln`/`.slnx`를 먼저 찾는다. 대규모 repo에서는 top-level solution이 가장 유용할 가능성이 높다.
 - 탐색 결과는 `WorkspaceSession`에 캐시한다.
 - `list_workspaces`는 기본적으로 캐시된 결과를 반환하고, 필요할 때만 `refresh: true` 입력으로 재탐색한다.
