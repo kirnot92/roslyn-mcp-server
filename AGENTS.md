@@ -96,6 +96,7 @@ https://github.com/kirnot92/roslyn-mcp-server
 구현 전에 아래 문서를 읽는다.
 
 - `docs/implementation-notes.md`: 구현 세션용 한국어 참고 메모
+- `docs/coding-principles.md`: 코드 작성 원칙과 테스트 seam 설계 기준
 - `docs/plan.md`: 제품 방향과 milestone
 - `docs/architecture.md`: 상세 architecture와 구현 설계
 - `docs/large-repo-test-plan.md`: 대규모 repository 테스트 전략과 실제 후보 repo
