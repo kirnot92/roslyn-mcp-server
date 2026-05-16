@@ -463,7 +463,7 @@ public sealed class NavigationToolsTests
         private readonly Queue<ILspClient> remainingClients = new(clients);
 
         public Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken) =>
-            Task.FromResult(new RoslynWorkspaceHandle(target, remainingClients.Dequeue()));
+            Task.FromResult(new RoslynWorkspaceHandle(target, this.remainingClients.Dequeue()));
     }
 
     private sealed class BlockingLoader : IRoslynWorkspaceLoader
@@ -499,7 +499,7 @@ public sealed class NavigationToolsTests
         public TaskCompletionSource? ReleaseShutdown { get; init; }
 
         public void EnqueueResponse(object? response) =>
-            responses.Enqueue(JsonSerializer.SerializeToElement(response, JsonOptions.Default));
+            this.responses.Enqueue(JsonSerializer.SerializeToElement(response, JsonOptions.Default));
 
         public Task<JsonElement> RequestAsync(
             string method,
@@ -510,7 +510,7 @@ public sealed class NavigationToolsTests
         {
             Events.Add($"request:{method}");
             Requests.Add((method, JsonSerializer.SerializeToElement(parameters, JsonOptions.Default), isExpensive));
-            return Task.FromResult(responses.Dequeue());
+            return Task.FromResult(this.responses.Dequeue());
         }
 
         public Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken)

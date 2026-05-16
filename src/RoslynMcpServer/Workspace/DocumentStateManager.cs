@@ -14,7 +14,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
         ? StringComparer.OrdinalIgnoreCase
         : StringComparer.Ordinal;
 
-    public int OpenDocumentCount => documents.Count;
+    public int OpenDocumentCount => this.documents.Count;
 
     public async Task<OpenDocumentState> EnsureOpenAsync(
         string file,
@@ -22,13 +22,13 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
         CancellationToken cancellationToken = default)
     {
         var fullPath = pathMapper.ResolveFileInput(file);
-        await syncLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await this.syncLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!ReferenceEquals(lspClient, client))
+            if (!ReferenceEquals(this.lspClient, client))
             {
-                documents.Clear();
-                lspClient = client;
+                this.documents.Clear();
+                this.lspClient = client;
             }
 
             var info = new FileInfo(fullPath);
@@ -49,7 +49,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
             var key = Path.GetFullPath(fullPath);
             var uri = pathMapper.ToFileUri(fullPath);
 
-            if (!documents.TryGetValue(key, out var state))
+            if (!this.documents.TryGetValue(key, out var state))
             {
                 var text = await File.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
                 state = new OpenDocumentState(uri, key, Version: 1, lastWriteTime, info.Length, now);
@@ -58,7 +58,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
                     new DidOpenTextDocumentParams(new TextDocumentItem(uri, "csharp", state.Version, text)),
                     cancellationToken).ConfigureAwait(false);
 
-                documents[key] = state;
+                this.documents[key] = state;
                 await EvictIfNeededAsync(key, client, cancellationToken).ConfigureAwait(false);
                 return state;
             }
@@ -86,21 +86,21 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
                 state = state with { LastAccessedAt = now };
             }
 
-            documents[key] = state;
+            this.documents[key] = state;
             await EvictIfNeededAsync(key, client, cancellationToken).ConfigureAwait(false);
             return state;
         }
         finally
         {
-            syncLock.Release();
+            this.syncLock.Release();
         }
     }
 
     private async Task EvictIfNeededAsync(string currentKey, ILspClient client, CancellationToken cancellationToken)
     {
-        while (documents.Count > options.MaxOpenDocuments)
+        while (this.documents.Count > options.MaxOpenDocuments)
         {
-            var lru = documents
+            var lru = this.documents
                 .Where(pair => !PathComparer.Equals(pair.Key, currentKey))
                 .OrderBy(pair => pair.Value.LastAccessedAt)
                 .FirstOrDefault();
@@ -110,7 +110,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
                 break;
             }
 
-            documents.Remove(lru.Key);
+            this.documents.Remove(lru.Key);
             await client.NotifyAsync(
                 "textDocument/didClose",
                 new DidCloseTextDocumentParams(new TextDocumentIdentifier(lru.Value.Uri)),

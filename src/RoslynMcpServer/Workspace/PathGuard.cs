@@ -20,10 +20,10 @@ public sealed class PathGuard
             throw new UserFacingException("root_not_directory", $"Workspace root is not a directory: {Root}");
         }
 
-        comparison = OperatingSystem.IsWindows()
+        this.comparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
-        rootWithSeparator = EnsureTrailingSeparator(Root);
+        this.rootWithSeparator = EnsureTrailingSeparator(Root);
     }
 
     public string Root { get; }
@@ -75,8 +75,8 @@ public sealed class PathGuard
     public bool IsInsideRoot(string fullPath)
     {
         var normalized = Path.GetFullPath(fullPath);
-        return string.Equals(normalized, Root, comparison) ||
-            normalized.StartsWith(rootWithSeparator, comparison);
+        return string.Equals(normalized, Root, this.comparison) ||
+            normalized.StartsWith(this.rootWithSeparator, this.comparison);
     }
 
     private void RejectReparsePointInPath(string fullPath, string originalPath)

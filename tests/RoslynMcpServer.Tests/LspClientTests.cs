@@ -275,7 +275,7 @@ public sealed class LspClientTests
             byte first;
             try
             {
-                first = await channel.Reader.ReadAsync(cancellationToken);
+                first = await this.channel.Reader.ReadAsync(cancellationToken);
             }
             catch (ChannelClosedException)
             {
@@ -284,7 +284,7 @@ public sealed class LspClientTests
 
             buffer.Span[0] = first;
             var read = 1;
-            while (read < buffer.Length && channel.Reader.TryRead(out var next))
+            while (read < buffer.Length && this.channel.Reader.TryRead(out var next))
             {
                 buffer.Span[read++] = next;
             }
@@ -296,7 +296,7 @@ public sealed class LspClientTests
         {
             for (var i = 0; i < count; i++)
             {
-                channel.Writer.TryWrite(buffer[offset + i]);
+                this.channel.Writer.TryWrite(buffer[offset + i]);
             }
         }
 
@@ -304,7 +304,7 @@ public sealed class LspClientTests
         {
             foreach (var item in buffer.ToArray())
             {
-                await channel.Writer.WriteAsync(item, cancellationToken);
+                await this.channel.Writer.WriteAsync(item, cancellationToken);
             }
         }
 
@@ -316,7 +316,7 @@ public sealed class LspClientTests
         {
             if (disposing)
             {
-                channel.Writer.TryComplete();
+                this.channel.Writer.TryComplete();
             }
 
             base.Dispose(disposing);

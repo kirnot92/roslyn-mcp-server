@@ -6,18 +6,22 @@
 ## 멤버 변수 이름
 
 멤버 변수는 앞에 `_`를 붙이지 않고 camelCase로 작성한다.
+멤버 변수를 참조할 때는 반드시 `this.`를 붙인다.
 
 나쁜 방향:
 
 - `private readonly SemaphoreSlim _stateLock = new(1, 1);`
 - `private WorkspaceLoadState _state = WorkspaceLoadState.NotLoaded;`
+- `stateLock.Release();`
 
 좋은 방향:
 
 - `private readonly SemaphoreSlim stateLock = new(1, 1);`
 - `private WorkspaceLoadState state = WorkspaceLoadState.NotLoaded;`
+- `this.stateLock.Release();`
 
 로컬 변수나 생성자 매개변수와 이름이 충돌하면 `_`를 붙이지 말고 의미가 드러나는 다른 camelCase 이름을 사용한다.
+멤버 변수와 같은 이름의 로컬 변수 또는 매개변수가 필요한 경우에도 멤버 변수 참조에는 `this.memberName`을 사용한다.
 
 ## 테스트 seam
 

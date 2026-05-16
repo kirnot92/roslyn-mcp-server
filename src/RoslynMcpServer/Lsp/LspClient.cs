@@ -31,15 +31,15 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         this.output = output;
         this.logger = logger;
         this.maxResponsePayloadBytes = Math.Max(1, maxResponsePayloadBytes);
-        inFlightLimit = new SemaphoreSlim(Math.Max(1, maxInFlightRequests), Math.Max(1, maxInFlightRequests));
-        expensiveLimit = new SemaphoreSlim(Math.Max(1, maxExpensiveRequests), Math.Max(1, maxExpensiveRequests));
+        this.inFlightLimit = new SemaphoreSlim(Math.Max(1, maxInFlightRequests), Math.Max(1, maxInFlightRequests));
+        this.expensiveLimit = new SemaphoreSlim(Math.Max(1, maxExpensiveRequests), Math.Max(1, maxExpensiveRequests));
     }
 
     public event Action<string, JsonElement?>? NotificationReceived;
 
-    public int PendingRequestCount => pendingRequests.Count;
+    public int PendingRequestCount => this.pendingRequests.Count;
 
-    public void Start() => readLoop ??= Task.Run(ReadLoopAsync);
+    public void Start() => this.readLoop ??= Task.Run(ReadLoopAsync);
 
     public async Task<JsonElement> RequestAsync(
         string method,
@@ -48,7 +48,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         CancellationToken cancellationToken,
         bool isExpensive = false)
     {
-        if (!await inFlightLimit.WaitAsync(0).ConfigureAwait(false))
+        if (!await this.inFlightLimit.WaitAsync(0).ConfigureAwait(false))
         {
             throw new UserFacingException("too_many_lsp_requests", "Too many LSP requests are already in flight.");
         }
@@ -56,29 +56,29 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         var expensiveAcquired = false;
         if (isExpensive)
         {
-            if (!await expensiveLimit.WaitAsync(0).ConfigureAwait(false))
+            if (!await this.expensiveLimit.WaitAsync(0).ConfigureAwait(false))
             {
-                inFlightLimit.Release();
+                this.inFlightLimit.Release();
                 throw new UserFacingException("too_many_expensive_lsp_requests", "Too many expensive LSP requests are already in flight.");
             }
 
             expensiveAcquired = true;
         }
 
-        var id = Interlocked.Increment(ref nextId);
+        var id = Interlocked.Increment(ref this.nextId);
         using var timeoutCts = new CancellationTokenSource(timeout);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token, disposeCts.Token);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token, this.disposeCts.Token);
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         var pending = new PendingRequest(method, tcs);
 
-        if (!pendingRequests.TryAdd(id, pending))
+        if (!this.pendingRequests.TryAdd(id, pending))
         {
             if (expensiveAcquired)
             {
-                expensiveLimit.Release();
+                this.expensiveLimit.Release();
             }
 
-            inFlightLimit.Release();
+            this.inFlightLimit.Release();
             throw new InvalidOperationException("Duplicate LSP request id.");
         }
 
@@ -110,13 +110,13 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         }
         finally
         {
-            pendingRequests.TryRemove(id, out _);
+            this.pendingRequests.TryRemove(id, out _);
             if (expensiveAcquired)
             {
-                expensiveLimit.Release();
+                this.expensiveLimit.Release();
             }
 
-            inFlightLimit.Release();
+            this.inFlightLimit.Release();
         }
     }
 
@@ -137,23 +137,23 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or UserFacingException)
         {
-            logger.LogDebug(ex, "LSP shutdown did not complete cleanly.");
+            this.logger.LogDebug(ex, "LSP shutdown did not complete cleanly.");
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        disposeCts.Cancel();
-        foreach (var pending in pendingRequests.Values)
+        this.disposeCts.Cancel();
+        foreach (var pending in this.pendingRequests.Values)
         {
             pending.Completion.TrySetCanceled();
         }
 
-        if (readLoop is not null)
+        if (this.readLoop is not null)
         {
             try
             {
-                await readLoop.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                await this.readLoop.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
@@ -163,22 +163,22 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
             }
         }
 
-        disposeCts.Dispose();
-        inFlightLimit.Dispose();
-        expensiveLimit.Dispose();
-        writeLock.Dispose();
+        this.disposeCts.Dispose();
+        this.inFlightLimit.Dispose();
+        this.expensiveLimit.Dispose();
+        this.writeLock.Dispose();
     }
 
     private async Task WriteMessageAsync(object payload, CancellationToken cancellationToken)
     {
-        await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await this.writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await LspFraming.WriteAsync(input, payload, cancellationToken).ConfigureAwait(false);
+            await LspFraming.WriteAsync(this.input, payload, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            writeLock.Release();
+            this.writeLock.Release();
         }
     }
 
@@ -186,9 +186,9 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     {
         try
         {
-            while (!disposeCts.IsCancellationRequested)
+            while (!this.disposeCts.IsCancellationRequested)
             {
-                using var document = await LspFraming.ReadAsync(output, maxResponsePayloadBytes, disposeCts.Token).ConfigureAwait(false);
+                using var document = await LspFraming.ReadAsync(this.output, this.maxResponsePayloadBytes, this.disposeCts.Token).ConfigureAwait(false);
                 if (document is null)
                 {
                     break;
@@ -200,11 +200,11 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
                     root.TryGetProperty("method", out var requestMethodElement))
                 {
                     var requestMethod = requestMethodElement.GetString();
-                    await ReplyToServerRequestAsync(id, requestMethod, disposeCts.Token).ConfigureAwait(false);
+                    await ReplyToServerRequestAsync(id, requestMethod, this.disposeCts.Token).ConfigureAwait(false);
                 }
                 else if (root.TryGetProperty("id", out idElement) && idElement.TryGetInt64(out id))
                 {
-                    if (!pendingRequests.TryRemove(id, out var pending))
+                    if (!this.pendingRequests.TryRemove(id, out var pending))
                     {
                         continue;
                     }
@@ -237,12 +237,12 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
 
             CompletePending(new IOException("LSP stream closed."));
         }
-        catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
+        catch (OperationCanceledException) when (this.disposeCts.IsCancellationRequested)
         {
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "LSP read loop stopped.");
+            this.logger.LogDebug(ex, "LSP read loop stopped.");
             var userFacingException = ex is InvalidDataException
                 ? new UserFacingException("invalid_lsp_response", ex.Message, ex)
                 : ex;
@@ -280,15 +280,15 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
         {
-            logger.LogDebug(ex, "Failed to send LSP cancellation for request {RequestId}.", id);
+            this.logger.LogDebug(ex, "Failed to send LSP cancellation for request {RequestId}.", id);
         }
     }
 
     private void CompletePending(Exception exception)
     {
-        foreach (var pair in pendingRequests.ToArray())
+        foreach (var pair in this.pendingRequests.ToArray())
         {
-            if (pendingRequests.TryRemove(pair.Key, out var pending))
+            if (this.pendingRequests.TryRemove(pair.Key, out var pending))
             {
                 pending.Completion.TrySetException(exception);
             }

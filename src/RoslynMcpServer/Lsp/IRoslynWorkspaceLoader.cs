@@ -36,8 +36,8 @@ public sealed class RoslynWorkspaceHandle : IAsyncDisposable
 
     public WorkspaceTarget Target { get; }
     public ILspClient Client { get; }
-    public bool IsRunning => isRunning();
+    public bool IsRunning => this.isRunning();
     public int PendingRequestCount => Client.PendingRequestCount;
 
-    public ValueTask DisposeAsync() => disposable?.DisposeAsync() ?? ValueTask.CompletedTask;
+    public ValueTask DisposeAsync() => this.disposable?.DisposeAsync() ?? ValueTask.CompletedTask;
 }

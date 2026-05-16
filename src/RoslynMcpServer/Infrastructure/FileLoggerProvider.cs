@@ -16,16 +16,16 @@ public sealed class FileLoggerProvider : ILoggerProvider
             Directory.CreateDirectory(directory);
         }
 
-        writer = new StreamWriter(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read))
+        this.writer = new StreamWriter(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read))
         {
             AutoFlush = true
         };
         this.minimumLevel = minimumLevel;
     }
 
-    public ILogger CreateLogger(string categoryName) => new FileLogger(categoryName, writer, syncRoot, minimumLevel);
+    public ILogger CreateLogger(string categoryName) => new FileLogger(categoryName, this.writer, this.syncRoot, this.minimumLevel);
 
-    public void Dispose() => writer.Dispose();
+    public void Dispose() => this.writer.Dispose();
 
     private sealed class FileLogger(
         string categoryName,
