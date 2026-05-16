@@ -106,3 +106,42 @@ Warmup retest findings:
 - The previous `find_symbols("HttpContext")` 0-result behavior is not explained by only a short warmup window. It still reproduces after 3 minutes while the workspace remains warming.
 - The result remains a successful MCP/LSP tool execution with weak semantic usefulness, not a transport failure: the response includes `WorkspaceWarming`, `partial`, `totalKnown`, `returned`, and a reason.
 - `hover` timed out again in this long-wait run. This reinforces the earlier note that `textDocument/hover` can intermittently hit the 10-second request timeout on aspnetcore while warming, while the server remains usable for subsequent tools.
+
+## 10-Minute Symbol Warmup Retest
+- Date: 2026-05-17 (Asia/Seoul)
+- roslyn-mcp-server commit: `71c0e67`
+- aspnetcore commit: `93a1b5295d92954d46e26f2bbb3abde15f332a4b`
+- MCP client method: targeted temporary stdio client script in `.local`; server command used `--log-level trace`, `--log-file`, and `--ls-log-dir`.
+- Raw local artifacts: `.local/aspnetcore-long-warmup-20260517-081619-raw.json`, `.local/aspnetcore-long-warmup-20260517-081619.log`, `.local/aspnetcore-long-warmup-20260517-081619-stderr.log`, `.local/aspnetcore-ls-20260517-081619/`.
+- Result: `get_workspace_status` still reported `WorkspaceWarming` at every 60-second poll through 600 seconds.
+- Roslyn LS logging note: `Microsoft.CodeAnalysis.LanguageServer.exe` was launched with `--logLevel Trace --extensionLogDirectory .local/aspnetcore-ls-20260517-081619`, but no files were emitted under that directory during this run. Trace output was captured through server stderr/log instead.
+- Captured log note: no `workspace/projectInitializationComplete` or `textDocument/publishDiagnostics` notification was observed in the captured logs for this run.
+
+Status and symbol checkpoints:
+
+| Warmup | Tool | Result | Elapsed | Count | Workspace State | Completeness | Notes |
+| ---: | --- | --- | ---: | ---: | --- | --- | --- |
+| 0s | get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  | `openDocumentCount: 0`, `knownDiagnosticsFileCount: 0` |
+| 60s | get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  | no status metric change |
+| 120s | get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  | no status metric change |
+| 180s | get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  | no status metric change |
+| 180s | find_symbols | OK | 1.613s | 0 | WorkspaceWarming | partial | Query `HttpContext`; `totalKnown: 0`, `returned: 0` |
+| 240s | get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  | no status metric change |
+| 300s | get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  | no status metric change |
+| 300s | find_symbols | OK | 2.133s | 0 | WorkspaceWarming | partial | Query `HttpContext`; `totalKnown: 0`, `returned: 0` |
+| 360s | get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  | no status metric change |
+| 420s | get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  | no status metric change |
+| 480s | get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  | no status metric change |
+| 540s | get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  | no status metric change |
+| 600s | get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  | no status metric change |
+| 600s | find_symbols | OK | 1.612s | 0 | WorkspaceWarming | partial | Query `HttpContext`; `totalKnown: 0`, `returned: 0` |
+| 600s | document_symbols | OK | 3.047s | 33 | WorkspaceWarming | partial | Final usability probe |
+| 600s | find_references | OK | 18.425s | 3 | WorkspaceWarming | partial | Final usability probe for `HttpContext` |
+
+10-minute retest findings:
+
+- Waiting 10 minutes did not move aspnetcore from `WorkspaceWarming` to `Ready` in this session.
+- `find_symbols("HttpContext")` remained 0-result at 3, 5, and 10 minutes. This is now a long-warm behavior observation, not just a short-wait artifact.
+- `get_workspace_status` currently lacks a Roslyn-internal project/document progress metric. `openDocumentCount` and `knownDiagnosticsFileCount` stayed 0 during passive polling because no file-specific read tool or publish diagnostics changed those MCP-side counters before the final probes.
+- The server remained usable after 10 minutes: final `document_symbols` returned 33 items and final `find_references` returned 3 items.
+- Follow-up should focus on better observability or Roslyn LS load behavior for large `.slnx` workspaces rather than increasing smoke wait time beyond 10 minutes.
