@@ -10,6 +10,28 @@
 - `docs/architecture.md`
 - `docs/large-repo-test-plan.md`
 
+## 현재 구현 상태
+
+2026-05-17 기준 M0/M1 구현은 `main` branch에 push되어 있다.
+
+- 현재 구현 commit: `e9a41b4 Implement M1 Roslyn MCP server skeleton`
+- 확인한 명령:
+
+```text
+dotnet format roslyn-mcp-server.sln --verify-no-changes
+dotnet build roslyn-mcp-server.sln
+dotnet test roslyn-mcp-server.sln --no-build
+```
+
+- 단위 테스트는 9개 통과했다.
+- 구현된 MCP tool은 `list_workspaces`, `load_solution`, `load_project`, `get_workspace_status`뿐이다.
+- navigation/diagnostics/write/refactoring tool은 아직 구현하지 않았다.
+- Roslyn LS spike 결과는 `docs/architecture.md`의 `2026-05-16 Roslyn LS spike 결과` 섹션에 기록되어 있다.
+- LSP client는 Roslyn LS가 보내는 `workspace/configuration` server-to-client request에 빈 배열 결과로 응답한다.
+- M1 loader는 선택된 `.sln`, `.slnx`, `.csproj` 파일 경로를 Roslyn LS에 직접 전달하지 않는다. 대신 해당 파일의 directory를 Roslyn LS process working directory, `initialize.rootUri`, `initialize.workspaceFolders`로 사용한다.
+- `workspace/symbol`은 initialize 직후 trivial sample에서 빈 배열을 반환할 수 있으므로 readiness 판단에 사용하지 않는다.
+- 다음 구현 후보는 M2 read-only tool 전에 `DocumentStateManager`, 실제 Roslyn LS integration test, MCP tool smoke test를 보강하는 것이다.
+
 ## 확정된 결정
 
 - 프로젝트 이름: `roslyn-mcp-server`
