@@ -117,7 +117,7 @@ public sealed class NavigationTools(
             items.Add(new DocumentSymbolItem(
                 symbol.Name,
                 symbol.Kind,
-                SymbolKindName(symbol.Kind),
+                ToMcpSymbolKindName(symbol.Kind),
                 PositionMapper.ToMcpRange(symbol.Range),
                 PositionMapper.ToMcpRange(symbol.SelectionRange),
                 symbol.Detail,
@@ -325,10 +325,11 @@ public sealed class NavigationTools(
                 truncated)
         };
 
-    private static string SymbolKindName(SymbolKind kind) =>
+    private static string ToMcpSymbolKindName(SymbolKind kind) =>
         kind switch
         {
             _ when !System.Enum.IsDefined(kind) => "unknown",
+            // Keep multi-word LSP names in camelCase for stable MCP output.
             SymbolKind.EnumMember => "enumMember",
             SymbolKind.TypeParameter => "typeParameter",
             _ => kind.ToString().ToLowerInvariant()
