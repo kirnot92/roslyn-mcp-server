@@ -1,6 +1,9 @@
-# Test Seam Principles
+# Coding Principles
 
-이 문서는 다음 구현 세션에서도 유지해야 할 테스트 seam 설계 원칙을 기록한다.
+이 문서는 사용자가 요구한 코드 작성의 주요 원칙들을 정리한 것이다.
+사용자가 대화에서 명시한 원칙만 여기에 적는다.
+
+## 테스트 seam
 
 테스트 double을 만들기 위해 production class를 `virtual`/상속 가능하게 바꾸지 않는다.
 
