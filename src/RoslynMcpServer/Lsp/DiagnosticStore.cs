@@ -8,6 +8,7 @@ public sealed class DiagnosticStore(DocumentPathMapper pathMapper, IClock clock)
 {
     public const int DefaultMaxDiagnosticFiles = 1000;
     public const int DefaultMaxDiagnosticsPerFile = 500;
+    public const int DefaultMaxDiagnosticsInspectedPerPublish = 1000;
 
     private readonly object syncLock = new();
     private readonly Dictionary<string, DiagnosticEntry> entries = new(PathComparer);
@@ -73,30 +74,47 @@ public sealed class DiagnosticStore(DocumentPathMapper pathMapper, IClock clock)
             {
                 relativePath = pathMapper.UriToRelativePath(uri);
             }
-            catch (UserFacingException ex) when (ex.Code is "path_outside_root" or "invalid_lsp_uri")
+            catch (UserFacingException)
             {
                 return false;
             }
 
             var diagnostics = new List<StoredDiagnostic>();
+            var totalKnown = 0;
+            var knownSeverityCounts = new MutableSeverityCounts();
+            var inspectionTruncated = false;
             foreach (var diagnosticElement in diagnosticsElement.EnumerateArray())
             {
-                if (diagnostics.Count >= DefaultMaxDiagnosticsPerFile)
+                if (knownSeverityCounts.InspectedElements >= DefaultMaxDiagnosticsInspectedPerPublish)
                 {
+                    inspectionTruncated = true;
                     break;
                 }
 
+                knownSeverityCounts.InspectedElements++;
                 var diagnostic = TryParseDiagnostic(diagnosticElement);
                 if (diagnostic is not null)
                 {
-                    diagnostics.Add(diagnostic);
+                    totalKnown++;
+                    knownSeverityCounts.Add(diagnostic.Severity);
+                    if (diagnostics.Count < DefaultMaxDiagnosticsPerFile)
+                    {
+                        diagnostics.Add(diagnostic);
+                    }
                 }
             }
 
             var now = clock.UtcNow;
             lock (this.syncLock)
             {
-                this.entries[relativePath] = new DiagnosticEntry(relativePath, diagnostics, now, now);
+                this.entries[relativePath] = new DiagnosticEntry(
+                    relativePath,
+                    diagnostics,
+                    totalKnown,
+                    knownSeverityCounts.ToSeverityCounts(),
+                    inspectionTruncated,
+                    now,
+                    now);
                 this.lastUpdatedAt = now;
                 EvictOldEntries();
             }
@@ -129,9 +147,12 @@ public sealed class DiagnosticStore(DocumentPathMapper pathMapper, IClock clock)
             var now = clock.UtcNow;
             entry = entry with { LastAccessedAt = now };
             this.entries[relativePath] = entry;
+            var diagnostics = FilterDiagnostics(entry.Diagnostics, severity).ToArray();
             return new DiagnosticFileSnapshot(
                 entry.File,
-                FilterDiagnostics(entry.Diagnostics, severity).ToArray(),
+                diagnostics,
+                GetTotalKnown(entry, severity),
+                IsTruncated(entry, severity, diagnostics.Length),
                 entry.LastUpdatedAt);
         }
     }
@@ -142,23 +163,26 @@ public sealed class DiagnosticStore(DocumentPathMapper pathMapper, IClock clock)
         {
             var items = new List<DiagnosticWithFile>();
             var totalKnown = 0;
+            var anyCacheTruncated = false;
             foreach (var entry in this.entries.Values.OrderBy(entry => entry.LastUpdatedAt).ThenBy(entry => entry.File, StringComparer.Ordinal))
             {
+                totalKnown += GetTotalKnown(entry, severity);
                 foreach (var diagnostic in FilterDiagnostics(entry.Diagnostics, severity))
                 {
-                    totalKnown++;
                     if (items.Count < maxResults)
                     {
                         items.Add(new DiagnosticWithFile(entry.File, diagnostic));
                     }
                 }
+
+                anyCacheTruncated = anyCacheTruncated || IsTruncated(entry, severity, CountStored(entry, severity));
             }
 
             return new DiagnosticQuerySnapshot(
                 items,
                 totalKnown,
                 items.Count,
-                totalKnown > items.Count,
+                totalKnown > items.Count || anyCacheTruncated,
                 this.lastUpdatedAt);
         }
     }
@@ -223,6 +247,25 @@ public sealed class DiagnosticStore(DocumentPathMapper pathMapper, IClock clock)
             }
         }
     }
+
+    private static int CountStored(DiagnosticEntry entry, DiagnosticSeverity? severity) =>
+        severity is null
+            ? entry.Diagnostics.Count
+            : entry.Diagnostics.Count(diagnostic => diagnostic.Severity == severity.Value);
+
+    private static int GetTotalKnown(DiagnosticEntry entry, DiagnosticSeverity? severity) =>
+        severity switch
+        {
+            null => entry.TotalKnown,
+            DiagnosticSeverity.Error => entry.KnownSeverityCounts.Error,
+            DiagnosticSeverity.Warning => entry.KnownSeverityCounts.Warning,
+            DiagnosticSeverity.Information => entry.KnownSeverityCounts.Information,
+            DiagnosticSeverity.Hint => entry.KnownSeverityCounts.Hint,
+            _ => 0
+        };
+
+    private static bool IsTruncated(DiagnosticEntry entry, DiagnosticSeverity? severity, int storedCount) =>
+        entry.InspectionTruncated || GetTotalKnown(entry, severity) > storedCount;
 
     private static StoredDiagnostic? TryParseDiagnostic(JsonElement diagnosticElement)
     {
@@ -303,8 +346,50 @@ public sealed class DiagnosticStore(DocumentPathMapper pathMapper, IClock clock)
     private sealed record DiagnosticEntry(
         string File,
         IReadOnlyList<StoredDiagnostic> Diagnostics,
+        int TotalKnown,
+        SeverityCounts KnownSeverityCounts,
+        bool InspectionTruncated,
         DateTimeOffset LastUpdatedAt,
         DateTimeOffset LastAccessedAt);
+
+    private sealed class MutableSeverityCounts
+    {
+        public int Error { get; private set; }
+
+        public int Warning { get; private set; }
+
+        public int Information { get; private set; }
+
+        public int Hint { get; private set; }
+
+        public int Unknown { get; private set; }
+
+        public int InspectedElements { get; set; }
+
+        public void Add(DiagnosticSeverity? severity)
+        {
+            switch (severity)
+            {
+                case DiagnosticSeverity.Error:
+                    Error++;
+                    break;
+                case DiagnosticSeverity.Warning:
+                    Warning++;
+                    break;
+                case DiagnosticSeverity.Information:
+                    Information++;
+                    break;
+                case DiagnosticSeverity.Hint:
+                    Hint++;
+                    break;
+                default:
+                    Unknown++;
+                    break;
+            }
+        }
+
+        public SeverityCounts ToSeverityCounts() => new(Error, Warning, Information, Hint, Unknown);
+    }
 }
 
 public sealed record StoredDiagnostic(
@@ -317,6 +402,8 @@ public sealed record StoredDiagnostic(
 public sealed record DiagnosticFileSnapshot(
     string File,
     IReadOnlyList<StoredDiagnostic> Diagnostics,
+    int TotalKnown,
+    bool Truncated,
     DateTimeOffset LastUpdatedAt);
 
 public sealed record DiagnosticWithFile(string File, StoredDiagnostic Diagnostic);

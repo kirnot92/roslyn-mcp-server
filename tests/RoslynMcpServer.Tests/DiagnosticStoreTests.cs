@@ -79,6 +79,48 @@ public sealed class DiagnosticStoreTests
     }
 
     [Fact]
+    public void PerFileDiagnosticCap_PreservesTotalKnownAndTruncationMetadata()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var store = CreateStore(root.Path);
+        var diagnostics = Enumerable
+            .Range(0, DiagnosticStore.DefaultMaxDiagnosticsPerFile + 1)
+            .Select(i => Diagnostic($"diag{i}", DiagnosticSeverity.Error))
+            .ToArray();
+
+        store.TryUpdateFromPublishDiagnostics(Publish(root.Path, "Program.cs", diagnostics));
+
+        var snapshot = store.GetFile("Program.cs", severity: null);
+        Assert.NotNull(snapshot);
+        Assert.Equal(DiagnosticStore.DefaultMaxDiagnosticsPerFile + 1, snapshot.TotalKnown);
+        Assert.Equal(DiagnosticStore.DefaultMaxDiagnosticsPerFile, snapshot.Diagnostics.Count);
+        Assert.True(snapshot.Truncated);
+    }
+
+    [Fact]
+    public void MalformedDiagnosticElements_AreInspectedOnlyUpToCap()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var store = CreateStore(root.Path);
+        var invalidDiagnostics = Enumerable
+            .Range(0, DiagnosticStore.DefaultMaxDiagnosticsInspectedPerPublish + 1)
+            .Select(_ => new { invalid = true })
+            .Cast<object>()
+            .ToArray();
+
+        var updated = store.TryUpdateFromPublishDiagnostics(Publish(root.Path, "Program.cs", invalidDiagnostics));
+
+        Assert.True(updated);
+        var snapshot = store.GetFile("Program.cs", severity: null);
+        Assert.NotNull(snapshot);
+        Assert.Equal(0, snapshot.TotalKnown);
+        Assert.Empty(snapshot.Diagnostics);
+        Assert.True(snapshot.Truncated);
+    }
+
+    [Fact]
     public void CacheEvictsOldestEntriesWhenFileLimitIsExceeded()
     {
         using var root = TestRoot.Create();
@@ -137,6 +179,31 @@ public sealed class DiagnosticStoreTests
 
         Assert.False(outsideUpdated);
         Assert.False(nonFileUpdated);
+        Assert.Equal(0, store.KnownFileCount);
+    }
+
+    [Fact]
+    public void UnsupportedUserFacingPathDiagnostics_AreIgnored()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(outside.Path, "Outside.cs"), "class C { }");
+        var linkPath = Path.Combine(root.Path, "link");
+
+        try
+        {
+            Directory.CreateSymbolicLink(linkPath, outside.Path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            return;
+        }
+
+        var store = CreateStore(root.Path);
+        var updated = store.TryUpdateFromPublishDiagnostics(
+            PublishUri(new Uri(Path.Combine(linkPath, "Outside.cs")).AbsoluteUri, Diagnostic("outside", DiagnosticSeverity.Error)));
+
+        Assert.False(updated);
         Assert.Equal(0, store.KnownFileCount);
     }
 

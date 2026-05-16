@@ -76,19 +76,19 @@ public sealed class DiagnosticsTools(
                 metadata.Reason,
                 metadata.RetryAfterMs,
                 Truncated: false,
-                LastUpdatedAt: diagnostics.LastUpdatedAt);
+                LastUpdatedAt: null);
         }
 
         var items = snapshot.Diagnostics
             .Take(maxResults)
             .Select(diagnostic => MapDiagnostic(snapshot.File, diagnostic))
             .ToArray();
-        var truncated = snapshot.Diagnostics.Count > items.Length;
+        var truncated = snapshot.Truncated || snapshot.Diagnostics.Count > items.Length;
         metadata = CreateMetadata(context.State, scope: "file", hasKnownPublish: true, truncated);
 
         return new DiagnosticsResult(
             items,
-            snapshot.Diagnostics.Count,
+            snapshot.TotalKnown,
             items.Length,
             metadata.WorkspaceState,
             metadata.Completeness,

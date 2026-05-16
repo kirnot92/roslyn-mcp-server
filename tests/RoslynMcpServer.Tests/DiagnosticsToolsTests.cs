@@ -66,6 +66,48 @@ public sealed class DiagnosticsToolsTests
         Assert.Empty(diagnostics.Items);
         Assert.Equal("unknown", diagnostics.Completeness);
         Assert.Contains("No textDocument/publishDiagnostics", diagnostics.Reason);
+        Assert.Null(diagnostics.LastUpdatedAt);
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task FileSpecificDiagnosticsWithoutPublish_DoesNotReturnOtherFileLastUpdatedAt()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "A.cs"), "class A { }");
+        File.WriteAllText(Path.Combine(root.Path, "B.cs"), "class B { }");
+        var (session, tools, store) = CreateLoadedTools(root.Path, new FakeLspClient());
+        store.TryUpdateFromPublishDiagnostics(Publish(root.Path, "A.cs", Diagnostic("boom", DiagnosticSeverity.Error)));
+
+        var result = await tools.Diagnostics(file: "B.cs");
+
+        var diagnostics = Assert.IsType<DiagnosticsResult>(result);
+        Assert.Empty(diagnostics.Items);
+        Assert.Equal("unknown", diagnostics.Completeness);
+        Assert.Null(diagnostics.LastUpdatedAt);
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task FileSpecificDiagnostics_ReportsCacheCapTruncation()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var (session, tools, store) = CreateLoadedTools(root.Path, new FakeLspClient());
+        var diagnosticsPayload = Enumerable
+            .Range(0, DiagnosticStore.DefaultMaxDiagnosticsPerFile + 1)
+            .Select(i => Diagnostic($"diag{i}", DiagnosticSeverity.Error))
+            .ToArray();
+        store.TryUpdateFromPublishDiagnostics(Publish(root.Path, "Program.cs", diagnosticsPayload));
+
+        var result = await tools.Diagnostics(file: "Program.cs", maxResults: 1000);
+
+        var diagnostics = Assert.IsType<DiagnosticsResult>(result);
+        Assert.Equal(DiagnosticStore.DefaultMaxDiagnosticsPerFile + 1, diagnostics.TotalKnown);
+        Assert.Equal(DiagnosticStore.DefaultMaxDiagnosticsPerFile, diagnostics.Returned);
+        Assert.True(diagnostics.Truncated);
         await session.DisposeAsync();
     }
 
