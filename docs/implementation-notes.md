@@ -10,36 +10,81 @@
 - `docs/architecture.md`
 - `docs/large-repo-test-plan.md`
 
-## 현재 구현 상태
+## M0/M1 완료 메모
 
-2026-05-17 기준 M0/M1 구현은 `main` branch에 push되어 있다.
+2026-05-17 기준 M0/M1 구현은 완료되어 `main` branch에 push되어 있다.
 
-- 현재 구현 commit: `e9a41b4 Implement M1 Roslyn MCP server skeleton`
-- 확인한 명령:
+- M0/M1 완료 기준 commit: `3407ad5 Clarify coding principles scope`
+- 이후 새 세션은 이 commit 이후의 `main`에서 M2를 시작하면 된다.
+
+구현된 M0/M1 기능:
+
+- `net10.0` C# solution/app/test project
+- 공식 C# MCP SDK 기반 stdio MCP server
+- CLI 옵션: `--root`, `--roslyn-language-server`, `--log-level`, `--log-file`, `--ls-log-dir`, `--startup-timeout`
+- workspace root 검증과 path guard
+- git-aware workspace scanner: git worktree에서는 `git ls-files -co --exclude-standard -z` 우선, 실패 시 bounded recursive scanner fallback
+- `.sln`, `.slnx`, `.csproj` 후보 탐색과 `list_workspaces`
+- `roslyn-language-server` locator와 미설치 오류
+- Roslyn LS process start/stop
+- LSP framing, request/response correlation, server-to-client request 응답, timeout/cancellation 처리
+- LSP initialize/shutdown
+- `IRoslynWorkspaceLoader` 뒤의 `load_solution`, `load_project`
+- `get_workspace_status`
+- scanner, path guard, LSP framing/client, 기본 workspace 상태 전이 테스트
+
+Roslyn LS spike 결과 요약:
+
+- `roslyn-language-server --stdio --autoLoadProjects`는 정상 실행된다.
+- `initialize.rootUri`와 `workspaceFolders`를 workspace directory URI로 넘기면 initialize가 성공한다.
+- initialize 뒤 `initialized` notification이 필요하다.
+- Roslyn LS는 `workspace/configuration` server-to-client request를 보낼 수 있으므로 client가 응답해야 한다.
+- 작은 sample에서 `textDocument/didOpen` 뒤 `textDocument/documentSymbol`은 정상 응답했다.
+- `workspace/projectInitializationComplete`는 root/workspace 구성에 따라 관찰되지만 항상 즉시 온다고 가정하면 안 된다.
+- `workspace/symbol`은 오류 없이 응답해도 trivial query에서 빈 배열을 반환할 수 있으므로 readiness 판단에 사용하지 않는다.
+- M1 loader는 선택된 `.sln`, `.slnx`, `.csproj` 파일 경로를 Roslyn LS에 직접 전달하지 않고, 해당 파일의 directory를 process working directory, `rootUri`, `workspaceFolders`로 사용한다.
+
+통과한 테스트:
 
 ```text
 dotnet format roslyn-mcp-server.sln --verify-no-changes
 dotnet build roslyn-mcp-server.sln
-dotnet test roslyn-mcp-server.sln --no-build
+dotnet test roslyn-mcp-server.sln
 ```
 
-- 단위 테스트는 9개 통과했다.
-- 구현된 MCP tool은 `list_workspaces`, `load_solution`, `load_project`, `get_workspace_status`뿐이다.
-- navigation/diagnostics/write/refactoring tool은 아직 구현하지 않았다.
-- Roslyn LS spike 결과는 `docs/architecture.md`의 `2026-05-16 Roslyn LS spike 결과` 섹션에 기록되어 있다.
-- LSP client는 Roslyn LS가 보내는 `workspace/configuration` server-to-client request에 빈 배열 결과로 응답한다.
-- M1 loader는 선택된 `.sln`, `.slnx`, `.csproj` 파일 경로를 Roslyn LS에 직접 전달하지 않는다. 대신 해당 파일의 directory를 Roslyn LS process working directory, `initialize.rootUri`, `initialize.workspaceFolders`로 사용한다.
-- `workspace/symbol`은 initialize 직후 trivial sample에서 빈 배열을 반환할 수 있으므로 readiness 판단에 사용하지 않는다.
-- 다음 구현 후보는 M2 read-only tool 전에 `DocumentStateManager`, 실제 Roslyn LS integration test, MCP tool smoke test를 보강하는 것이다.
+- 마지막 확인 결과: 17 passed / 0 failed
 
-2026-05-17 추가 구현 상태:
+남은 known issue:
 
-- `GitWorkspaceScanner`를 추가했다.
-- workspace 탐색은 git worktree 안에서 `git -C <root> ls-files -co --exclude-standard -z`를 먼저 사용한다.
-- 이 방식은 `.gitignore`를 직접 파싱하지 않고 git의 ignore semantics를 그대로 사용하기 위한 것이다. 따라서 하위 `.gitignore`, `.git/info/exclude`, global exclude까지 반영된다.
-- git이 없거나 root가 git worktree 밖이거나 git 탐색이 실패하면 기존 bounded recursive scanner로 fallback한다.
-- fallback scanner의 hardcoded excluded directory 목록은 non-git 디렉터리와 실패 fallback을 위한 안전망으로 남긴다.
-- git 기반 결과도 `PathGuard`와 `File.Exists` 검증을 통과해야 후보로 반환한다.
+- 실제 Roslyn LS integration test harness는 아직 없다.
+- MCP client와의 end-to-end smoke test는 아직 없다.
+- `DocumentStateManager`가 아직 없어서 위치 기반 read tool 구현 전 파일 open/sync 계약을 추가해야 한다.
+- `Ready` 상태는 `workspace/projectInitializationComplete` notification에 의존하지만, notification이 항상 빨리 오지 않을 수 있다.
+- solution/project 파일을 Roslyn LS에 직접 지정하는 전용 option/command는 아직 확인되지 않았다.
+
+M2에서 주의할 점:
+
+- M2 read-only tool을 추가하기 전에 `DocumentStateManager`와 file URI/line-column 변환 테스트를 먼저 보강한다.
+- Roslyn navigation/diagnostics tool은 `StartingLanguageServer`에서 queue에 쌓지 말고 `workspace_loading`을 반환해야 한다.
+- `LspReady`/`WorkspaceWarming`에서는 가능한 read tool을 best-effort로 실행하되 `workspaceState`, `completeness` metadata를 포함한다.
+- 모든 사용자 입력 path는 `PathGuard`를 통과해야 한다.
+- stdout에는 로그를 쓰지 않는다.
+- 대량 결과는 result limit/truncation metadata를 포함해야 한다.
+- 테스트 seam이 필요하면 production class를 `virtual`/상속 가능하게 열지 말고 작은 interface를 둔다. 자세한 원칙은 `docs/coding-principles.md`를 따른다.
+
+M2에서 건드리면 안 되는 범위:
+
+- NuGet/.NET global tool 게시
+- `roslyn-language-server` 번들링
+- release 자동화
+- write/refactoring tool
+- rename/code action/formatting/apply 계열 tool
+- workspace 전체 diagnostics 무제한 반환
+- 대규모 repository 무제한 재귀 탐색
+
+## 현재 구현 상태
+
+최신 구현 상태는 위 `M0/M1 완료 메모`를 기준으로 본다.
 
 ## 확정된 결정
 
