@@ -38,3 +38,31 @@ private sealed class SlowNullGitScanner : IGitWorkspaceScanner
     // test double
 }
 ```
+
+## 외부 protocol 상수
+
+LSP처럼 외부 specification이 숫자 enum이나 문자열 상수를 정의하는 경우, tool 구현 코드 안에 magic number switch를 직접 두지 않는다.
+
+나쁜 방향:
+
+- `1 => "file"`, `2 => "module"`처럼 출처가 보이지 않는 숫자 매핑을 tool class에 둔다.
+- Roslyn 고유 값인지 LSP 표준 값인지 알 수 없는 상수를 inline으로 반복한다.
+
+좋은 방향:
+
+- protocol model 파일에 enum 또는 named constant로 정의한다.
+- 정의 근처에 기준 specification 링크를 짧게 남긴다.
+- tool layer는 enum/constant 이름을 사용하고, 출력용 문자열 변환만 mapper helper에 둔다.
+
+예:
+
+```csharp
+// Values are defined by the Language Server Protocol SymbolKind constants:
+// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind
+public enum SymbolKind
+{
+    File = 1,
+    Module = 2,
+    Class = 5
+}
+```

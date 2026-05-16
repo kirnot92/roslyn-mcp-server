@@ -58,14 +58,14 @@ public sealed class NavigationToolsTests
         {
             new DocumentSymbol(
                 "C",
-                5,
+                SymbolKind.Class,
                 new Lsp.Range(new Position(0, 0), new Position(0, 26)),
                 new Lsp.Range(new Position(0, 6), new Position(0, 7)),
                 Children:
                 [
                     new DocumentSymbol(
                         "M",
-                        6,
+                        SymbolKind.Method,
                         new Lsp.Range(new Position(0, 10), new Position(0, 24)),
                         new Lsp.Range(new Position(0, 15), new Position(0, 16)))
                 ])

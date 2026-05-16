@@ -28,7 +28,7 @@ public sealed record McpRange(int StartLine, int StartColumn, int EndLine, int E
 
 public sealed record DocumentSymbolItem(
     string Name,
-    int Kind,
+    SymbolKind Kind,
     string KindName,
     McpRange Range,
     McpRange SelectionRange,
