@@ -31,6 +31,7 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 - Roslyn LS 명시 workspace file 선택 spike와 directory ambiguity warning
 - LSP read loop fault 상태 노출 및 `WorkspaceSession`의 `Failed` 전환
 - git scanner pathspec 적용
+- stdio MCP 환경에서 git child process stdin 상속을 끊고 null-delimited output을 streaming 처리하도록 git scanner 보강
 - filesystem fallback scanner candidate-limit 조기 중단
 - large repo tuning CLI 옵션 공개
 

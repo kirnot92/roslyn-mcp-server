@@ -25,6 +25,8 @@
 
 The default scan timeout is a notable blocker: with the same MCP client and no `--scan-timeout` override, `list_workspaces(refresh: true)` returned in about 3.09s with `truncated: true`, `truncationReason: scan_timeout`, and 0 solution/project candidates. A direct `git ls-files -co --exclude-standard -- '*.sln' '*.slnx' '*.csproj'` check found 45 candidates in about 0.04s, so this needs follow-up before relying on defaults for broader real-repo smoke.
 
+Follow-up on 2026-05-17: after fixing git scanner stdio handling and streaming output parsing, default `list_workspaces(refresh: true)` on the same PowerShell checkout returned 3 solutions and 42 projects. MCP wall time was 0.103s, server scan elapsed was `00:00:00.0662145`, `truncated` was false, and `PowerShell.sln` was included.
+
 ## Tool Results
 Test file: `src/powershell/Program.cs`, selected because it is a small real entry point file with visible `ManagedPSEntry` and `Main` symbols and is not generated.
 

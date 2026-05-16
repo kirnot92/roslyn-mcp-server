@@ -49,6 +49,37 @@ public sealed class GitWorkspaceScannerTests
     }
 
     [Fact]
+    public void TryScan_ReturnsWorkspaceCandidatesWhenManyNonWorkspaceFilesExist()
+    {
+        if (!GitIsAvailable())
+        {
+            return;
+        }
+
+        using var root = TestRoot.Create();
+        RunGit(root.Path, "init");
+        Directory.CreateDirectory(Path.Combine(root.Path, "noise"));
+        for (var i = 0; i < 2000; i++)
+        {
+            File.WriteAllText(Path.Combine(root.Path, "noise", $"File{i:D4}.txt"), string.Empty);
+        }
+
+        File.WriteAllText(Path.Combine(root.Path, "PowerShell.sln"), string.Empty);
+        Directory.CreateDirectory(Path.Combine(root.Path, "src", "PowerShell"));
+        File.WriteAllText(Path.Combine(root.Path, "src", "PowerShell", "PowerShell.csproj"), string.Empty);
+        var options = CreateOptions(root.Path);
+        var scanner = new GitWorkspaceScanner(options, new PathGuard(root.Path));
+
+        var result = scanner.TryScan();
+
+        Assert.NotNull(result);
+        Assert.False(result.Truncated);
+        Assert.True(result.Elapsed < options.ScanTimeout);
+        Assert.Equal(["PowerShell.sln"], result.Solutions.Select(x => x.RelativePath).ToArray());
+        Assert.Equal(["src/PowerShell/PowerShell.csproj"], result.Projects.Select(x => x.RelativePath).ToArray());
+    }
+
+    [Fact]
     public void TryScan_DoesNotMissSolutionWhenProjectLimitIsReachedFirst()
     {
         if (!GitIsAvailable())
@@ -73,6 +104,54 @@ public sealed class GitWorkspaceScannerTests
         Assert.Equal("project_candidate_limit", result.TruncationReason);
         Assert.Equal(["z/App.sln"], result.Solutions.Select(x => x.RelativePath).ToArray());
         Assert.Single(result.Projects);
+    }
+
+    [Fact]
+    public void TryScan_TruncatesWhenSolutionAndProjectLimitsAreBothReached()
+    {
+        if (!GitIsAvailable())
+        {
+            return;
+        }
+
+        using var root = TestRoot.Create();
+        RunGit(root.Path, "init");
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), string.Empty);
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        Directory.CreateDirectory(Path.Combine(root.Path, "src"));
+        File.WriteAllText(Path.Combine(root.Path, "src", "Other.csproj"), string.Empty);
+        File.WriteAllText(Path.Combine(root.Path, "src", "Other.sln"), string.Empty);
+        var options = CreateOptions(root.Path) with
+        {
+            MaxSolutionCandidates = 1,
+            MaxProjectCandidates = 1
+        };
+        var scanner = new GitWorkspaceScanner(options, new PathGuard(root.Path));
+
+        var result = scanner.TryScan();
+
+        Assert.NotNull(result);
+        Assert.True(result.Truncated);
+        Assert.Equal("candidate_limit", result.TruncationReason);
+        Assert.Single(result.Solutions);
+        Assert.Single(result.Projects);
+    }
+
+    [Fact]
+    public void WorkspaceScanner_FallsBackToFileSystemWhenGitScanFails()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        Directory.CreateDirectory(Path.Combine(root.Path, "src"));
+        File.WriteAllText(Path.Combine(root.Path, "src", "App.csproj"), string.Empty);
+        var options = CreateOptions(root.Path);
+        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), new FastNullGitScanner());
+
+        var result = scanner.Scan();
+
+        Assert.False(result.Truncated);
+        Assert.Equal(["App.sln"], result.Solutions.Select(x => x.RelativePath).ToArray());
+        Assert.Equal(["src/App.csproj"], result.Projects.Select(x => x.RelativePath).ToArray());
     }
 
     [Fact]
@@ -155,5 +234,14 @@ public sealed class GitWorkspaceScannerTests
             Thread.Sleep(TimeSpan.FromMilliseconds(5));
             return null;
         }
+    }
+
+    private sealed class FastNullGitScanner : IGitWorkspaceScanner
+    {
+        public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default) =>
+            null;
+
+        public WorkspaceScanResult? TryScan(TimeSpan budget, CancellationToken cancellationToken = default) =>
+            null;
     }
 }

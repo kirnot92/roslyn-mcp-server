@@ -1,4 +1,7 @@
+using System.Buffers;
 using System.Diagnostics;
+using System.Text;
+using Microsoft.Extensions.Logging;
 using RoslynMcpServer.Cli;
 
 namespace RoslynMcpServer.Workspace;
@@ -7,7 +10,10 @@ namespace RoslynMcpServer.Workspace;
 // path. Returning null is intentional: WorkspaceScanner will fall back to a
 // bounded filesystem scan when git is unavailable, outside a worktree, or
 // fails before exhausting the scan budget.
-public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard) : IGitWorkspaceScanner
+public sealed class GitWorkspaceScanner(
+    CliOptions options,
+    PathGuard pathGuard,
+    ILogger<GitWorkspaceScanner>? logger = null) : IGitWorkspaceScanner
 {
     public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default)
     {
@@ -47,35 +53,55 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
             using var process = Process.Start(startInfo);
             if (process is null)
             {
+                logger?.LogDebug("Git workspace scan could not start git ls-files.");
                 return null;
             }
 
-            var outputTask = ReadAllBytesAsync(process.StandardOutput.BaseStream, linkedCts.Token);
+            CloseStandardInput(process);
+
+            var builder = new GitScanResultBuilder(options, pathGuard);
+            var outputTask = ReadWorkspacePathsAsync(
+                process.StandardOutput.BaseStream,
+                builder,
+                process,
+                sw,
+                linkedCts.Token);
             var errorTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
+            WorkspaceScanResult result;
 
             try
             {
+                result = outputTask.GetAwaiter().GetResult();
                 process.WaitForExitAsync(linkedCts.Token).GetAwaiter().GetResult();
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
             {
                 KillProcess(process);
+                logger?.LogDebug("Git workspace scan timed out after {Elapsed}.", sw.Elapsed);
                 return null;
             }
 
-            if (process.ExitCode != 0)
+            if (process.ExitCode != 0 && !builder.StoppedAfterCandidateLimit)
             {
-                _ = errorTask.GetAwaiter().GetResult();
+                var error = errorTask.GetAwaiter().GetResult();
+                logger?.LogDebug("Git workspace scan failed with exit code {ExitCode}: {Error}", process.ExitCode, error);
                 return null;
             }
 
-            var output = outputTask.GetAwaiter().GetResult();
             sw.Stop();
+            logger?.LogDebug(
+                "Git workspace scan completed in {Elapsed}. Solutions={SolutionCount}, Projects={ProjectCount}, Truncated={Truncated}, Reason={TruncationReason}",
+                result.Elapsed,
+                result.Solutions.Count,
+                result.Projects.Count,
+                result.Truncated,
+                result.TruncationReason);
 
-            return BuildScanResult(output, sw.Elapsed);
+            return result;
         }
-        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
+            logger?.LogDebug(ex, "Git workspace scan failed before filesystem fallback.");
             return null;
         }
     }
@@ -87,50 +113,69 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
             using var process = Process.Start(CreateGitStartInfo("rev-parse", "--is-inside-work-tree"));
             if (process is null)
             {
+                logger?.LogDebug("Git workspace scan could not start git rev-parse.");
                 return false;
             }
+
+            CloseStandardInput(process);
 
             var timeoutMs = (int)Math.Clamp(Math.Min(budget.TotalMilliseconds, 3000), 1, int.MaxValue);
             if (!process.WaitForExit(timeoutMs))
             {
                 KillProcess(process);
+                logger?.LogDebug("Git workspace scan rev-parse timed out after {TimeoutMs}ms.", timeoutMs);
                 return false;
             }
 
             var output = process.StandardOutput.ReadToEnd().Trim();
-            return process.ExitCode == 0 && string.Equals(output, "true", StringComparison.OrdinalIgnoreCase);
+            var isInsideWorkTree = process.ExitCode == 0 &&
+                string.Equals(output, "true", StringComparison.OrdinalIgnoreCase);
+            if (!isInsideWorkTree)
+            {
+                logger?.LogDebug(
+                    "Git workspace scan skipped because rev-parse returned exit code {ExitCode} and output '{Output}'.",
+                    process.ExitCode,
+                    output);
+            }
+
+            return isInsideWorkTree;
         }
-        catch
+        catch (Exception ex)
         {
             if (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
 
+            logger?.LogDebug(ex, "Git workspace scan rev-parse failed.");
             return false;
         }
     }
 
-    private WorkspaceScanResult BuildScanResult(byte[] output, TimeSpan elapsed)
+    private sealed class GitScanResultBuilder(CliOptions options, PathGuard pathGuard)
     {
-        var solutions = new List<WorkspaceCandidate>();
-        var projects = new List<WorkspaceCandidate>();
-        var seen = new HashSet<string>(OperatingSystem.IsWindows()
+        private readonly List<WorkspaceCandidate> _solutions = [];
+        private readonly List<WorkspaceCandidate> _projects = [];
+        private readonly HashSet<string> _seen = new(OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal);
-        string? truncationReason = null;
 
-        foreach (var relativePath in SplitNullTerminatedUtf8(output))
+        private string? _truncationReason;
+
+        public bool StoppedAfterCandidateLimit { get; private set; }
+
+        public void AddRelativePath(ReadOnlySpan<byte> utf8Path)
         {
+            var relativePath = Encoding.UTF8.GetString(utf8Path);
             if (string.IsNullOrWhiteSpace(relativePath))
             {
-                continue;
+                return;
             }
 
             var extension = Path.GetExtension(relativePath);
             if (!IsWorkspaceExtension(extension))
             {
-                continue;
+                return;
             }
 
             string fullPath;
@@ -140,45 +185,59 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
             }
             catch
             {
-                continue;
+                return;
             }
 
-            if (!File.Exists(fullPath) || !seen.Add(fullPath))
+            if (!File.Exists(fullPath) || !_seen.Add(fullPath))
             {
-                continue;
+                return;
             }
 
             if (IsSolutionExtension(extension))
             {
-                if (solutions.Count >= options.MaxSolutionCandidates)
+                if (_solutions.Count >= options.MaxSolutionCandidates)
                 {
-                    truncationReason = "solution_candidate_limit";
-                    continue;
+                    _truncationReason = "solution_candidate_limit";
+                    return;
                 }
 
-                solutions.Add(ToCandidate(fullPath, string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
+                _solutions.Add(ToCandidate(fullPath, string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
                     ? WorkspaceKind.SolutionX
                     : WorkspaceKind.Solution));
             }
             else
             {
-                if (projects.Count >= options.MaxProjectCandidates)
+                if (_projects.Count >= options.MaxProjectCandidates)
                 {
-                    truncationReason = "project_candidate_limit";
-                    continue;
+                    _truncationReason = "project_candidate_limit";
+                    return;
                 }
 
-                projects.Add(ToCandidate(fullPath, WorkspaceKind.Project));
+                _projects.Add(ToCandidate(fullPath, WorkspaceKind.Project));
+            }
+
+            if (_solutions.Count >= options.MaxSolutionCandidates &&
+                _projects.Count >= options.MaxProjectCandidates)
+            {
+                _truncationReason ??= "candidate_limit";
+                StoppedAfterCandidateLimit = true;
             }
         }
 
-        return new WorkspaceScanResult(
-            pathGuard.Root,
-            WorkspaceScanner.SortCandidates(solutions),
-            WorkspaceScanner.SortCandidates(projects),
-            truncationReason is not null,
-            truncationReason,
-            elapsed);
+        public WorkspaceScanResult ToResult(TimeSpan elapsed) =>
+            new(
+                pathGuard.Root,
+                WorkspaceScanner.SortCandidates(_solutions),
+                WorkspaceScanner.SortCandidates(_projects),
+                _truncationReason is not null,
+                _truncationReason,
+                elapsed);
+
+        private WorkspaceCandidate ToCandidate(string fullPath, WorkspaceKind kind)
+        {
+            var normalized = Path.GetFullPath(fullPath);
+            return new WorkspaceCandidate(kind, normalized, pathGuard.ToRelativePath(normalized));
+        }
     }
 
     private ProcessStartInfo CreateGitStartInfo(params string[] arguments)
@@ -188,6 +247,7 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             CreateNoWindow = true,
             WorkingDirectory = pathGuard.Root
         };
@@ -200,31 +260,6 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
         }
 
         return startInfo;
-    }
-
-    private WorkspaceCandidate ToCandidate(string fullPath, WorkspaceKind kind)
-    {
-        var normalized = Path.GetFullPath(fullPath);
-        return new WorkspaceCandidate(kind, normalized, pathGuard.ToRelativePath(normalized));
-    }
-
-    private static IEnumerable<string> SplitNullTerminatedUtf8(byte[] bytes)
-    {
-        var start = 0;
-        for (var i = 0; i < bytes.Length; i++)
-        {
-            if (bytes[i] != 0)
-            {
-                continue;
-            }
-
-            if (i > start)
-            {
-                yield return System.Text.Encoding.UTF8.GetString(bytes, start, i - start);
-            }
-
-            start = i + 1;
-        }
     }
 
     private static bool IsWorkspaceExtension(string extension) =>
@@ -248,10 +283,65 @@ public sealed class GitWorkspaceScanner(CliOptions options, PathGuard pathGuard)
         }
     }
 
-    private static async Task<byte[]> ReadAllBytesAsync(Stream stream, CancellationToken cancellationToken)
+    private static void CloseStandardInput(Process process)
     {
-        using var memoryStream = new MemoryStream();
-        await stream.CopyToAsync(memoryStream, cancellationToken).ConfigureAwait(false);
-        return memoryStream.ToArray();
+        try
+        {
+            process.StandardInput.Close();
+        }
+        catch
+        {
+        }
+    }
+
+    private static async Task<WorkspaceScanResult> ReadWorkspacePathsAsync(
+        Stream stream,
+        GitScanResultBuilder builder,
+        Process process,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[8192];
+        var path = new ArrayBufferWriter<byte>(256);
+
+        while (true)
+        {
+            var read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                break;
+            }
+
+            for (var i = 0; i < read; i++)
+            {
+                if (buffer[i] == 0)
+                {
+                    if (path.WrittenCount > 0)
+                    {
+                        builder.AddRelativePath(path.WrittenSpan);
+                        path.Clear();
+                    }
+
+                    if (builder.StoppedAfterCandidateLimit)
+                    {
+                        KillProcess(process);
+                        return builder.ToResult(stopwatch.Elapsed);
+                    }
+
+                    continue;
+                }
+
+                var destination = path.GetSpan(1);
+                destination[0] = buffer[i];
+                path.Advance(1);
+            }
+        }
+
+        if (path.WrittenCount > 0)
+        {
+            builder.AddRelativePath(path.WrittenSpan);
+        }
+
+        return builder.ToResult(stopwatch.Elapsed);
     }
 }
