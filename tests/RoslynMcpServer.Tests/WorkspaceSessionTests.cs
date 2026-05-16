@@ -57,7 +57,7 @@ public sealed class WorkspaceSessionTests
             16,
             2);
         var guard = new PathGuard(root);
-        return new WorkspaceSession(new WorkspaceScanner(options, guard), guard, loader);
+        return new WorkspaceSession(new WorkspaceScanner(options, guard, gitScanner: null), guard, loader);
     }
 
     private sealed class FakeLoader : IRoslynWorkspaceLoader

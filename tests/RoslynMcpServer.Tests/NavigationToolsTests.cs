@@ -432,7 +432,7 @@ public sealed class NavigationToolsTests
     private static WorkspaceSession CreateSession(string root, IRoslynWorkspaceLoader loader)
     {
         var guard = new PathGuard(root);
-        return new WorkspaceSession(new WorkspaceScanner(CreateOptions(root), guard), guard, loader);
+        return new WorkspaceSession(new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null), guard, loader);
     }
 
     private static CliOptions CreateOptions(string root) =>

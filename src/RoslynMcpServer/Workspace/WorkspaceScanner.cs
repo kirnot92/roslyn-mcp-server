@@ -7,7 +7,7 @@ namespace RoslynMcpServer.Workspace;
 // repository ignore rules. This scanner owns the bounded filesystem fallback
 // for non-git roots or environments where git probing fails before consuming
 // the scan budget.
-public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IGitWorkspaceScanner? gitScanner = null)
+public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IGitWorkspaceScanner? gitScanner)
 {
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {

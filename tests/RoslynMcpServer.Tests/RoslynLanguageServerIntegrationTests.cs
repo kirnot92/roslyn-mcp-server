@@ -50,7 +50,7 @@ public sealed class RoslynLanguageServerIntegrationTests
 
         var guard = new PathGuard(root.Path);
         var session = new WorkspaceSession(
-            new WorkspaceScanner(options, guard),
+            new WorkspaceScanner(options, guard, new GitWorkspaceScanner(options, guard)),
             guard,
             new RoslynWorkspaceLoader(
                 options,
