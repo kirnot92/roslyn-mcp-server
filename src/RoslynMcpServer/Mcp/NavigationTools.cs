@@ -25,10 +25,6 @@ public sealed class NavigationTools(
     private const int MaxReferencesMaxResults = 1000;
     private const int DefaultImplementationsMaxResults = DefaultReferencesMaxResults;
     private const int MaxImplementationsMaxResults = MaxReferencesMaxResults;
-    private const string FindImplementationsToolDescription =
-        "Return implementation locations for a C# contract position.";
-    private const string FindImplementationsUsageHint =
-        "Use interface/abstract/base contract positions; concrete implementation positions may return only themselves.";
     private const int DefaultSymbolMaxResults = 300;
     private const int MaxSymbolMaxResults = 1000;
     private const int MinSymbolQueryLength = 2;
@@ -249,7 +245,7 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "find_implementations")]
-    [Description(FindImplementationsToolDescription)]
+    [Description("Return implementation locations for a C# contract position.")]
     public async Task<object> FindImplementations(
         string file,
         int line,
@@ -280,7 +276,7 @@ public sealed class NavigationTools(
                 locations.Items,
                 locations.TotalKnown,
                 locations.Returned,
-                FindImplementationsUsageHint,
+                "Use interface/abstract/base contract positions; concrete implementation positions may return only themselves.",
                 metadata.WorkspaceState,
                 metadata.Completeness,
                 metadata.Reason,
