@@ -7,7 +7,7 @@
 - OS: Microsoft Windows NT 10.0.19045.0
 - dotnet: SDK `10.0.203`, host `10.0.7`
 - roslyn-language-server: `5.8.0-1.26262.10+036e7a58b9d4348a62b6854544274551ae17ae8c`
-- MCP client method: temporary newline-delimited JSON-RPC stdio client script in `.local`; server command used default scan options with `--root D:\Workspace\real-repos\semantic-kernel`
+- MCP client method: `scripts/smoke-tests/mcp_semantic_kernel_smoke.py`; server command used default scan options with `--root .local/real-repos/semantic-kernel`
 
 ## Server Validation
 - format: Passed, `dotnet format roslyn-mcp-server.sln --verify-no-changes`

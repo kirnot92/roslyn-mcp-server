@@ -1,4 +1,4 @@
-﻿# M2 PowerShell Smoke Test
+# M2 PowerShell Smoke Test
 
 ## Environment
 - Date: 2026-05-17 (Asia/Seoul)
@@ -7,7 +7,7 @@
 - OS: Microsoft Windows NT 10.0.19045.0
 - dotnet: SDK `10.0.203`, host `10.0.7`
 - roslyn-language-server: `5.8.0-1.26262.10+036e7a58b9d4348a62b6854544274551ae17ae8c`
-- MCP client method: temporary newline-delimited JSON-RPC stdio client script in `.local`; final complete discovery run used `dotnet run --project src/RoslynMcpServer -- --root D:\Workspace\real-repos\PowerShell --log-file .local\powershell-smoke.log --scan-timeout 10`
+- MCP client method: `scripts/smoke-tests/mcp_powershell_smoke.py`; final complete discovery run used `dotnet run --project src/RoslynMcpServer -- --root .local/real-repos/PowerShell --log-file .local/powershell-smoke.log --scan-timeout 10`
 
 ## Server Validation
 - format: Passed, `dotnet format roslyn-mcp-server.sln --verify-no-changes`
@@ -63,7 +63,7 @@ Test file: `src/powershell/Program.cs`, selected because it is a small real entr
 ## Blocker Retest
 - Date: 2026-05-17 (Asia/Seoul)
 - roslyn-mcp-server commit: `ab27d2a Fix git workspace discovery under stdio`
-- MCP client method: same temporary stdio client script, default server options without `--scan-timeout` override
+- MCP client method: `scripts/smoke-tests/mcp_powershell_smoke.py`, default server options without `--scan-timeout` override
 - Result: Default `list_workspaces(refresh: true)` returned successfully in 0.101s wall time, with server scan elapsed `00:00:00.0696729`.
 - Workspace candidates: 3 solutions, 42 projects
 - truncated: false
@@ -89,7 +89,7 @@ Retest tool summary:
 - roslyn-mcp-server commit: `536e8ff Open selected Roslyn workspace explicitly`
 - PowerShell commit: `90d3b7f2e355e457d92b6929f6b4cfe4fa651e35`
 - roslyn-language-server: `5.8.0-1.26262.10+036e7a58b9d4348a62b6854544274551ae17ae8c`
-- MCP client method: `.local/mcp_powershell_smoke.py`, default server options
+- MCP client method: `scripts/smoke-tests/mcp_powershell_smoke.py`, default server options
 - Raw output: `.local/powershell-smoke-raw.json`
 
 Notes:
@@ -116,7 +116,7 @@ Retest tool summary:
 ## Project Load Error Surfacing Retest
 - Date: 2026-05-17 (Asia/Seoul)
 - roslyn-mcp-server commit: `Surface Roslyn project load errors` change
-- MCP client method: `.local/mcp_powershell_smoke.py`, default server options
+- MCP client method: `scripts/smoke-tests/mcp_powershell_smoke.py`, default server options
 - Raw output: `.local/powershell-smoke-raw.json`
 
 Root cause confirmed:
@@ -147,16 +147,16 @@ Retest tool summary:
 - Date: 2026-05-17 (Asia/Seoul)
 - roslyn-mcp-server commit: `91e8d62 Surface Roslyn project load errors`
 - PowerShell commit: `90d3b7f2e355e457d92b6929f6b4cfe4fa651e35`
-- MCP client method: `.local/mcp_powershell_smoke.py`, then a 10-minute wait variant based on the same local script
+- MCP client method: `scripts/smoke-tests/mcp_powershell_smoke.py`, then `scripts/smoke-tests/mcp_powershell_wait10m.py`
 - Raw outputs: `.local/powershell-smoke-raw.json`, `.local/powershell-smoke-wait10m-raw.json`
 - Roslyn/MCP log file: `.local/powershell-smoke.log`
 
 Environment changes:
 
-- Installed SDK `11.0.100-preview.3.26207.106` into `C:\Users\Beretta\AppData\Local\Microsoft\dotnet` to satisfy PowerShell `global.json`.
+- Installed SDK `11.0.100-preview.3.26207.106` into `%LOCALAPPDATA%\Microsoft\dotnet` to satisfy PowerShell `global.json`.
 - Installed SDK `10.0.203` into the same user-local dotnet root so `dotnet run` can execute the `net10.0` MCP server while the user-local dotnet remains first on `PATH`.
-- Smoke commands used `DOTNET_ROOT=C:\Users\Beretta\AppData\Local\Microsoft\dotnet` and a `PATH` prefix of `C:\Users\Beretta\AppData\Local\Microsoft\dotnet;C:\Users\Beretta\.dotnet\tools`.
-- In `D:\Workspace\real-repos\PowerShell`, `dotnet --version` resolved to `11.0.100-preview.3.26207.106`.
+- Smoke commands used `DOTNET_ROOT=%LOCALAPPDATA%\Microsoft\dotnet` and a `PATH` prefix of `%LOCALAPPDATA%\Microsoft\dotnet;%USERPROFILE%\.dotnet\tools`.
+- In `.local/real-repos/PowerShell`, `dotnet --version` resolved to `11.0.100-preview.3.26207.106`.
 
 Immediate smoke summary:
 

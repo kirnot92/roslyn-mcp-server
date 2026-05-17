@@ -7,7 +7,7 @@
 - OS: Microsoft Windows NT 10.0.19045.0
 - dotnet: SDK `10.0.203`, host `10.0.7`
 - roslyn-language-server: `5.8.0-1.26262.10+036e7a58b9d4348a62b6854544274551ae17ae8c`
-- MCP client method: temporary newline-delimited JSON-RPC stdio client script in `.local`; server command used default scan options with `--root D:\Workspace\real-repos\aspnetcore`
+- MCP client method: `scripts/smoke-tests/mcp_aspnetcore_smoke.py`; server command used default scan options with `--root .local/real-repos/aspnetcore`
 
 ## Server Validation
 - format: Passed, `dotnet format roslyn-mcp-server.sln --verify-no-changes`
@@ -58,7 +58,7 @@ Test file: `src/Http/Http.Abstractions/src/HttpContext.cs`, selected because it 
 
 ## 30-Second Warmup Retest
 - Date: 2026-05-17 (Asia/Seoul)
-- MCP client method: same temporary stdio client script, but waited 30 seconds after `load_solution` before invoking read tools.
+- MCP client method: `scripts/smoke-tests/mcp_aspnetcore_smoke.py`, but waited 30 seconds after `load_solution` before invoking read tools.
 - Result: `get_workspace_status` still reported `WorkspaceWarming` after the 30-second wait.
 - Semantic difference: no material improvement for the selected positions. `go_to_definition(HttpRequest)` still returned 0 locations, and `find_symbols("HttpContext")` still returned 0 items with partial/incomplete-index metadata.
 
@@ -85,7 +85,7 @@ Warmup retest findings:
 - Date: 2026-05-17 (Asia/Seoul)
 - roslyn-mcp-server commit: `893768452f534fe84ad5864f4ec6b9867dee029f`
 - aspnetcore commit: `93a1b5295d92954d46e26f2bbb3abde15f332a4b`
-- MCP client method: same temporary stdio client script with `ASPNETCORE_SMOKE_WARMUP_SECONDS=180`.
+- MCP client method: `scripts/smoke-tests/mcp_aspnetcore_smoke.py` with `ASPNETCORE_SMOKE_WARMUP_SECONDS=180`.
 - Result: `get_workspace_status` still reported `WorkspaceWarming` after the 180-second wait.
 - Workspace discovery note: after increasing the default project candidate limit to 1000, default `list_workspaces(refresh: true)` returned 2 solutions and 609 projects in 0.888s wall time, server scan elapsed `00:00:00.8339725`, `truncated: false`.
 - Semantic difference: no improvement for `find_symbols("HttpContext")`; it still returned 0 items with `WorkspaceWarming`, `completeness: partial`, and the incomplete-index reason.
@@ -111,7 +111,7 @@ Warmup retest findings:
 - Date: 2026-05-17 (Asia/Seoul)
 - roslyn-mcp-server commit: `71c0e67`
 - aspnetcore commit: `93a1b5295d92954d46e26f2bbb3abde15f332a4b`
-- MCP client method: targeted temporary stdio client script in `.local`; server command used `--log-level trace`, `--log-file`, and `--ls-log-dir`.
+- MCP client method: `scripts/smoke-tests/mcp_aspnetcore_long_warmup.py`; server command used `--log-level trace`, `--log-file`, and `--ls-log-dir`.
 - Raw local artifacts: `.local/aspnetcore-long-warmup-20260517-081619-raw.json`, `.local/aspnetcore-long-warmup-20260517-081619.log`, `.local/aspnetcore-long-warmup-20260517-081619-stderr.log`, `.local/aspnetcore-ls-20260517-081619/`.
 - Result: `get_workspace_status` still reported `WorkspaceWarming` at every 60-second poll through 600 seconds.
 - Roslyn LS logging note: `Microsoft.CodeAnalysis.LanguageServer.exe` was launched with `--logLevel Trace --extensionLogDirectory .local/aspnetcore-ls-20260517-081619`, but no files were emitted under that directory during this run. Trace output was captured through server stderr/log instead.
@@ -150,15 +150,15 @@ Status and symbol checkpoints:
 - Date: 2026-05-17 (Asia/Seoul)
 - roslyn-mcp-server commit: `9dfa960 Increase warming retry hint to thirty seconds`
 - aspnetcore commit: `93a1b5295d92954d46e26f2bbb3abde15f332a4b`
-- MCP client method: `.local/mcp_aspnetcore_long_warmup.py`
+- MCP client method: `scripts/smoke-tests/mcp_aspnetcore_long_warmup.py`
 - Raw local artifacts: `.local/aspnetcore-long-warmup-20260517-094921-raw.json`, `.local/aspnetcore-long-warmup-20260517-094921.log`, `.local/aspnetcore-long-warmup-20260517-094921-stderr.log`, `.local/aspnetcore-ls-20260517-094921/`.
 
 Environment changes:
 
 - ASP.NET Core `global.json` now requests SDK `11.0.100-preview.5.26227.104`.
-- Installed SDK `11.0.100-preview.5.26227.104` into `C:\Users\Beretta\AppData\Local\Microsoft\dotnet`.
-- Smoke command used `DOTNET_ROOT=C:\Users\Beretta\AppData\Local\Microsoft\dotnet` and a `PATH` prefix of `C:\Users\Beretta\AppData\Local\Microsoft\dotnet;C:\Users\Beretta\.dotnet\tools`.
-- In `D:\Workspace\real-repos\aspnetcore`, `dotnet --version` resolved to `11.0.100-preview.5.26227.104`.
+- Installed SDK `11.0.100-preview.5.26227.104` into `%LOCALAPPDATA%\Microsoft\dotnet`.
+- Smoke command used `DOTNET_ROOT=%LOCALAPPDATA%\Microsoft\dotnet` and a `PATH` prefix of `%LOCALAPPDATA%\Microsoft\dotnet;%USERPROFILE%\.dotnet\tools`.
+- In `.local/real-repos/aspnetcore`, `dotnet --version` resolved to `11.0.100-preview.5.26227.104`.
 
 Status and symbol checkpoints:
 
@@ -190,7 +190,7 @@ Retest findings:
 - Date: 2026-05-17 (Asia/Seoul)
 - roslyn-mcp-server commit: `8f91cb3 Document ASP.NET Core SDK-aligned smoke retest`
 - aspnetcore commit: `93a1b5295d92954d46e26f2bbb3abde15f332a4b`
-- MCP client method: `.local/mcp_aspnetcore_symbol_ramp.py`
+- MCP client method: `scripts/smoke-tests/mcp_aspnetcore_symbol_ramp.py`
 - Raw local artifact: `.local/aspnetcore-symbol-ramp-20260517-100948-raw.json`
 
 This run cleaned stale MSBuild node-reuse processes from prior ASP.NET Core smoke runs before starting. It then loaded `AspNetCore.slnx` and called `find_symbols("HttpContext", maxResults: 20)` every 10 seconds from 0s through 180s.
