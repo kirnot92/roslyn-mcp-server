@@ -117,6 +117,7 @@ public sealed record ImplementationsResult(
     IReadOnlyList<NavigationLocation> Items,
     int TotalKnown,
     int Returned,
+    string UsageHint,
     string WorkspaceState,
     string Completeness,
     string? Reason,

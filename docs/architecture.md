@@ -589,6 +589,7 @@ MCP tool 클래스는 얇게 유지한다. 입력 검증과 출력 DTO 변환은
   - LSP: `textDocument/implementation`
   - 위치 기반 read-only tool이다. symbol name 검색이 아니라 현재 문서 위치를 기준으로 interface, abstract member, type 구현 위치를 찾는다.
   - 전체 구현체 탐색은 interface/abstract/base contract의 선언 위치나 그 contract로 정적으로 타입 지정된 사용 위치에서 호출해야 한다. 구체 class/member 구현 위치에서 호출하면 Roslyn LS가 자기 자신만 반환할 수 있다.
+  - MCP tool description과 결과의 `usageHint`에 이 호출 위치 제약을 노출해 client가 문서를 따로 읽지 않아도 오해하지 않게 한다.
   - 기본 결과 상한은 200개이며 서버 hard cap은 1000개다.
   - `WorkspaceWarming`에서는 best-effort로 실행하고 cross-project 구현 누락 가능성을 metadata reason에 표시한다.
 
