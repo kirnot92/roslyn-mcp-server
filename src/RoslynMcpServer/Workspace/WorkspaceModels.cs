@@ -50,6 +50,12 @@ public sealed record WorkspaceStatus(
     int OpenDocumentCount,
     int KnownDiagnosticsFileCount,
     DateTimeOffset? LastDiagnosticUpdateAt,
+    int DiagnosticNotificationQueueCapacity,
+    int PendingDiagnosticNotifications,
+    long ProcessedDiagnosticNotifications,
+    long DroppedDiagnosticNotifications,
+    long StaleDiagnosticNotifications,
+    string? DiagnosticNotificationOverflowPolicy,
     IReadOnlyList<WorkspaceWarning> Warnings);
 
 public sealed record WorkspaceWarning(

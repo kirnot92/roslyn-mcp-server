@@ -245,7 +245,30 @@ public sealed class DiagnosticsToolsTests
     }
 
     [Fact]
-    public async Task PublishDiagnosticsNotificationThroughSession_UpdatesStore()
+    public async Task PublishDiagnosticsNotificationThroughSession_QueuesWithoutInlineStoreUpdate()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        var documents = CreateDocumentState(root.Path);
+        var store = CreateStore(root.Path);
+        var processor = new DiagnosticNotificationProcessor(store, capacity: 10, startAutomatically: false);
+        var session = CreateSession(root.Path, new ImmediateLoader(client), documents, store, processor);
+        await session.LoadProjectAsync("App.csproj");
+
+        client.RaiseNotification("textDocument/publishDiagnostics", Publish(root.Path, "Program.cs", Diagnostic("boom", DiagnosticSeverity.Error)));
+        var status = await session.GetStatusAsync();
+
+        Assert.Equal(0, store.KnownFileCount);
+        Assert.Equal(1, status.PendingDiagnosticNotifications);
+        Assert.Equal(0, status.ProcessedDiagnosticNotifications);
+        Assert.Equal(DiagnosticNotificationProcessor.DropNewestWhenFullPolicy, status.DiagnosticNotificationOverflowPolicy);
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PublishDiagnosticsNotificationThroughSession_UpdatesStoreInBackground()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
@@ -254,9 +277,13 @@ public sealed class DiagnosticsToolsTests
         var (session, tools, store) = CreateLoadedTools(root.Path, client);
 
         client.RaiseNotification("textDocument/publishDiagnostics", Publish(root.Path, "Program.cs", Diagnostic("boom", DiagnosticSeverity.Error)));
+        await WaitForConditionAsync(() => store.KnownFileCount == 1);
         var result = await tools.Diagnostics(file: "Program.cs");
 
         Assert.Equal(1, store.KnownFileCount);
+        var status = await session.GetStatusAsync();
+        Assert.Equal(0, status.PendingDiagnosticNotifications);
+        Assert.True(status.ProcessedDiagnosticNotifications >= 1);
         var diagnostics = Assert.IsType<DiagnosticsResult>(result);
         Assert.Single(diagnostics.Items);
         await session.DisposeAsync();
@@ -291,6 +318,17 @@ public sealed class DiagnosticsToolsTests
     {
         var guard = new PathGuard(root);
         return new WorkspaceSession(new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null), guard, loader, documents, store);
+    }
+
+    private static WorkspaceSession CreateSession(
+        string root,
+        IRoslynWorkspaceLoader loader,
+        DocumentStateManager documents,
+        DiagnosticStore store,
+        DiagnosticNotificationProcessor processor)
+    {
+        var guard = new PathGuard(root);
+        return new WorkspaceSession(new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null), guard, loader, documents, store, processor);
     }
 
     private static DocumentStateManager CreateDocumentState(string root)
@@ -339,6 +377,22 @@ public sealed class DiagnosticsToolsTests
             source = "csharp",
             message
         };
+
+    private static async Task WaitForConditionAsync(Func<bool> predicate)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (predicate())
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        Assert.True(predicate());
+    }
 
     private sealed class FakeClock : IClock
     {

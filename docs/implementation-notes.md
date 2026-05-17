@@ -563,6 +563,17 @@ tool 응답에는 명시적 error code를 선호한다.
 - `get_workspace_status`는 열린 문서 수, known diagnostics file count, 마지막 diagnostic update 시간을 반환한다.
 - Roslyn LS integration smoke는 의도적 compile error 파일에 대해 diagnostics tool 호출 경로를 확인한다.
 
+## M4 diagnostics notification offload 완료 메모
+
+2026-05-17 기준 diagnostics notification offload를 완료했다.
+
+- `textDocument/publishDiagnostics` notification handler는 `DiagnosticStore`를 직접 update하지 않고 bounded background queue에 enqueue한 뒤 즉시 반환한다.
+- Background worker가 queue에서 notification을 꺼내 `DiagnosticStore.TryUpdateFromPublishDiagnostics`를 호출한다.
+- Queue capacity 기본값은 1024이고 overflow 정책은 `drop_newest_when_full`이다. Queue가 full이면 새 notification을 drop하고 dropped count를 증가시킨다.
+- `get_workspace_status`는 diagnostics queue capacity, pending, processed, dropped, stale count와 overflow policy를 additive field로 반환한다.
+- Workspace reload 시 diagnostics generation을 증가시키고 queue를 clear하며 store를 clear한다. 이미 처리 중이던 이전 generation notification은 reload lock 순서상 reload 전 반영 후 clear되거나, generation mismatch로 discard된다.
+- `diagnostics` tool 결과와 메시지는 마지막으로 처리 완료된 `textDocument/publishDiagnostics` 기준이다.
+
 ## M2 large repo readiness 메모
 
 2026-05-17 기준 M2 read-only tools 이후 large repo smoke 전에 Phase 1 blocker와 scanner hardening 일부를 반영했다.
@@ -590,4 +601,4 @@ tool 응답에는 명시적 error code를 선호한다.
 
 아직 남긴 항목:
 
-- diagnostics notification offload는 후속으로 남겼다. bounded background queue와 overflow 정책을 함께 설계해야 하므로 단순 수정으로 넣지 않는다.
+- diagnostics notification offload는 M4에서 완료했다. 다음 large repo 작업은 opt-in real repo 검증과 default tuning을 기준으로 본다.

@@ -146,5 +146,8 @@ Workspace discovery is bounded by scan depth, scan timeout, and candidate limits
 Large result tools include metadata such as `totalKnown`, `returned`, and
 `truncated`. A truncated result is expected behavior, not a transport failure.
 
-Diagnostics are currently based on diagnostics already published by Roslyn LS.
-The server does not perform unbounded workspace-wide diagnostics computation.
+Diagnostics are currently based on diagnostics already published by Roslyn LS
+and processed by the bounded background diagnostics queue. The server does not
+perform unbounded workspace-wide diagnostics computation. If the queue is full,
+new publish diagnostics notifications are dropped and the drop count is exposed
+by `get_workspace_status`.

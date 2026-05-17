@@ -190,7 +190,7 @@ public sealed class DiagnosticsTools(
             return new ReadToolMetadata(
                 state.ToString(),
                 "unknown",
-                "Diagnostics reflect the last textDocument/publishDiagnostics notification for this file; Roslyn LS does not report whether diagnostics have fully settled.",
+                "Diagnostics reflect the last processed textDocument/publishDiagnostics notification for this file; Roslyn LS does not report whether diagnostics have fully settled.",
                 state is WorkspaceLoadState.Ready or WorkspaceLoadState.LoadedWithErrors ? null : ToolRetryHints.WorkspaceWarmingMs,
                 truncated);
         }
@@ -200,25 +200,25 @@ public sealed class DiagnosticsTools(
             WorkspaceLoadState.Ready => new ReadToolMetadata(
                 state.ToString(),
                 "unknown",
-                "Workspace diagnostics include only currently known textDocument/publishDiagnostics notifications; Roslyn LS does not report a complete workspace diagnostics signal.",
+                "Workspace diagnostics include only currently processed textDocument/publishDiagnostics notifications; Roslyn LS does not report a complete workspace diagnostics signal.",
                 null,
                 truncated),
             WorkspaceLoadState.LoadedWithErrors => new ReadToolMetadata(
                 state.ToString(),
                 "partial",
-                "Workspace loaded with project errors; diagnostics include only currently known textDocument/publishDiagnostics notifications. Call get_workspace_status for load warnings.",
+                "Workspace loaded with project errors; diagnostics include only currently processed textDocument/publishDiagnostics notifications. Call get_workspace_status for load warnings.",
                 null,
                 truncated),
             WorkspaceLoadState.WorkspaceWarming or WorkspaceLoadState.LspReady => new ReadToolMetadata(
                 state.ToString(),
                 "partial",
-                "Workspace diagnostics include only currently known textDocument/publishDiagnostics notifications while the workspace is still loading.",
+                "Workspace diagnostics include only currently processed textDocument/publishDiagnostics notifications while the workspace is still loading.",
                 ToolRetryHints.WorkspaceWarmingMs,
                 truncated),
             _ => new ReadToolMetadata(
                 state.ToString(),
                 "unknown",
-                "Workspace diagnostics include only currently known textDocument/publishDiagnostics notifications.",
+                "Workspace diagnostics include only currently processed textDocument/publishDiagnostics notifications.",
                 null,
                 truncated)
         };

@@ -398,10 +398,14 @@ Fixture:
 
 - fake LSP notification으로 수천 파일의 diagnostics publish
 - 파일당 다수 diagnostic
+- diagnostics notification queue capacity보다 많은 publish burst
 
 검증:
 
 - file별 diagnostic cache가 상한을 따른다.
+- publishDiagnostics handler는 store update를 inline으로 수행하지 않고 bounded queue에 넣는다.
+- queue overflow 시 `drop_newest_when_full` 정책에 따라 새 notification을 drop하고 dropped count를 증가시킨다.
+- workspace reload 이후 이전 generation diagnostics가 새 workspace store에 섞이지 않는다.
 - 오래된 상세 diagnostics는 버리고 summary count는 유지한다.
 - `diagnostics` 기본 호출은 열린 문서와 최근 diagnostics 중심으로 반환한다.
 - `scope: "workspace"`는 `maxResults`와 truncation metadata를 포함한다.

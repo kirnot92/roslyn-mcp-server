@@ -45,9 +45,9 @@ That leads to a few design choices:
   `truncated` metadata.
 - Warming or partially loaded workspaces return best-effort results with
   `workspaceState`, `completeness`, and retry metadata.
-- Diagnostics are based on `textDocument/publishDiagnostics` notifications already
-  received from Roslyn LS; the server does not run an unbounded workspace-wide
-  diagnostic computation.
+- Diagnostics are based on `textDocument/publishDiagnostics` notifications
+  already processed by the bounded background diagnostics queue; the server does
+  not run an unbounded workspace-wide diagnostic computation.
 
 In practice, `WorkspaceWarming` is a normal state for large repositories. Agents
 should use partial results when they are good enough and call
@@ -214,7 +214,9 @@ Known constraints:
 - Large repositories may remain in `WorkspaceWarming` for a long time.
 - Project load errors usually reflect local SDK, workload, restore, or
   `global.json` environment problems and are surfaced through workspace warnings.
-- Diagnostics are current-known diagnostics, not a guaranteed full build result.
+- Diagnostics are current-known diagnostics from the last processed
+  `textDocument/publishDiagnostics` notifications, not a guaranteed full build
+  result.
 - Write/refactoring tools are not implemented.
 
 Implementation notes for maintainers are in [AGENTS.md](AGENTS.md) and

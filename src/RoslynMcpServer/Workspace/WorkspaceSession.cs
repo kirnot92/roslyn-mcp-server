@@ -4,18 +4,19 @@ using RoslynMcpServer.Lsp;
 
 namespace RoslynMcpServer.Workspace;
 
-public sealed class WorkspaceSession(
-    WorkspaceScanner scanner,
-    PathGuard pathGuard,
-    IRoslynWorkspaceLoader loader,
-    DocumentStateManager? documents,
-    DiagnosticStore? diagnostics) : IAsyncDisposable
+public sealed class WorkspaceSession : IAsyncDisposable
 {
     private const string ProjectInitializationCompleteMethod = "workspace/projectInitializationComplete";
     private const string PublishDiagnosticsMethod = "textDocument/publishDiagnostics";
     private const string WindowLogMessageMethod = "window/logMessage";
     private const string ProjectLoaderErrorToken = "[LanguageServerProjectLoader] Error while loading ";
     private const int MaxWorkspaceWarnings = 50;
+    private readonly WorkspaceScanner scanner;
+    private readonly PathGuard pathGuard;
+    private readonly IRoslynWorkspaceLoader loader;
+    private readonly DocumentStateManager? documents;
+    private readonly DiagnosticStore? diagnostics;
+    private readonly DiagnosticNotificationProcessor? diagnosticNotifications;
     private readonly SemaphoreSlim stateLock = new(1, 1);
     private readonly object warningsLock = new();
     private readonly List<WorkspaceWarning> workspaceWarnings = [];
@@ -25,7 +26,37 @@ public sealed class WorkspaceSession(
     private string? failureCode;
     private string? failureMessage;
 
-    public WorkspaceLoadState State => this.state;
+    public WorkspaceSession(
+        WorkspaceScanner scanner,
+        PathGuard pathGuard,
+        IRoslynWorkspaceLoader loader,
+        DocumentStateManager? documents,
+        DiagnosticStore? diagnostics)
+        : this(
+            scanner,
+            pathGuard,
+            loader,
+            documents,
+            diagnostics,
+            diagnostics is null ? null : new DiagnosticNotificationProcessor(diagnostics))
+    {
+    }
+
+    public WorkspaceSession(
+        WorkspaceScanner scanner,
+        PathGuard pathGuard,
+        IRoslynWorkspaceLoader loader,
+        DocumentStateManager? documents,
+        DiagnosticStore? diagnostics,
+        DiagnosticNotificationProcessor? diagnosticNotifications)
+    {
+        this.scanner = scanner;
+        this.pathGuard = pathGuard;
+        this.loader = loader;
+        this.documents = documents;
+        this.diagnostics = diagnostics;
+        this.diagnosticNotifications = diagnosticNotifications;
+    }
 
     public WorkspaceSession(
         WorkspaceScanner scanner,
@@ -35,6 +66,8 @@ public sealed class WorkspaceSession(
     {
     }
 
+    public WorkspaceLoadState State => this.state;
+
     public WorkspaceScanResult ListWorkspaces(bool refresh = false, CancellationToken cancellationToken = default)
     {
         if (!refresh && this.scanCache is not null)
@@ -42,7 +75,7 @@ public sealed class WorkspaceSession(
             return this.scanCache;
         }
 
-        this.scanCache = scanner.Scan(cancellationToken);
+        this.scanCache = this.scanner.Scan(cancellationToken);
         return this.scanCache;
     }
 
@@ -134,6 +167,11 @@ public sealed class WorkspaceSession(
             await this.handle.DisposeAsync().ConfigureAwait(false);
         }
 
+        if (this.diagnosticNotifications is not null)
+        {
+            await this.diagnosticNotifications.DisposeAsync().ConfigureAwait(false);
+        }
+
         this.stateLock.Dispose();
     }
 
@@ -181,7 +219,7 @@ public sealed class WorkspaceSession(
 
         try
         {
-            var handle = await loader.LoadAsync(target, cancellationToken).ConfigureAwait(false);
+            var handle = await this.loader.LoadAsync(target, cancellationToken).ConfigureAwait(false);
             this.handle = handle;
             this.handle.Client.NotificationReceived += OnNotificationReceived;
             this.handle.Client.Faulted += OnClientFaulted;
@@ -214,7 +252,15 @@ public sealed class WorkspaceSession(
             this.handle = null;
         }
 
-        diagnostics?.Clear();
+        if (this.diagnosticNotifications is not null)
+        {
+            this.diagnosticNotifications.ResetForNewWorkspace();
+        }
+        else
+        {
+            this.diagnostics?.Clear();
+        }
+
         ClearWorkspaceWarnings();
         this.state = WorkspaceLoadState.StartingLanguageServer;
         this.failureCode = null;
@@ -225,7 +271,7 @@ public sealed class WorkspaceSession(
 
     private WorkspaceTarget CreateTarget(string path, string[] allowedExtensions, WorkspaceKind requestedKind)
     {
-        var fullPath = pathGuard.RequireFileInsideRoot(path, allowedExtensions);
+        var fullPath = this.pathGuard.RequireFileInsideRoot(path, allowedExtensions);
         var extension = Path.GetExtension(fullPath);
         var kind = string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
             ? WorkspaceKind.SolutionX
@@ -233,9 +279,9 @@ public sealed class WorkspaceSession(
         return new WorkspaceTarget(
             kind,
             fullPath,
-            pathGuard.ToRelativePath(fullPath),
-            pathGuard.Root,
-            Path.GetDirectoryName(fullPath) ?? pathGuard.Root);
+            this.pathGuard.ToRelativePath(fullPath),
+            this.pathGuard.Root,
+            Path.GetDirectoryName(fullPath) ?? this.pathGuard.Root);
     }
 
     private WorkspaceTarget SelectAutoLoadTarget(WorkspaceScanResult scan)
@@ -247,8 +293,8 @@ public sealed class WorkspaceSession(
                 solution.Kind,
                 solution.FullPath,
                 solution.RelativePath,
-                pathGuard.Root,
-                Path.GetDirectoryName(solution.FullPath) ?? pathGuard.Root);
+                this.pathGuard.Root,
+                Path.GetDirectoryName(solution.FullPath) ?? this.pathGuard.Root);
         }
 
         if (scan.Solutions.Count > 1)
@@ -267,8 +313,8 @@ public sealed class WorkspaceSession(
                 project.Kind,
                 project.FullPath,
                 project.RelativePath,
-                pathGuard.Root,
-                Path.GetDirectoryName(project.FullPath) ?? pathGuard.Root);
+                this.pathGuard.Root,
+                Path.GetDirectoryName(project.FullPath) ?? this.pathGuard.Root);
         }
 
         if (scan.Projects.Count > 1)
@@ -306,7 +352,8 @@ public sealed class WorkspaceSession(
 
         if (string.Equals(method, PublishDiagnosticsMethod, StringComparison.Ordinal))
         {
-            diagnostics?.TryUpdateFromPublishDiagnostics(parameters);
+            this.diagnosticNotifications?.Enqueue(parameters);
+            return;
         }
 
         if (string.Equals(method, WindowLogMessageMethod, StringComparison.Ordinal))
@@ -364,8 +411,9 @@ public sealed class WorkspaceSession(
                     "LSP connection failed. Call load_solution or load_project to restart the workspace."));
         }
 
+        var diagnosticQueueStatistics = this.diagnosticNotifications?.Statistics;
         return new(
-            pathGuard.Root,
+            this.pathGuard.Root,
             this.state,
             this.handle?.Target,
             this.handle?.IsRunning ?? false,
@@ -373,9 +421,15 @@ public sealed class WorkspaceSession(
             scan,
             this.failureCode,
             this.failureMessage,
-            documents?.OpenDocumentCount ?? 0,
-            diagnostics?.KnownFileCount ?? 0,
-            diagnostics?.LastUpdatedAt,
+            this.documents?.OpenDocumentCount ?? 0,
+            this.diagnostics?.KnownFileCount ?? 0,
+            this.diagnostics?.LastUpdatedAt,
+            diagnosticQueueStatistics?.Capacity ?? 0,
+            diagnosticQueueStatistics?.Pending ?? 0,
+            diagnosticQueueStatistics?.Processed ?? 0,
+            diagnosticQueueStatistics?.Dropped ?? 0,
+            diagnosticQueueStatistics?.Stale ?? 0,
+            diagnosticQueueStatistics?.OverflowPolicy,
             GetWorkspaceWarnings());
     }
 
@@ -478,8 +532,8 @@ public sealed class WorkspaceSession(
             try
             {
                 var fullPath = Path.GetFullPath(path);
-                return pathGuard.IsInsideRoot(fullPath)
-                    ? pathGuard.ToRelativePath(fullPath)
+                return this.pathGuard.IsInsideRoot(fullPath)
+                    ? this.pathGuard.ToRelativePath(fullPath)
                     : path;
             }
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
