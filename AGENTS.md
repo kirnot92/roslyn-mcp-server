@@ -4,7 +4,7 @@
 
 `roslyn-mcp-server`는 Agent CLI류 도구가 Roslyn 언어 기능을 사용할 수 있도록, `roslyn-language-server`를 자식 프로세스로 실행하고 MCP tool 호출을 LSP 요청으로 변환하는 MCP 서버다.
 
-현재 이 저장소는 M2 read-only tool 구현, M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리까지 반영된 상태다.
+현재 이 저장소는 M2 read-only tool 구현, M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load까지 반영된 상태다.
 
 ## 목표
 
@@ -13,6 +13,7 @@
 - `roslyn-language-server`와 stdio LSP로 통신한다.
 - 기본 repository root는 서버가 실행된 현재 작업 디렉터리로 둔다.
 - agent가 `load_solution`, `load_project` 같은 MCP tool로 `.sln`, `.slnx`, `.csproj`를 선택하게 한다.
+- 필요한 경우 `--load-solution <path>`로 MCP 서버 시작 직후 지정 solution을 background로 로드할 수 있게 한다.
 - 대규모 repository를 고려해 탐색 제한, timeout, 결과 제한, warming 중 best-effort 동작을 지원한다.
 
 ## 당장 하지 않을 것
@@ -34,7 +35,7 @@ MCP 서버는 기본적으로 PATH에서 `roslyn-language-server`를 찾는다. 
 
 ## 현재 구현 범위
 
-현재 `main` 기준으로 M0/M1, M2 read-only tool, M3 사용자/클라이언트 사용성 범위가 구현되어 있다.
+현재 `main` 기준으로 M0/M1, M2 read-only tool, M3 사용자/클라이언트 사용성 범위, M4 startup initial solution load가 구현되어 있다.
 
 M0/M1 포함:
 
@@ -68,21 +69,39 @@ M3 포함:
 
 - `README.md`의 짧은 사용자 시작 흐름 정리
 - `docs/usage.md` 사용자 설치/설정 문서
+- README의 Claude Code, Gemini CLI, Codex MCP client 설정 예시
+- `docs/smoke-test-guide.md`와 `scripts/smoke-tests/` smoke test helper 정리
 - `roslyn-language-server` 탐색/설치 오류 메시지 정리
 - PowerShell, Semantic Kernel, ASP.NET Core stdio smoke 기록
 - `solution_overview` M3 미구현 결정과 후속 후보 평가
 
+M4 startup initial solution load 포함:
+
+- `--load-solution <path>` CLI 옵션 추가
+- 지정된 `.sln` 또는 `.slnx`를 MCP 서버 시작 후 background task에서 기존 solution load 경로로 로드
+- 옵션 미지정 시 기존처럼 agent의 명시적 `load_solution`/`load_project` 또는 단일 후보 auto-load 유지
+- `--load-solution` 중복 지정 거부
+- invalid extension/path, root 밖 경로, startup load 상태 전이에 대한 테스트 추가
+- startup load 중 read tool은 기존 계약대로 `workspace_loading` 또는 warming metadata 반환
+- `--load-solution` 경로는 root 아래를 재귀 탐색하지 않는다. 정확한 root-relative path 또는 root 내부 absolute path를 지정해야 한다.
+
 다음 범위는 M4 이후 후속 작업으로 남긴다.
 
+- diagnostics notification offload
+- opt-in large repo 검증과 default tuning
+- 추가 실제 MCP client smoke 반복
+- 대형 솔루션 startup 성능 측정
+- Roslyn LS crash/restart 처리
+- 오류/상태 관측성 강화
 - `solution_overview`
 - write/refactoring tool
 - rename/code action/formatting/apply 계열 tool
-- diagnostics notification offload
-- 추가 실제 MCP client smoke 반복과 opt-in large repo 검증/default tuning
 
 ## 중요한 설계 메모
 
-- 서버 시작 시 solution을 강제로 load하지 않는다.
+- 기본값에서는 서버 시작 시 solution을 강제로 load하지 않는다.
+- `--load-solution <path>`가 지정되면 서버 시작 후 background task가 지정 solution을 로드한다.
+- `--load-solution` 값은 root 기준 정확한 상대경로 또는 root 내부 absolute path여야 한다. 파일명만 넘겼을 때 하위 폴더를 검색하지 않는다.
 - solution이 여러 개 발견되면 agent가 `load_solution`을 호출해야 한다.
 - 적절한 solution이 정확히 하나면 첫 Roslyn tool 호출에서 자동 load할 수 있다.
 - `StartingLanguageServer` 상태에서는 Roslyn tool이 오래 대기하지 말고 `workspace_loading`을 반환한다.
@@ -127,6 +146,6 @@ https://github.com/kirnot92/roslyn-mcp-server
 
 ## 현재 상태
 
-M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리가 완료되어 있다.
+M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load가 완료되어 있다.
 
-다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 diagnostics notification offload 설계, opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복이다.
+다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 diagnostics notification offload 설계/구현, opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복이다.
