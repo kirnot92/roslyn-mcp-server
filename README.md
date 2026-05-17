@@ -112,7 +112,9 @@ Build the server first, then point your MCP client at the built executable. Use
 `cwd` or `--root <repo-root>` so the server knows which repository to inspect.
 Solution paths passed to `--load-solution` are resolved under that root.
 
-Claude Code local setup:
+### 1. Claude Code
+
+Local setup with `claude mcp add`:
 
 ```powershell
 claude mcp add --transport stdio roslyn -- `
@@ -121,20 +123,22 @@ claude mcp add --transport stdio roslyn -- `
   --load-solution Server.sln
 ```
 
-Claude Code project-scoped `.mcp.json`:
+Project-scoped `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "roslyn": {
       "command": "<path-to-roslyn-mcp-server.exe>",
-      "args": ["--root", "${CLAUDE_PROJECT_DIR:-.}", "--load-solution", "Server.sln"]
+      "args": ["--root", ".", "--load-solution", "Server.sln"]
     }
   }
 }
 ```
 
-Gemini CLI `.gemini/settings.json`:
+### 2. Gemini CLI
+
+Project `.gemini/settings.json`:
 
 ```json
 {
@@ -148,6 +152,28 @@ Gemini CLI `.gemini/settings.json`:
   }
 }
 ```
+
+### 3. Codex
+
+Global `~/.codex/config.toml`, or project-scoped `.codex/config.toml` in a
+trusted project:
+
+```toml
+[mcp_servers.roslyn]
+command = "<path-to-roslyn-mcp-server.exe>"
+args = ["--root", "<repo-root>", "--load-solution", "Server.sln"]
+```
+
+If you keep a project-scoped `.codex/config.toml` in the repository root, `--root`
+can usually be `.`:
+
+```toml
+[mcp_servers.roslyn]
+command = "<path-to-roslyn-mcp-server.exe>"
+args = ["--root", ".", "--load-solution", "Server.sln"]
+```
+
+### Multiple Solutions
 
 For repositories with separate solutions, run separate MCP server entries. For
 example, a Unity project can expose both server and client solutions:
