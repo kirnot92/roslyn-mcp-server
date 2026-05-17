@@ -59,20 +59,24 @@ should use partial results when they are good enough and call
 
 Workspace tools:
 
-- `list_workspaces`
-- `load_solution`
-- `load_project`
-- `get_workspace_status`
+- `list_workspaces` - Discover `.sln`, `.slnx`, and `.csproj` candidates under
+  the workspace root.
+- `load_solution` - Load a selected `.sln` or `.slnx` into Roslyn LS.
+- `load_project` - Load a selected `.csproj` into Roslyn LS.
+- `get_workspace_status` - Report the selected target, load state, warnings,
+  open documents, and diagnostics queue/cache status.
 
 Read-only Roslyn tools:
 
-- `document_symbols`
-- `hover`
-- `go_to_definition`
-- `find_references`
-- `find_implementations`
-- `find_symbols`
-- `diagnostics`
+- `document_symbols` - Return file-level types, members, and symbol ranges.
+- `hover` - Return Roslyn hover text for a source position.
+- `go_to_definition` - Return definition locations for a source position.
+- `peek_definition` - Return definition locations plus bounded source snippets.
+- `find_references` - Return references for a source position.
+- `find_implementations` - Return implementation locations for an interface,
+  abstract member, or type position.
+- `find_symbols` - Search workspace symbols by name.
+- `diagnostics` - Return currently known file or workspace diagnostics.
 
 The current implementation is read-only. Rename, code actions, formatting, and
 apply/edit tools are intentionally out of scope for now.
