@@ -83,3 +83,32 @@ Retest tool summary:
 | find_symbols | OK | 0.021s | 0 | Ready | unknown | false | `totalKnown: 0`, reason present |
 | diagnostics(file) | OK | 0.021s | 0 | Ready | unknown | false | No known diagnostics yet |
 | diagnostics(workspace) | OK | 0.021s | 0 | Ready | unknown | false | Current known diagnostics only |
+
+## Explicit Workspace Open Retest
+- Date: 2026-05-17 (Asia/Seoul)
+- roslyn-mcp-server commit: `536e8ff Open selected Roslyn workspace explicitly`
+- PowerShell commit: `90d3b7f2e355e457d92b6929f6b4cfe4fa651e35`
+- roslyn-language-server: `5.8.0-1.26262.10+036e7a58b9d4348a62b6854544274551ae17ae8c`
+- MCP client method: `.local/mcp_powershell_smoke.py`, default server options
+- Raw output: `.local/powershell-smoke-raw.json`
+
+Notes:
+
+- First attempt in this retest exited before MCP initialize with process code 1 and did not write raw output; immediate rerun completed successfully with server exit code 0.
+- This run includes the new `solution/open` notification path for `PowerShell.sln`.
+- `find_symbols("ManagedPSEntry")` still returned 0 even after the workspace moved to `Ready`. The small `.csproj` integration regression now covers the fixed all-zero workspace-symbol bug, so this PowerShell result is tracked as a remaining repo/query-specific limitation rather than the original loader failure.
+
+Retest tool summary:
+
+| Tool | Result | Elapsed | Count | Workspace State | Completeness | Truncated | Notes |
+| --- | --- | ---: | ---: | --- | --- | --- | --- |
+| list_workspaces | OK | 0.121s | 45 |  |  | false | Default options; 3 solutions, 42 projects |
+| load_solution | OK | 0.424s | 0 | WorkspaceWarming |  |  | Loaded `PowerShell.sln`; new `solution/open` path |
+| get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  |  | Immediate, +3s, and +10s polls stayed `WorkspaceWarming`; later read tools observed `Ready` |
+| document_symbols | OK | 3.817s | 2 | WorkspaceWarming | partial | false | `totalKnown: 2`, `returned: 2` |
+| hover | OK | 1.090s | 0 | WorkspaceWarming | partial | false | Returned hover text for `ManagedPSEntry` |
+| go_to_definition | OK | 3.006s | 0 | Ready | complete | false | `UnmanagedPSEntry.Start`; no locations, no error |
+| find_references | OK | 0.750s | 1 | Ready | complete | false | `ManagedPSEntry`; `totalKnown: 1`, `returned: 1` |
+| find_symbols | OK | 0.020s | 0 | Ready | unknown | false | Query `ManagedPSEntry`; `totalKnown: 0`, `returned: 0` |
+| diagnostics(file) | OK | 0.020s | 0 | Ready | unknown | false | No publish diagnostics received for file yet |
+| diagnostics(workspace) | OK | 0.020s | 0 | Ready | unknown | false | Current known diagnostics only |
