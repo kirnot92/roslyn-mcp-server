@@ -4,7 +4,7 @@
 
 `roslyn-mcp-server`는 Agent CLI류 도구가 Roslyn 언어 기능을 사용할 수 있도록, `roslyn-language-server`를 자식 프로세스로 실행하고 MCP tool 호출을 LSP 요청으로 변환하는 MCP 서버다.
 
-현재 이 저장소는 M2 read-only tool 구현, M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload까지 반영된 상태다.
+현재 이 저장소는 M2 read-only tool 구현, M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload, M5 read productivity tool 일부까지 반영된 상태다.
 
 ## 목표
 
@@ -35,7 +35,7 @@ MCP 서버는 기본적으로 PATH에서 `roslyn-language-server`를 찾는다. 
 
 ## 현재 구현 범위
 
-현재 `main` 기준으로 M0/M1, M2 read-only tool, M3 사용자/클라이언트 사용성 범위, M4 startup initial solution load와 diagnostics notification offload가 구현되어 있다.
+현재 `main` 기준으로 M0/M1, M2 read-only tool, M3 사용자/클라이언트 사용성 범위, M4 startup initial solution load와 diagnostics notification offload, M5 read productivity tool 일부가 구현되어 있다.
 
 M0/M1 포함:
 
@@ -92,14 +92,21 @@ M4 diagnostics notification offload 포함:
 - Queue overflow 정책은 `drop_newest_when_full`이며, pending/processed/dropped/stale 통계와 queue capacity를 `get_workspace_status`에 노출한다.
 - Workspace reload 시 generation을 증가시키고 이전 generation diagnostics notification은 stale로 집계해 새 workspace store에 섞이지 않게 한다.
 
-다음 범위는 M4 이후 후속 작업으로 남긴다.
+M5 read productivity 일부 포함:
+
+- `find_implementations`
+- `find_symbols` kind filtering
+- `find_symbols`의 `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
+- `kindFilter`는 Roslyn LS `workspace/symbol` 응답을 받은 뒤 MCP 쪽에서 적용한다. Roslyn LS 검색 비용 절감을 보장하지 않고, 반환 noise 감소를 목적으로 한다.
+- `find_symbols` 결과 metadata에는 필터 후 mappable 결과 기준의 `totalKnown`, `returned`, `truncated`와 필터 전 mappable 결과 수인 `totalUnfilteredKnown`이 포함된다.
+
+다음 범위는 후속 작업으로 남긴다.
 
 - opt-in large repo 검증과 default tuning
 - 추가 실제 MCP client smoke 반복
 - 대형 솔루션 startup 성능 측정
 - Roslyn LS crash/restart 처리
 - 오류/상태 관측성 강화
-- `find_symbols` kind filtering
 - `get_call_hierarchy`
 - `get_type_hierarchy`
 - `get_completions`
@@ -156,6 +163,6 @@ https://github.com/kirnot92/roslyn-mcp-server
 
 ## 현재 상태
 
-M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload, M5 read productivity tool 일부가 완료되어 있다.
+M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload, M5 read productivity tool 일부(`find_implementations`, `find_symbols` kind filtering)가 완료되어 있다.
 
-다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복, 대형 solution startup 성능과 관측성 강화, M5 후속 read productivity 후보(`find_symbols` kind filtering, `get_call_hierarchy`, `get_type_hierarchy`, `get_completions`)다.
+다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복, 대형 solution startup 성능과 관측성 강화, M5 후속 read productivity 후보(`get_call_hierarchy`, `get_type_hierarchy`, `get_completions`)다.
