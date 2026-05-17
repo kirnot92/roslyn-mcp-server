@@ -16,6 +16,11 @@ public sealed class NavigationTools(
 {
     private const int MaxDocumentSymbolNodes = 1000;
     private const int MaxHoverCharacters = 20_000;
+    private const int DefaultPeekContextLines = 3;
+    private const int MaxPeekContextLines = 20;
+    private const int DefaultPeekMaxDefinitions = 20;
+    private const int MaxPeekMaxDefinitions = 100;
+    private const int MaxPeekSnippetCharacters = 20_000;
     private const int DefaultReferencesMaxResults = 200;
     private const int MaxReferencesMaxResults = 1000;
     private const int DefaultSymbolMaxResults = 300;
@@ -122,6 +127,64 @@ public sealed class NavigationTools(
             var metadata = CreateMetadata(context.State, ToolKind.Definition, truncated: false);
             return new DefinitionResult(
                 locations.Items,
+                metadata.WorkspaceState,
+                metadata.Completeness,
+                metadata.Reason,
+                metadata.RetryAfterMs,
+                metadata.Truncated);
+        }
+        catch (UserFacingException ex)
+        {
+            return ToolError.FromException(ex);
+        }
+    }
+
+    [McpServerTool(Name = "peek_definition")]
+    [Description("Return definition locations and source snippets for a C# source location. line and column are 1-based.")]
+    public async Task<object> PeekDefinition(
+        string file,
+        int line,
+        int column,
+        int? contextLines = null,
+        int? maxDefinitions = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var effectiveContextLines = NormalizePeekContextLines(contextLines);
+            var effectiveMaxDefinitions = NormalizePeekMaxDefinitions(maxDefinitions);
+            var position = PositionMapper.ToLspPosition(line, column);
+            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
+            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
+            var response = await context.Handle.Client.RequestAsync(
+                "textDocument/definition",
+                new
+                {
+                    textDocument = new TextDocumentIdentifier(document.Uri),
+                    position
+                },
+                DefinitionTimeout,
+                cancellationToken).ConfigureAwait(false);
+
+            var locations = MapLocations(response, "textDocument/definition", effectiveMaxDefinitions);
+            var items = new List<PeekDefinitionItem>(locations.Items.Count);
+            foreach (var location in locations.Items)
+            {
+                var snippet = await ReadSourceSnippetAsync(location, effectiveContextLines, cancellationToken).ConfigureAwait(false);
+                items.Add(new PeekDefinitionItem(
+                    location.File,
+                    location.Line,
+                    location.Column,
+                    location.Range,
+                    snippet.Snippet,
+                    snippet.Error));
+            }
+
+            var metadata = CreateMetadata(context.State, ToolKind.Definition, locations.Truncated);
+            return new PeekDefinitionResult(
+                items,
+                locations.TotalKnown,
+                locations.Returned,
                 metadata.WorkspaceState,
                 metadata.Completeness,
                 metadata.Reason,
@@ -325,6 +388,159 @@ public sealed class NavigationTools(
         }
 
         return Math.Min(maxResults.Value, MaxReferencesMaxResults);
+    }
+
+    private static int NormalizePeekContextLines(int? contextLines)
+    {
+        if (contextLines is null)
+        {
+            return DefaultPeekContextLines;
+        }
+
+        if (contextLines.Value < 0)
+        {
+            throw new UserFacingException("invalid_context_lines", "contextLines must be a non-negative integer.");
+        }
+
+        return Math.Min(contextLines.Value, MaxPeekContextLines);
+    }
+
+    private static int NormalizePeekMaxDefinitions(int? maxDefinitions)
+    {
+        if (maxDefinitions is null)
+        {
+            return DefaultPeekMaxDefinitions;
+        }
+
+        if (maxDefinitions.Value < 1)
+        {
+            throw new UserFacingException("invalid_max_results", "maxDefinitions must be a positive integer.");
+        }
+
+        return Math.Min(maxDefinitions.Value, MaxPeekMaxDefinitions);
+    }
+
+    private async Task<SourceSnippetReadResult> ReadSourceSnippetAsync(
+        NavigationLocation location,
+        int contextLines,
+        CancellationToken cancellationToken)
+    {
+        string fullPath;
+        try
+        {
+            fullPath = pathMapper.ResolveFileInput(location.File);
+        }
+        catch (UserFacingException ex)
+        {
+            return new SourceSnippetReadResult(null, new SourceSnippetError(ex.Code, ex.Message));
+        }
+
+        try
+        {
+            var info = new FileInfo(fullPath);
+            if (!info.Exists)
+            {
+                return new SourceSnippetReadResult(
+                    null,
+                    new SourceSnippetError("file_not_found", $"File was not found: {location.File}"));
+            }
+
+            if (info.Length > documents.MaxDocumentBytes)
+            {
+                return new SourceSnippetReadResult(
+                    null,
+                    new SourceSnippetError(
+                        "document_too_large",
+                        $"File exceeds the configured MaxDocumentBytes limit ({documents.MaxDocumentBytes} bytes): {location.File}"));
+            }
+
+            var lines = await File.ReadAllLinesAsync(fullPath, cancellationToken).ConfigureAwait(false);
+            if (location.Range.StartLine < 1 ||
+                location.Range.StartLine > lines.Length ||
+                location.Range.EndLine < location.Range.StartLine)
+            {
+                return new SourceSnippetReadResult(
+                    null,
+                    new SourceSnippetError(
+                        "invalid_range",
+                        $"Definition range is outside the readable source file: {location.File}"));
+            }
+
+            var startLine = Math.Max(location.Range.StartLine - contextLines, 1);
+            var requestedEndLine = Math.Min(location.Range.EndLine + contextLines, lines.Length);
+            if (requestedEndLine < startLine)
+            {
+                return new SourceSnippetReadResult(
+                    null,
+                    new SourceSnippetError(
+                        "invalid_range",
+                        $"Definition range is outside the readable source file: {location.File}"));
+            }
+
+            var snippet = BuildSourceSnippet(lines, startLine, requestedEndLine);
+            return new SourceSnippetReadResult(
+                new SourceSnippet(startLine, snippet.EndLine, snippet.Text, snippet.Truncated),
+                null);
+        }
+        catch (IOException ex)
+        {
+            return new SourceSnippetReadResult(
+                null,
+                new SourceSnippetError("file_read_error", $"Could not read definition source: {ex.Message}"));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return new SourceSnippetReadResult(
+                null,
+                new SourceSnippetError("file_read_error", $"Could not read definition source: {ex.Message}"));
+        }
+    }
+
+    private static SourceSnippetBuildResult BuildSourceSnippet(string[] lines, int startLine, int requestedEndLine)
+    {
+        var builder = new StringBuilder(Math.Min(MaxPeekSnippetCharacters, 1024));
+        var endLine = startLine;
+        var truncated = false;
+
+        for (var lineNumber = startLine; lineNumber <= requestedEndLine; lineNumber++)
+        {
+            if (lineNumber > startLine)
+            {
+                var separator = Environment.NewLine;
+                var remainingForSeparator = MaxPeekSnippetCharacters - builder.Length;
+                if (separator.Length > remainingForSeparator)
+                {
+                    if (remainingForSeparator > 0)
+                    {
+                        builder.Append(separator.AsSpan(0, remainingForSeparator));
+                    }
+
+                    truncated = true;
+                    break;
+                }
+
+                builder.Append(separator);
+            }
+
+            var line = lines[lineNumber - 1];
+            var remainingForLine = MaxPeekSnippetCharacters - builder.Length;
+            if (line.Length > remainingForLine)
+            {
+                if (remainingForLine > 0)
+                {
+                    builder.Append(line.AsSpan(0, remainingForLine));
+                }
+
+                endLine = lineNumber;
+                truncated = true;
+                break;
+            }
+
+            builder.Append(line);
+            endLine = lineNumber;
+        }
+
+        return new SourceSnippetBuildResult(builder.ToString(), endLine, truncated);
     }
 
     private WorkspaceSymbolMapResult MapWorkspaceSymbols(JsonElement response, int maxResults)
@@ -840,6 +1056,15 @@ public sealed class NavigationTools(
         IReadOnlyList<NavigationLocation> Items,
         int TotalKnown,
         int Returned,
+        bool Truncated);
+
+    private sealed record SourceSnippetReadResult(
+        SourceSnippet? Snippet,
+        SourceSnippetError? Error);
+
+    private sealed record SourceSnippetBuildResult(
+        string Text,
+        int EndLine,
         bool Truncated);
 
     private sealed record WorkspaceSymbolMapResult(

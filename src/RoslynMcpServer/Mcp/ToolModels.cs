@@ -75,6 +75,34 @@ public sealed record DefinitionResult(
     int? RetryAfterMs,
     bool Truncated);
 
+public sealed record SourceSnippet(
+    int StartLine,
+    int EndLine,
+    string Text,
+    bool Truncated);
+
+public sealed record SourceSnippetError(
+    string Error,
+    string Message);
+
+public sealed record PeekDefinitionItem(
+    string File,
+    int Line,
+    int Column,
+    McpRange Range,
+    SourceSnippet? Snippet,
+    SourceSnippetError? SnippetError);
+
+public sealed record PeekDefinitionResult(
+    IReadOnlyList<PeekDefinitionItem> Items,
+    int TotalKnown,
+    int Returned,
+    string WorkspaceState,
+    string Completeness,
+    string? Reason,
+    int? RetryAfterMs,
+    bool Truncated);
+
 public sealed record ReferencesResult(
     IReadOnlyList<NavigationLocation> Items,
     int TotalKnown,

@@ -15,6 +15,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
         : StringComparer.Ordinal;
 
     public int OpenDocumentCount => this.documents.Count;
+    public long MaxDocumentBytes => options.MaxDocumentBytes;
 
     public async Task<OpenDocumentState> EnsureOpenAsync(
         string file,

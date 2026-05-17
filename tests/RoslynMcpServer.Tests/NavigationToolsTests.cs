@@ -275,6 +275,207 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task PeekDefinition_ReturnsLocationAndSourceSnippet()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Caller { }");
+        File.WriteAllText(Path.Combine(root.Path, "Target.cs"), """
+            namespace Sample;
+            public class Target
+            {
+                public void Method()
+                {
+                }
+            }
+            """);
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new Lsp.Location(
+            new Uri(Path.Combine(root.Path, "Target.cs")).AbsoluteUri,
+            new Lsp.Range(new Position(3, 16), new Position(3, 22))));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.PeekDefinition("Program.cs", line: 9, column: 4, contextLines: 1);
+
+        var peek = Assert.IsType<PeekDefinitionResult>(result);
+        Assert.Equal(1, peek.TotalKnown);
+        Assert.Equal(1, peek.Returned);
+        Assert.False(peek.Truncated);
+        var item = Assert.Single(peek.Items);
+        Assert.Equal("Target.cs", item.File);
+        Assert.Equal(4, item.Line);
+        Assert.Equal(17, item.Column);
+        Assert.Null(item.SnippetError);
+        Assert.NotNull(item.Snippet);
+        Assert.Equal(3, item.Snippet.StartLine);
+        Assert.Equal(5, item.Snippet.EndLine);
+        Assert.Contains("public void Method()", item.Snippet.Text);
+        Assert.False(item.Snippet.Truncated);
+
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("textDocument/definition", request.Method);
+        Assert.Equal(8, request.Params.GetProperty("position").GetProperty("line").GetInt32());
+        Assert.Equal(3, request.Params.GetProperty("position").GetProperty("character").GetInt32());
+    }
+
+    [Fact]
+    public async Task PeekDefinition_AppliesMaxDefinitionAndContextLineLimits()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Caller { }");
+        File.WriteAllText(Path.Combine(root.Path, "Target.cs"), """
+            line 1
+            line 2
+            line 3
+            line 4
+            """);
+        var uri = new Uri(Path.Combine(root.Path, "Target.cs")).AbsoluteUri;
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new Lsp.Location(uri, new Lsp.Range(new Position(0, 0), new Position(0, 1))),
+            new Lsp.Location(uri, new Lsp.Range(new Position(1, 0), new Position(1, 1))),
+            new Lsp.Location(uri, new Lsp.Range(new Position(2, 0), new Position(2, 1)))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.PeekDefinition(
+            "Program.cs",
+            line: 1,
+            column: 7,
+            contextLines: 0,
+            maxDefinitions: 2);
+
+        var peek = Assert.IsType<PeekDefinitionResult>(result);
+        Assert.Equal(3, peek.TotalKnown);
+        Assert.Equal(2, peek.Returned);
+        Assert.True(peek.Truncated);
+        Assert.Equal(2, peek.Items.Count);
+        Assert.All(peek.Items, item =>
+        {
+            Assert.NotNull(item.Snippet);
+            Assert.Equal(item.Line, item.Snippet.StartLine);
+            Assert.Equal(item.Line, item.Snippet.EndLine);
+            Assert.False(item.Snippet.Truncated);
+        });
+    }
+
+    [Fact]
+    public async Task PeekDefinition_ReturnsPerItemSnippetErrorWhenTargetFileExceedsDocumentLimit()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "c");
+        File.WriteAllText(Path.Combine(root.Path, "Target.cs"), "123456");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new Lsp.Location(
+            new Uri(Path.Combine(root.Path, "Target.cs")).AbsoluteUri,
+            new Lsp.Range(new Position(0, 0), new Position(0, 1))));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session, maxDocumentBytes: 5);
+
+        var result = await tools.PeekDefinition("Program.cs", line: 1, column: 1);
+
+        var peek = Assert.IsType<PeekDefinitionResult>(result);
+        var item = Assert.Single(peek.Items);
+        Assert.Null(item.Snippet);
+        Assert.NotNull(item.SnippetError);
+        Assert.Equal("document_too_large", item.SnippetError.Error);
+    }
+
+    [Fact]
+    public async Task PeekDefinition_TruncatesLongSnippetTextPerItem()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Caller { }");
+        File.WriteAllText(Path.Combine(root.Path, "Target.cs"), new string('x', 20_010));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new Lsp.Location(
+            new Uri(Path.Combine(root.Path, "Target.cs")).AbsoluteUri,
+            new Lsp.Range(new Position(0, 0), new Position(0, 1))));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.PeekDefinition("Program.cs", line: 1, column: 7, contextLines: 0);
+
+        var peek = Assert.IsType<PeekDefinitionResult>(result);
+        Assert.False(peek.Truncated);
+        var item = Assert.Single(peek.Items);
+        Assert.NotNull(item.Snippet);
+        Assert.Equal(20_000, item.Snippet.Text.Length);
+        Assert.True(item.Snippet.Truncated);
+        Assert.Null(item.SnippetError);
+    }
+
+    [Fact]
+    public async Task PeekDefinition_ReturnsPerItemSnippetErrorForOutOfRangeDefinitionLine()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Caller { }");
+        File.WriteAllText(Path.Combine(root.Path, "Target.cs"), "class Target { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new Lsp.Location(
+            new Uri(Path.Combine(root.Path, "Target.cs")).AbsoluteUri,
+            new Lsp.Range(new Position(9, 0), new Position(9, 1))));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.PeekDefinition("Program.cs", line: 1, column: 7);
+
+        var peek = Assert.IsType<PeekDefinitionResult>(result);
+        var item = Assert.Single(peek.Items);
+        Assert.Null(item.Snippet);
+        Assert.NotNull(item.SnippetError);
+        Assert.Equal("invalid_range", item.SnippetError.Error);
+    }
+
+    [Fact]
+    public async Task PeekDefinition_ReturnsValidationErrorForInvalidMaxDefinitions()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Caller { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.PeekDefinition("Program.cs", line: 1, column: 7, maxDefinitions: 0);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_max_results", error.Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task PeekDefinition_ReturnsValidationErrorForNegativeContextLines()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Caller { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.PeekDefinition("Program.cs", line: 1, column: 7, contextLines: -1);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_context_lines", error.Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
     public async Task FindReferences_PassesIncludeDeclarationInLspContext()
     {
         using var root = TestRoot.Create();
@@ -834,11 +1035,11 @@ public sealed class NavigationToolsTests
             .Cast<object>()
             .ToArray();
 
-    private static NavigationTools CreateTools(string root, WorkspaceSession session)
+    private static NavigationTools CreateTools(string root, WorkspaceSession session, long maxDocumentBytes = 2 * 1024 * 1024)
     {
         var guard = new PathGuard(root);
         var mapper = new DocumentPathMapper(guard);
-        return new NavigationTools(session, new DocumentStateManager(CreateOptions(root), mapper), mapper);
+        return new NavigationTools(session, new DocumentStateManager(CreateOptions(root, maxDocumentBytes: maxDocumentBytes), mapper), mapper);
     }
 
     private static WorkspaceSession CreateSession(string root, IRoslynWorkspaceLoader loader)
@@ -847,7 +1048,7 @@ public sealed class NavigationToolsTests
         return new WorkspaceSession(new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null), guard, loader);
     }
 
-    private static CliOptions CreateOptions(string root) =>
+    private static CliOptions CreateOptions(string root, long maxDocumentBytes = 2 * 1024 * 1024) =>
         new(
             root,
             null,
@@ -861,7 +1062,7 @@ public sealed class NavigationToolsTests
             100,
             500,
             200,
-            2 * 1024 * 1024,
+            maxDocumentBytes,
             16,
             2);
 
