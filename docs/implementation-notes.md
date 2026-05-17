@@ -42,6 +42,10 @@
   - `find_implementations(file, line, column, maxResults?)` tool을 추가했다.
   - LSP `textDocument/implementation`을 위치 기반으로 호출하며, `find_references`와 같은 bounded location metadata를 반환한다.
   - 전체 구현체 탐색은 interface/abstract/base contract 위치에서 호출해야 한다. 구체 구현 class/member 위치에서는 자기 자신만 반환될 수 있으므로, MCP tool description과 결과 `usageHint`에서 호출 위치를 명확히 안내한다.
+  - `find_symbols(query, maxResults?, kindFilter?)`의 `kindFilter` 옵션을 추가했다.
+  - `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
+  - 필터는 Roslyn LS `workspace/symbol` 응답을 받은 뒤 MCP 쪽에서 적용한다. Roslyn LS 검색 비용 절감을 보장하지 않고, 반환 noise 감소를 목적으로 한다.
+  - `find_symbols` 결과 metadata에는 필터 후 mappable 결과 기준의 `totalKnown`, `returned`, `truncated`와 필터 전 mappable 결과 수인 `totalUnfilteredKnown`이 포함된다.
 
 현재 MCP tool:
 
@@ -64,7 +68,6 @@
 - 대형 solution startup 성능 측정과 상태 관측성 강화
 - Roslyn LS crash/restart 처리
 - M5 read productivity 후속 후보
-  - `find_symbols` kind filtering: 기존 workspace symbol 결과를 `class`, `interface`, `method`, `property`, `field` 같은 LSP `SymbolKind` 기준으로 제한해 agent 노이즈를 줄인다.
   - `get_call_hierarchy`: LSP call hierarchy의 prepare/incoming/outgoing 흐름으로 특정 callable의 호출자/피호출자 관계를 반환한다.
   - `get_call_hierarchy`는 `get_type_hierarchy`와 역할이 다르다. call hierarchy는 호출 관계, type hierarchy는 base/derived type 관계를 다룬다.
   - `get_type_hierarchy`, `get_completions`는 계속 후속 후보로 둔다.
@@ -76,7 +79,7 @@
 dotnet test roslyn-mcp-server.sln
 ```
 
-- 121 passed / 0 failed / 1 skipped / 122 total
+- 144 passed / 0 failed / 1 skipped / 145 total
 
 아래 milestone별 완료 메모는 당시 구현 시점의 이력으로 남긴다.
 
@@ -168,7 +171,7 @@ M2b 직후 남은 범위:
 2026-05-17 기준 M2c(`find_symbols`)가 완료되었다.
 
 - MCP read tool
-  - `find_symbols(query, maxResults?)`
+  - `find_symbols(query, maxResults?, kindFilter?)`
 - LSP 요청
   - `workspace/symbol`
 - 결과 mapper
@@ -180,7 +183,12 @@ M2b 직후 남은 범위:
   - 기본 `DefaultSymbolMaxResults = 300`
   - 서버 hard cap은 1000
   - 사용자 `maxResults`와 hard cap 중 작은 값을 적용한다.
-  - metadata에 `totalKnown`, `returned`, `truncated`를 포함한다.
+  - metadata에 `totalKnown`, `totalUnfilteredKnown`, `returned`, `truncated`를 포함한다.
+  - `kindFilter`가 있으면 `totalKnown`, `returned`, `truncated`는 필터 후 mappable 결과 기준이며, `totalUnfilteredKnown`은 필터 전 mappable 결과 수다.
+- kind filtering
+  - `kindFilter`는 `SymbolKindExtensions.ToMcpName()` 출력과 같은 이름을 대소문자 무시로 받는다.
+  - 빈 filter list나 알 수 없는 kind 이름은 `invalid_kind_filter`로 거부한다.
+  - LSP `workspace/symbol` 요청은 동일한 query로 호출하고, 필터는 MCP 쪽에서 응답 mapping 후 적용한다.
 - workspace 상태 metadata
   - `WorkspaceWarming`: `partial`
   - `Ready`: Roslyn LS가 workspace symbol index completeness를 알려주지 않으므로 `unknown`

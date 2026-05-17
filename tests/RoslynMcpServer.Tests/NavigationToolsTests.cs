@@ -863,8 +863,168 @@ public sealed class NavigationToolsTests
         var nullResult = await ExecuteFindSymbolsWithResponse(null);
         var emptyResult = await ExecuteFindSymbolsWithResponse(Array.Empty<object>());
 
-        Assert.Empty(Assert.IsType<FindSymbolsResult>(nullResult).Items);
-        Assert.Empty(Assert.IsType<FindSymbolsResult>(emptyResult).Items);
+        var nullSymbols = Assert.IsType<FindSymbolsResult>(nullResult);
+        var emptySymbols = Assert.IsType<FindSymbolsResult>(emptyResult);
+        Assert.Empty(nullSymbols.Items);
+        Assert.Equal(0, nullSymbols.TotalUnfilteredKnown);
+        Assert.Empty(emptySymbols.Items);
+        Assert.Equal(0, emptySymbols.TotalUnfilteredKnown);
+    }
+
+    [Fact]
+    public async Task FindSymbols_FiltersBySingleKind()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            CreateWorkspaceSymbol("Calculator", SymbolKind.Class),
+            CreateWorkspaceSymbol("Calculate", SymbolKind.Method),
+            CreateWorkspaceSymbol("CalculatorValue", SymbolKind.Field)
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", kindFilter: new[] { "class" });
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("Calculator", item.Name);
+        Assert.Equal(SymbolKind.Class, item.Kind);
+        Assert.Equal(3, symbols.TotalUnfilteredKnown);
+        Assert.Equal(1, symbols.TotalKnown);
+        Assert.Equal(1, symbols.Returned);
+        Assert.False(symbols.Truncated);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("Calc", request.Params.GetProperty("query").GetString());
+        Assert.False(request.Params.TryGetProperty("kindFilter", out _));
+    }
+
+    [Fact]
+    public async Task FindSymbols_FiltersByMultipleKinds()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            CreateWorkspaceSymbol("Calculator", SymbolKind.Class),
+            CreateWorkspaceSymbol("ICalculator", SymbolKind.Interface),
+            CreateWorkspaceSymbol("Calculate", SymbolKind.Method),
+            CreateWorkspaceSymbol("CalculatorValue", SymbolKind.Field)
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", kindFilter: new[] { "interface", "field" });
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Collection(
+            symbols.Items,
+            item => Assert.Equal(SymbolKind.Interface, item.Kind),
+            item => Assert.Equal(SymbolKind.Field, item.Kind));
+        Assert.Equal(4, symbols.TotalUnfilteredKnown);
+        Assert.Equal(2, symbols.TotalKnown);
+        Assert.Equal(2, symbols.Returned);
+    }
+
+    [Fact]
+    public async Task FindSymbols_KindFilterIsCaseInsensitive()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            CreateWorkspaceSymbol("Calculator", SymbolKind.Class),
+            CreateWorkspaceSymbol("Calculate", SymbolKind.Method),
+            CreateWorkspaceSymbol("T", SymbolKind.TypeParameter)
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", kindFilter: new[] { "ClAsS", "TYPEPARAMETER" });
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Collection(
+            symbols.Items,
+            item => Assert.Equal(SymbolKind.Class, item.Kind),
+            item => Assert.Equal(SymbolKind.TypeParameter, item.Kind));
+        Assert.Equal(3, symbols.TotalUnfilteredKnown);
+        Assert.Equal(2, symbols.TotalKnown);
+    }
+
+    [Fact]
+    public async Task FindSymbols_AppliesMaxResultsAfterKindFiltering()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            CreateWorkspaceSymbol("Calculate", SymbolKind.Method),
+            CreateWorkspaceSymbol("Calculator", SymbolKind.Class),
+            CreateWorkspaceSymbol("CalculatorValue", SymbolKind.Field),
+            CreateWorkspaceSymbol("CalculatorService", SymbolKind.Class)
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", maxResults: 1, kindFilter: new[] { "class" });
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("Calculator", item.Name);
+        Assert.Equal(4, symbols.TotalUnfilteredKnown);
+        Assert.Equal(2, symbols.TotalKnown);
+        Assert.Equal(1, symbols.Returned);
+        Assert.True(symbols.Truncated);
+    }
+
+    [Fact]
+    public async Task FindSymbols_ReturnsValidationErrorForUnknownKindFilter()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", kindFilter: new[] { "banana" });
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_kind_filter", error.Error);
+        Assert.Contains("banana", error.Message);
+        Assert.Contains("Allowed values", error.Message);
+        Assert.Contains("class", error.Message);
+        Assert.Contains("enumMember", error.Message);
+        Assert.Contains("typeParameter", error.Message);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task FindSymbols_ReturnsValidationErrorForEmptyKindFilter()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", kindFilter: Array.Empty<string>());
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_kind_filter", error.Error);
+        Assert.Contains("at least one", error.Message);
+        Assert.Contains("Allowed values", error.Message);
+        Assert.Empty(client.Requests);
     }
 
     [Fact]
@@ -1096,6 +1256,7 @@ public sealed class NavigationToolsTests
 
         var symbols = Assert.IsType<FindSymbolsResult>(result);
         Assert.Equal(301, symbols.TotalKnown);
+        Assert.Equal(301, symbols.TotalUnfilteredKnown);
         Assert.Equal(300, symbols.Returned);
         Assert.Equal(300, symbols.Items.Count);
         Assert.True(symbols.Truncated);
@@ -1118,11 +1279,13 @@ public sealed class NavigationToolsTests
 
         var userLimited = Assert.IsType<FindSymbolsResult>(userLimitedResult);
         Assert.Equal(4, userLimited.TotalKnown);
+        Assert.Equal(4, userLimited.TotalUnfilteredKnown);
         Assert.Equal(2, userLimited.Returned);
         Assert.True(userLimited.Truncated);
 
         var hardCapped = Assert.IsType<FindSymbolsResult>(hardCapResult);
         Assert.Equal(1001, hardCapped.TotalKnown);
+        Assert.Equal(1001, hardCapped.TotalUnfilteredKnown);
         Assert.Equal(1000, hardCapped.Returned);
         Assert.True(hardCapped.Truncated);
     }
@@ -1146,6 +1309,7 @@ public sealed class NavigationToolsTests
         Assert.Equal("partial", symbols.Completeness);
         Assert.Contains("symbol index", symbols.Reason);
         Assert.Equal(0, symbols.TotalKnown);
+        Assert.Equal(0, symbols.TotalUnfilteredKnown);
         Assert.Equal(0, symbols.Returned);
         Assert.False(symbols.Truncated);
     }
@@ -1289,6 +1453,13 @@ public sealed class NavigationToolsTests
             })
             .Cast<object>()
             .ToArray();
+
+    private static object CreateWorkspaceSymbol(string name, SymbolKind kind) =>
+        new
+        {
+            name,
+            kind = (int)kind
+        };
 
     private static Lsp.Location[] CreateImplementationLocations(string root, int count)
     {

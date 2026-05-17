@@ -140,6 +140,15 @@ When the result metadata says `completeness: "partial"` or includes
 `retryAfterMs`, retry after workspace warming before treating missing
 implementations as absent.
 
+`find_symbols` is a workspace symbol-name search. Its optional `kindFilter`
+accepts MCP symbol kind names such as `class`, `interface`, `method`,
+`property`, `field`, `enumMember`, and `typeParameter`, case-insensitively. The
+server still calls Roslyn LS `workspace/symbol` with the same query and applies
+the filter to mappable results before `maxResults`, so it reduces returned noise
+but does not reduce Roslyn LS search cost. `totalKnown`, `returned`, and
+`truncated` describe the filtered mappable result set, while
+`totalUnfilteredKnown` reports mappable symbols before kind filtering.
+
 ## Code Review Preflight
 
 For code review workflows, start workspace loading before reading the full diff:

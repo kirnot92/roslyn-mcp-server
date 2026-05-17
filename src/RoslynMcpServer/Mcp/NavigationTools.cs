@@ -33,6 +33,14 @@ public sealed class NavigationTools(
     private static readonly TimeSpan ReferencesTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ImplementationsTimeout = ReferencesTimeout;
     private static readonly TimeSpan WorkspaceSymbolTimeout = TimeSpan.FromSeconds(30);
+    private static readonly SymbolKind[] SupportedSymbolKinds = Enum.GetValues<SymbolKind>()
+        .Where(kind => kind.ToMcpName() != "unknown")
+        .ToArray();
+    private static readonly IReadOnlyDictionary<string, SymbolKind> SymbolKindFilterValues = SupportedSymbolKinds
+        .ToDictionary(kind => kind.ToMcpName(), kind => kind, StringComparer.OrdinalIgnoreCase);
+    private static readonly string AllowedSymbolKindFilterValues = string.Join(
+        ", ",
+        SupportedSymbolKinds.Select(kind => kind.ToMcpName()));
 
     [McpServerTool(Name = "document_symbols")]
     [Description("Return document symbols for a C# source file.")]
@@ -294,12 +302,14 @@ public sealed class NavigationTools(
     public async Task<object> FindSymbols(
         string query,
         int? maxResults = null,
+        string[]? kindFilter = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             query = ValidateSymbolQuery(query);
             var effectiveMaxResults = NormalizeSymbolMaxResults(maxResults);
+            var parsedKindFilter = ParseSymbolKindFilter(kindFilter);
             var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
             var response = await context.Handle.Client.RequestAsync(
                 "workspace/symbol",
@@ -308,11 +318,12 @@ public sealed class NavigationTools(
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
-            var symbols = MapWorkspaceSymbols(response, effectiveMaxResults);
+            var symbols = MapWorkspaceSymbols(response, effectiveMaxResults, parsedKindFilter);
             var metadata = CreateMetadata(context.State, ToolKind.Symbols, symbols.Truncated);
             return new FindSymbolsResult(
                 symbols.Items,
                 symbols.TotalKnown,
+                symbols.TotalUnfilteredKnown,
                 symbols.Returned,
                 metadata.WorkspaceState,
                 metadata.Completeness,
@@ -606,11 +617,14 @@ public sealed class NavigationTools(
         return new SourceSnippetBuildResult(builder.ToString(), endLine, truncated);
     }
 
-    private WorkspaceSymbolMapResult MapWorkspaceSymbols(JsonElement response, int maxResults)
+    private WorkspaceSymbolMapResult MapWorkspaceSymbols(
+        JsonElement response,
+        int maxResults,
+        IReadOnlySet<SymbolKind>? kindFilter)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
-            return new WorkspaceSymbolMapResult([], TotalKnown: 0, Returned: 0, Truncated: false);
+            return new WorkspaceSymbolMapResult([], TotalKnown: 0, TotalUnfilteredKnown: 0, Returned: 0, Truncated: false);
         }
 
         if (response.ValueKind != JsonValueKind.Array)
@@ -619,12 +633,19 @@ public sealed class NavigationTools(
         }
 
         var items = new List<WorkspaceSymbolItem>();
+        var totalUnfilteredKnown = 0;
         var totalKnown = 0;
         var returned = 0;
         foreach (var item in response.EnumerateArray())
         {
             var symbol = TryMapWorkspaceSymbol(item);
             if (symbol is null)
+            {
+                continue;
+            }
+
+            totalUnfilteredKnown++;
+            if (kindFilter is not null && !kindFilter.Contains(symbol.Kind))
             {
                 continue;
             }
@@ -639,7 +660,7 @@ public sealed class NavigationTools(
             returned++;
         }
 
-        return new WorkspaceSymbolMapResult(items, totalKnown, returned, totalKnown > returned);
+        return new WorkspaceSymbolMapResult(items, totalKnown, totalUnfilteredKnown, returned, totalKnown > returned);
     }
 
     private WorkspaceSymbolItem? TryMapWorkspaceSymbol(JsonElement item)
@@ -778,6 +799,48 @@ public sealed class NavigationTools(
 
         return Math.Min(maxResults.Value, MaxSymbolMaxResults);
     }
+
+    private static IReadOnlySet<SymbolKind>? ParseSymbolKindFilter(IReadOnlyList<string>? kindFilter)
+    {
+        if (kindFilter is null)
+        {
+            return null;
+        }
+
+        if (kindFilter.Count == 0)
+        {
+            throw new UserFacingException(
+                "invalid_kind_filter",
+                $"kindFilter must contain at least one symbol kind. Allowed values: {AllowedSymbolKindFilterValues}.");
+        }
+
+        var parsedKinds = new HashSet<SymbolKind>();
+        var invalidKindNames = new List<string>();
+        foreach (var rawKindName in kindFilter)
+        {
+            var kindName = rawKindName?.Trim();
+            if (string.IsNullOrEmpty(kindName) ||
+                !SymbolKindFilterValues.TryGetValue(kindName, out var kind))
+            {
+                invalidKindNames.Add(FormatInvalidKindName(rawKindName));
+                continue;
+            }
+
+            parsedKinds.Add(kind);
+        }
+
+        if (invalidKindNames.Count > 0)
+        {
+            throw new UserFacingException(
+                "invalid_kind_filter",
+                $"Unknown symbol kind(s): {string.Join(", ", invalidKindNames)}. Allowed values: {AllowedSymbolKindFilterValues}.");
+        }
+
+        return parsedKinds;
+    }
+
+    private static string FormatInvalidKindName(string? kindName) =>
+        string.IsNullOrWhiteSpace(kindName) ? "<empty>" : kindName.Trim();
 
     private static DocumentSymbolMapResult MapDocumentSymbols(JsonElement response)
     {
@@ -1136,6 +1199,7 @@ public sealed class NavigationTools(
     private sealed record WorkspaceSymbolMapResult(
         IReadOnlyList<WorkspaceSymbolItem> Items,
         int TotalKnown,
+        int TotalUnfilteredKnown,
         int Returned,
         bool Truncated);
 

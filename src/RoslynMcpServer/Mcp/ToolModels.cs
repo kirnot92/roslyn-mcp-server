@@ -134,6 +134,7 @@ public sealed record WorkspaceSymbolItem(
 public sealed record FindSymbolsResult(
     IReadOnlyList<WorkspaceSymbolItem> Items,
     int TotalKnown,
+    int TotalUnfilteredKnown,
     int Returned,
     string WorkspaceState,
     string Completeness,

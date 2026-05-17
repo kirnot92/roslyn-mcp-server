@@ -76,7 +76,9 @@ Read-only Roslyn tools:
 - `find_implementations` - Return implementation locations from an interface,
   abstract member, or base contract position. Calling it on a concrete
   implementation may legitimately return only that implementation.
-- `find_symbols` - Search workspace symbols by name.
+- `find_symbols` - Search workspace symbols by name, optionally filtering
+  returned results by kind such as `class`, `interface`, `method`, `property`,
+  or `field`.
 - `diagnostics` - Return currently known file or workspace diagnostics.
 
 The current implementation is read-only. Rename, code actions, formatting, and
