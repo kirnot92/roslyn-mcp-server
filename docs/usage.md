@@ -105,6 +105,19 @@ cause. Read tools still return best-effort results with `workspaceState`,
 warming, retry hints use `retryAfterMs: 30000` so clients avoid tight polling on
 large repositories.
 
+## Code Review Preflight
+
+For code review workflows, start workspace loading before reading the full diff:
+
+1. Inspect only the changed file list first, for example `git diff --name-only`.
+2. Call `load_solution` or the relevant `load_project` immediately.
+3. Do not wait for `Ready`; read the diff while the workspace is warming.
+4. Use `go_to_definition`, `hover`, and `find_references` from the changed code
+   once the review needs semantic context.
+
+This lets Roslyn LS use the human/agent diff-reading time for background project
+load and keeps the later navigation calls from paying the full cold-start cost.
+
 ## Notes For Large Repositories
 
 Workspace discovery is bounded by scan depth, scan timeout, and candidate limits.
