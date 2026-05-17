@@ -645,7 +645,7 @@ public sealed class NavigationToolsTests
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         var client = new FakeLspClient();
-        client.EnqueueResponse(CreateWorkspaceSymbols(count: 101));
+        client.EnqueueResponse(CreateWorkspaceSymbols(count: 301));
         await using var session = CreateSession(root.Path, new ImmediateLoader(client));
         await session.LoadProjectAsync("App.csproj");
         var tools = CreateTools(root.Path, session);
@@ -653,9 +653,9 @@ public sealed class NavigationToolsTests
         var result = await tools.FindSymbols("Symbol");
 
         var symbols = Assert.IsType<FindSymbolsResult>(result);
-        Assert.Equal(101, symbols.TotalKnown);
-        Assert.Equal(100, symbols.Returned);
-        Assert.Equal(100, symbols.Items.Count);
+        Assert.Equal(301, symbols.TotalKnown);
+        Assert.Equal(300, symbols.Returned);
+        Assert.Equal(300, symbols.Items.Count);
         Assert.True(symbols.Truncated);
     }
 

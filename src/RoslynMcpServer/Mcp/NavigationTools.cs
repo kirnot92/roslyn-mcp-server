@@ -18,7 +18,7 @@ public sealed class NavigationTools(
     private const int MaxHoverCharacters = 20_000;
     private const int DefaultReferencesMaxResults = 200;
     private const int MaxReferencesMaxResults = 1000;
-    private const int DefaultSymbolMaxResults = 100;
+    private const int DefaultSymbolMaxResults = 300;
     private const int MaxSymbolMaxResults = 1000;
     private const int MinSymbolQueryLength = 2;
     private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(10);

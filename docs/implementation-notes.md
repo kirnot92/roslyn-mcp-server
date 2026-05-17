@@ -143,7 +143,7 @@ M2b 직후 남은 범위:
   - root 밖 file URI, non-file URI, path 변환 실패 결과는 반환하지 않는다.
   - MCP 출력 location은 root-relative path와 1-based line/column/range를 사용한다.
 - result limiting
-  - 기본 `DefaultSymbolMaxResults = 100`
+  - 기본 `DefaultSymbolMaxResults = 300`
   - 서버 hard cap은 1000
   - 사용자 `maxResults`와 hard cap 중 작은 값을 적용한다.
   - metadata에 `totalKnown`, `returned`, `truncated`를 포함한다.
@@ -451,7 +451,7 @@ MaxOpenDocuments = 200
 MaxDocumentBytes = 2MB
 MaxInFlightLspRequests = 16
 MaxExpensiveLspRequests = 2
-DefaultSymbolMaxResults = 100
+DefaultSymbolMaxResults = 300
 DefaultReferencesMaxResults = 200
 DefaultDiagnosticsMaxResults = 200
 ```

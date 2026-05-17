@@ -509,7 +509,7 @@ MaxOpenDocuments = 200
 MaxDocumentBytes = 2MB
 MaxInFlightLspRequests = 16
 MaxExpensiveLspRequests = 2
-DefaultSymbolMaxResults = 100
+DefaultSymbolMaxResults = 300
 DefaultReferencesMaxResults = 200
 DefaultDiagnosticsMaxResults = 200
 ```
