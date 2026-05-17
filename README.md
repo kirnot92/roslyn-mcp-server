@@ -90,6 +90,11 @@ workspace root. Use `--root <path>` only when your MCP client cannot set the
 working directory. Use `--roslyn-language-server <path>` only when
 `roslyn-language-server` is not on `PATH`.
 
+`--load-solution <path>` is optional. When set, the server starts loading that
+`.sln` or `.slnx` as soon as the MCP server starts, so Roslyn LS can warm while
+the agent reads the repository. When it is omitted, the agent can still call
+`load_solution` or `load_project` when it needs Roslyn context.
+
 Recommended tool flow:
 
 1. `list_workspaces`
@@ -100,6 +105,69 @@ Recommended tool flow:
 For code review workflows, start workspace loading early. A good pattern is to
 inspect the changed file list, load the intended solution or project, then read
 the diff while Roslyn LS warms in the background.
+
+## MCP Client Setup
+
+Build the server first, then point your MCP client at the built executable. Use
+`cwd` or `--root <repo-root>` so the server knows which repository to inspect.
+Solution paths passed to `--load-solution` are resolved under that root.
+
+Claude Code local setup:
+
+```powershell
+claude mcp add --transport stdio roslyn -- `
+  <path-to-roslyn-mcp-server.exe> `
+  --root <repo-root> `
+  --load-solution Server.sln
+```
+
+Claude Code project-scoped `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "roslyn": {
+      "command": "<path-to-roslyn-mcp-server.exe>",
+      "args": ["--root", "${CLAUDE_PROJECT_DIR:-.}", "--load-solution", "Server.sln"]
+    }
+  }
+}
+```
+
+Gemini CLI `.gemini/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "roslyn": {
+      "command": "<path-to-roslyn-mcp-server.exe>",
+      "args": ["--load-solution", "Server.sln"],
+      "cwd": "<repo-root>",
+      "timeout": 30000
+    }
+  }
+}
+```
+
+For repositories with separate solutions, run separate MCP server entries. For
+example, a Unity project can expose both server and client solutions:
+
+```json
+{
+  "mcpServers": {
+    "roslyn-server": {
+      "command": "<path-to-roslyn-mcp-server.exe>",
+      "args": ["--load-solution", "Server.sln"],
+      "cwd": "<repo-root>"
+    },
+    "roslyn-unity": {
+      "command": "<path-to-roslyn-mcp-server.exe>",
+      "args": ["--load-solution", "UnityClient.sln"],
+      "cwd": "<repo-root>"
+    }
+  }
+}
+```
 
 More setup and client examples are in [docs/usage.md](docs/usage.md).
 
