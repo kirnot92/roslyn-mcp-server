@@ -9,8 +9,10 @@ namespace RoslynMcpServer.Mcp;
 public sealed class WorkspaceTools(WorkspaceSession session)
 {
     [McpServerTool(Name = "list_workspaces")]
-    [Description("List .sln, .slnx, and .csproj workspace candidates under the configured root.")]
-    public object ListWorkspaces(bool refresh = false)
+    [Description("Find workspace candidates. Use when no workspace is loaded or you need exact paths for load_solution/load_project.")]
+    public object ListWorkspaces(
+        [Description("Re-scan instead of using cached candidates.")]
+        bool refresh = false)
     {
         try
         {
@@ -23,8 +25,11 @@ public sealed class WorkspaceTools(WorkspaceSession session)
     }
 
     [McpServerTool(Name = "load_solution")]
-    [Description("Load a .sln or .slnx workspace into roslyn-language-server.")]
-    public async Task<object> LoadSolution(string path, CancellationToken cancellationToken = default)
+    [Description("Select a .sln/.slnx and start Roslyn LS. Returns after LSP initialization, not full analysis.")]
+    public async Task<object> LoadSolution(
+        [Description("Exact root-relative path from list_workspaces, or an absolute path inside the configured root.")]
+        string path,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -37,8 +42,11 @@ public sealed class WorkspaceTools(WorkspaceSession session)
     }
 
     [McpServerTool(Name = "load_project")]
-    [Description("Load a .csproj workspace into roslyn-language-server.")]
-    public async Task<object> LoadProject(string path, CancellationToken cancellationToken = default)
+    [Description("Select a .csproj and start Roslyn LS. Prefer load_solution when a suitable solution exists.")]
+    public async Task<object> LoadProject(
+        [Description("Exact root-relative .csproj path from list_workspaces, or an absolute path inside the configured root.")]
+        string path,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -51,7 +59,7 @@ public sealed class WorkspaceTools(WorkspaceSession session)
     }
 
     [McpServerTool(Name = "get_workspace_status")]
-    [Description("Get current Roslyn workspace load state and discovered workspace candidates.")]
+    [Description("Check load/warming/error state, selected workspace, warnings, and diagnostics queue status.")]
     public async Task<object> GetWorkspaceStatus(CancellationToken cancellationToken = default)
     {
         try

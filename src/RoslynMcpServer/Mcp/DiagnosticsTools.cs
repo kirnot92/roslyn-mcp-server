@@ -17,11 +17,13 @@ public sealed class DiagnosticsTools(
     private const int MaxDiagnosticsMaxResults = 1000;
 
     [McpServerTool(Name = "diagnostics")]
-    [Description("Return currently known C# diagnostics for a file, or for the workspace when scope is workspace.")]
+    [Description("Return diagnostics already published by Roslyn LS for one file or scope=workspace. This is not a full build.")]
     public async Task<object> Diagnostics(
         string? file = null,
+        [Description("Optional severity filter: error, warning, information, info, or hint.")]
         string? severity = null,
         int? maxResults = null,
+        [Description("Set to workspace for bounded workspace diagnostics; do not combine with file.")]
         string? scope = null,
         CancellationToken cancellationToken = default)
     {

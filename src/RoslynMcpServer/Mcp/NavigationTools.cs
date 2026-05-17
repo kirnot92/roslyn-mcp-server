@@ -43,7 +43,7 @@ public sealed class NavigationTools(
         SupportedSymbolKinds.Select(kind => kind.ToMcpName()));
 
     [McpServerTool(Name = "document_symbols")]
-    [Description("Return document symbols for a C# source file.")]
+    [Description("Get a bounded outline of symbols in one C# file. Use before deeper navigation or edits.")]
     public async Task<object> DocumentSymbols(string file, CancellationToken cancellationToken = default)
     {
         try
@@ -79,7 +79,7 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "hover")]
-    [Description("Return hover information for a C# source location. line and column are 1-based.")]
+    [Description("Get compiler-backed type, signature, or documentation info at a C# source location.")]
     public async Task<object> Hover(string file, int line, int column, CancellationToken cancellationToken = default)
     {
         try
@@ -114,7 +114,7 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "go_to_definition")]
-    [Description("Return definition locations for a C# source location. line and column are 1-based.")]
+    [Description("Find definition locations for a C# symbol. Use peek_definition when source context is needed.")]
     public async Task<object> GoToDefinition(string file, int line, int column, CancellationToken cancellationToken = default)
     {
         try
@@ -147,7 +147,7 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "peek_definition")]
-    [Description("Return definition locations and source snippets for a C# source location. line and column are 1-based.")]
+    [Description("Find definition locations plus bounded source snippets, avoiding a separate file-read call.")]
     public async Task<object> PeekDefinition(
         string file,
         int line,
@@ -203,7 +203,7 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "find_references")]
-    [Description("Return references for a C# source location. line and column are 1-based.")]
+    [Description("Find usages of a C# symbol. This can be expensive; check completeness and truncated before treating results as final.")]
     public async Task<object> FindReferences(
         string file,
         int line,
@@ -245,7 +245,7 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "find_implementations")]
-    [Description("Return implementation locations for a C# contract position.")]
+    [Description("Find implementations from an interface, abstract, virtual/base member, or base type position. Concrete implementation positions may return only themselves.")]
     public async Task<object> FindImplementations(
         string file,
         int line,
@@ -288,10 +288,11 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "find_symbols")]
-    [Description("Search workspace symbols by name.")]
+    [Description("Search workspace symbols by name when you do not already have a file location. Empty results can be inconclusive while warming.")]
     public async Task<object> FindSymbols(
         string query,
         int? maxResults = null,
+        [Description("Optional MCP symbol kind names such as class, interface, method, property, or field.")]
         string[]? kindFilter = null,
         CancellationToken cancellationToken = default)
     {
