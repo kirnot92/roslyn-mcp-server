@@ -289,6 +289,42 @@ public sealed class DiagnosticsToolsTests
         await session.DisposeAsync();
     }
 
+    [Fact]
+    public async Task StalePublishDiagnosticsCapturedBeforeReload_DoesNotUpdateNewWorkspaceStore()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Other.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Old.cs"), "class Old { }");
+        File.WriteAllText(Path.Combine(root.Path, "New.cs"), "class New { }");
+        var oldClient = new CapturingLspClient();
+        var newClient = new CapturingLspClient();
+        var documents = CreateDocumentState(root.Path);
+        var store = CreateStore(root.Path);
+        var processor = new DiagnosticNotificationProcessor(store, capacity: 10, startAutomatically: true);
+        var session = CreateSession(root.Path, new SequentialLoader(oldClient, newClient), documents, store, processor);
+
+        await session.LoadProjectAsync("App.csproj");
+        await session.LoadProjectAsync("Other.csproj");
+        oldClient.RaiseCapturedNotification(
+            "textDocument/publishDiagnostics",
+            Publish(root.Path, "Old.cs", Diagnostic("old", DiagnosticSeverity.Error)));
+        await Task.Delay(50);
+
+        Assert.Equal(0, store.KnownFileCount);
+        var staleStatus = await session.GetStatusAsync();
+        Assert.True(staleStatus.StaleDiagnosticNotifications >= 1);
+
+        newClient.RaiseNotification(
+            "textDocument/publishDiagnostics",
+            Publish(root.Path, "New.cs", Diagnostic("new", DiagnosticSeverity.Warning)));
+        await WaitForConditionAsync(() => store.KnownFileCount == 1);
+
+        Assert.Null(store.GetFile("Old.cs", severity: null));
+        Assert.NotNull(store.GetFile("New.cs", severity: null));
+        await session.DisposeAsync();
+    }
+
     private static (WorkspaceSession Session, DiagnosticsTools Tools, DiagnosticStore Store) CreateLoadedTools(
         string root,
         FakeLspClient client)
@@ -405,6 +441,14 @@ public sealed class DiagnosticsToolsTests
             Task.FromResult(new RoslynWorkspaceHandle(target, client));
     }
 
+    private sealed class SequentialLoader(params ILspClient[] clients) : IRoslynWorkspaceLoader
+    {
+        private readonly Queue<ILspClient> remainingClients = new(clients);
+
+        public Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken) =>
+            Task.FromResult(new RoslynWorkspaceHandle(target, this.remainingClients.Dequeue()));
+    }
+
     private sealed class BlockingLoader : IRoslynWorkspaceLoader
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -445,5 +489,46 @@ public sealed class DiagnosticsToolsTests
 
         public void RaiseNotification(string method, JsonElement? parameters = null) =>
             NotificationReceived?.Invoke(method, parameters);
+    }
+
+    private sealed class CapturingLspClient : ILspClient
+    {
+        private Action<string, JsonElement?>? activeNotificationHandlers;
+        private Action<string, JsonElement?>? capturedNotificationHandler;
+
+        public event Action<string, JsonElement?>? NotificationReceived
+        {
+            add
+            {
+                this.activeNotificationHandlers += value;
+                this.capturedNotificationHandler = value;
+            }
+
+            remove
+            {
+                this.activeNotificationHandlers -= value;
+            }
+        }
+
+        public int PendingRequestCount => 0;
+
+        public Task<JsonElement> RequestAsync(
+            string method,
+            object? parameters,
+            TimeSpan timeout,
+            CancellationToken cancellationToken,
+            bool isExpensive = false) =>
+            throw new NotSupportedException();
+
+        public Task NotifyAsync(string method, object? parameters, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task ShutdownAsync(TimeSpan timeout, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public void RaiseNotification(string method, JsonElement? parameters = null) =>
+            this.activeNotificationHandlers?.Invoke(method, parameters);
+
+        public void RaiseCapturedNotification(string method, JsonElement? parameters = null) =>
+            this.capturedNotificationHandler?.Invoke(method, parameters);
     }
 }

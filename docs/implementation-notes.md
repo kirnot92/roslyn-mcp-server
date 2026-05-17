@@ -571,7 +571,7 @@ tool 응답에는 명시적 error code를 선호한다.
 - Background worker가 queue에서 notification을 꺼내 `DiagnosticStore.TryUpdateFromPublishDiagnostics`를 호출한다.
 - Queue capacity 기본값은 1024이고 overflow 정책은 `drop_newest_when_full`이다. Queue가 full이면 새 notification을 drop하고 dropped count를 증가시킨다.
 - `get_workspace_status`는 diagnostics queue capacity, pending, processed, dropped, stale count와 overflow policy를 additive field로 반환한다.
-- Workspace reload 시 diagnostics generation을 증가시키고 queue를 clear하며 store를 clear한다. 이미 처리 중이던 이전 generation notification은 reload lock 순서상 reload 전 반영 후 clear되거나, generation mismatch로 discard된다.
+- Workspace reload 시 diagnostics generation을 증가시키고 queue를 clear하며 store를 clear한다. Notification handler는 구독 시점의 generation을 캡처해 enqueue에 전달하므로, unsubscribe 직후 이전 read loop가 이미 잡아 둔 delegate를 호출해도 이전 generation으로 discard된다. 이미 처리 중이던 이전 generation notification은 reload lock 순서상 reload 전 반영 후 clear되거나, generation mismatch로 discard된다.
 - `diagnostics` tool 결과와 메시지는 마지막으로 처리 완료된 `textDocument/publishDiagnostics` 기준이다.
 
 ## M2 large repo readiness 메모

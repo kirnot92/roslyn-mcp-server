@@ -598,7 +598,7 @@ MCP tool 클래스는 얇게 유지한다. 입력 검증과 출력 DTO 변환은
   - file이 있으면 해당 문서를 open/sync하고 마지막 diagnostics 반환
   - file이 없으면 `DiagnosticStore`의 요약과 제한된 결과만 반환
 
-진단은 LSP `textDocument/publishDiagnostics` notification을 bounded background queue에 넣은 뒤 worker가 `DiagnosticStore`에 저장한다. notification handler는 queue enqueue 후 즉시 반환해서 LSP read loop가 hover, definition 같은 request response 처리를 늦추지 않게 한다. Queue overflow 정책은 `drop_newest_when_full`이다. Queue가 가득 차면 새 publishDiagnostics notification을 버리고 `get_workspace_status`의 dropped count를 증가시킨다. Workspace reload 시 generation을 증가시키고 queue를 비우며 store를 clear해서 이전 workspace diagnostics가 새 workspace store에 섞이지 않게 한다. 따라서 `diagnostics` tool 결과는 마지막으로 처리 완료된 publishDiagnostics 기준이다. Roslyn LS가 diagnostics를 늦게 보내는 경우가 있으므로, `diagnostics` tool은 짧은 settle timeout 옵션을 둘 수 있다.
+진단은 LSP `textDocument/publishDiagnostics` notification을 bounded background queue에 넣은 뒤 worker가 `DiagnosticStore`에 저장한다. notification handler는 queue enqueue 후 즉시 반환해서 LSP read loop가 hover, definition 같은 request response 처리를 늦추지 않게 한다. Queue overflow 정책은 `drop_newest_when_full`이다. Queue가 가득 차면 새 publishDiagnostics notification을 버리고 `get_workspace_status`의 dropped count를 증가시킨다. Workspace reload 시 generation을 증가시키고 queue를 비우며 store를 clear해서 이전 workspace diagnostics가 새 workspace store에 섞이지 않게 한다. LSP notification handler는 구독 시점의 generation을 캡처하고 enqueue 시 함께 전달하므로, unsubscribe 직후 이전 read loop가 이미 잡아 둔 delegate를 호출해도 stale generation으로 discard된다. 따라서 `diagnostics` tool 결과는 마지막으로 처리 완료된 publishDiagnostics 기준이다. Roslyn LS가 diagnostics를 늦게 보내는 경우가 있으므로, `diagnostics` tool은 짧은 settle timeout 옵션을 둘 수 있다.
 
 대규모 solution에서 workspace 전체 diagnostics를 무제한 반환하지 않는다.
 

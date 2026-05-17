@@ -15,7 +15,7 @@ public sealed class DiagnosticNotificationProcessorTests
         var store = CreateStore(root.Path);
         await using var processor = new DiagnosticNotificationProcessor(store, capacity: 10, startAutomatically: true);
 
-        Assert.True(processor.Enqueue(Publish(root.Path, "Program.cs", Diagnostic("boom", DiagnosticSeverity.Error))));
+        Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "Program.cs", Diagnostic("boom", DiagnosticSeverity.Error))));
         await WaitForConditionAsync(() => store.KnownFileCount == 1);
 
         var snapshot = store.GetFile("Program.cs", severity: null);
@@ -32,8 +32,8 @@ public sealed class DiagnosticNotificationProcessorTests
         var store = CreateStore(root.Path);
         await using var processor = new DiagnosticNotificationProcessor(store, capacity: 1, startAutomatically: false);
 
-        Assert.True(processor.Enqueue(Publish(root.Path, "A.cs", Diagnostic("first", DiagnosticSeverity.Error))));
-        Assert.False(processor.Enqueue(Publish(root.Path, "B.cs", Diagnostic("dropped", DiagnosticSeverity.Warning))));
+        Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "A.cs", Diagnostic("first", DiagnosticSeverity.Error))));
+        Assert.False(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "B.cs", Diagnostic("dropped", DiagnosticSeverity.Warning))));
 
         Assert.Equal(1, processor.Statistics.Pending);
         Assert.Equal(1, processor.Statistics.Dropped);
@@ -53,7 +53,8 @@ public sealed class DiagnosticNotificationProcessorTests
         var store = CreateStore(root.Path);
         await using var processor = new DiagnosticNotificationProcessor(store, capacity: 10, startAutomatically: false);
 
-        Assert.True(processor.Enqueue(Publish(root.Path, "Old.cs", Diagnostic("old", DiagnosticSeverity.Error))));
+        var oldGeneration = processor.CurrentGeneration;
+        Assert.True(processor.Enqueue(oldGeneration, Publish(root.Path, "Old.cs", Diagnostic("old", DiagnosticSeverity.Error))));
         processor.ResetForNewWorkspace();
         processor.Start();
         await Task.Delay(50);
@@ -61,7 +62,7 @@ public sealed class DiagnosticNotificationProcessorTests
         Assert.Equal(0, store.KnownFileCount);
         Assert.True(processor.Statistics.Stale >= 1);
 
-        Assert.True(processor.Enqueue(Publish(root.Path, "New.cs", Diagnostic("new", DiagnosticSeverity.Warning))));
+        Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "New.cs", Diagnostic("new", DiagnosticSeverity.Warning))));
         await WaitForConditionAsync(() => store.KnownFileCount == 1);
 
         Assert.Null(store.GetFile("Old.cs", severity: null));
@@ -74,7 +75,7 @@ public sealed class DiagnosticNotificationProcessorTests
         using var root = TestRoot.Create();
         var processor = new DiagnosticNotificationProcessor(CreateStore(root.Path), capacity: 10, startAutomatically: true);
 
-        Assert.True(processor.Enqueue(Publish(root.Path, "Program.cs", Diagnostic("boom", DiagnosticSeverity.Error))));
+        Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "Program.cs", Diagnostic("boom", DiagnosticSeverity.Error))));
         await processor.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
     }
 

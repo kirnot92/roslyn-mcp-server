@@ -46,6 +46,10 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
         Interlocked.Read(ref this.stale),
         DropNewestWhenFullPolicy);
 
+    public int CurrentGeneration => Volatile.Read(ref this.generation);
+
+    public bool IsCurrentGeneration(int generation) => generation == Volatile.Read(ref this.generation);
+
     public void Start()
     {
         if (this.disposed)
@@ -62,16 +66,28 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
         }
     }
 
-    public bool Enqueue(JsonElement? parameters)
+    public bool Enqueue(int generation, JsonElement? parameters)
     {
         if (this.disposed)
         {
             return false;
         }
 
+        if (!IsCurrentGeneration(generation))
+        {
+            Interlocked.Increment(ref this.stale);
+            return false;
+        }
+
         var shouldSignal = false;
         lock (this.queueLock)
         {
+            if (!IsCurrentGeneration(generation))
+            {
+                Interlocked.Increment(ref this.stale);
+                return false;
+            }
+
             if (this.queue.Count >= this.capacity)
             {
                 Interlocked.Increment(ref this.dropped);
@@ -79,7 +95,7 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
             }
 
             shouldSignal = this.queue.Count == 0;
-            this.queue.Enqueue(new QueuedDiagnosticNotification(Volatile.Read(ref this.generation), parameters));
+            this.queue.Enqueue(new QueuedDiagnosticNotification(generation, parameters));
             Volatile.Write(ref this.pending, this.queue.Count);
         }
 
@@ -91,11 +107,11 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
         return true;
     }
 
-    public void ResetForNewWorkspace()
+    public int ResetForNewWorkspace()
     {
         lock (this.processingLock)
         {
-            Interlocked.Increment(ref this.generation);
+            var nextGeneration = Interlocked.Increment(ref this.generation);
             lock (this.queueLock)
             {
                 var discarded = this.queue.Count;
@@ -109,6 +125,7 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
             }
 
             this.store.Clear();
+            return nextGeneration;
         }
     }
 

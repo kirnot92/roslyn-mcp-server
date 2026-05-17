@@ -22,6 +22,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
     private readonly List<WorkspaceWarning> workspaceWarnings = [];
     private WorkspaceScanResult? scanCache;
     private RoslynWorkspaceHandle? handle;
+    private Action<string, JsonElement?>? notificationHandler;
     private WorkspaceLoadState state = WorkspaceLoadState.NotLoaded;
     private string? failureCode;
     private string? failureMessage;
@@ -221,7 +222,9 @@ public sealed class WorkspaceSession : IAsyncDisposable
         {
             var handle = await this.loader.LoadAsync(target, cancellationToken).ConfigureAwait(false);
             this.handle = handle;
-            this.handle.Client.NotificationReceived += OnNotificationReceived;
+            var notificationGeneration = this.diagnosticNotifications?.CurrentGeneration ?? 0;
+            this.notificationHandler = (method, parameters) => OnNotificationReceived(notificationGeneration, method, parameters);
+            this.handle.Client.NotificationReceived += this.notificationHandler;
             this.handle.Client.Faulted += OnClientFaulted;
             this.state = WorkspaceLoadState.WorkspaceWarming;
             ApplyAlreadyReceivedNotifications(this.handle.Client);
@@ -247,7 +250,12 @@ public sealed class WorkspaceSession : IAsyncDisposable
         var oldHandle = this.handle;
         if (oldHandle is not null)
         {
-            oldHandle.Client.NotificationReceived -= OnNotificationReceived;
+            if (this.notificationHandler is not null)
+            {
+                oldHandle.Client.NotificationReceived -= this.notificationHandler;
+                this.notificationHandler = null;
+            }
+
             oldHandle.Client.Faulted -= OnClientFaulted;
             this.handle = null;
         }
@@ -340,8 +348,18 @@ public sealed class WorkspaceSession : IAsyncDisposable
         await handle.DisposeAsync().ConfigureAwait(false);
     }
 
-    private void OnNotificationReceived(string method, System.Text.Json.JsonElement? parameters)
+    private void OnNotificationReceived(int generation, string method, System.Text.Json.JsonElement? parameters)
     {
+        if (this.diagnosticNotifications is not null && !this.diagnosticNotifications.IsCurrentGeneration(generation))
+        {
+            if (string.Equals(method, PublishDiagnosticsMethod, StringComparison.Ordinal))
+            {
+                this.diagnosticNotifications.Enqueue(generation, parameters);
+            }
+
+            return;
+        }
+
         if (string.Equals(method, ProjectInitializationCompleteMethod, StringComparison.Ordinal))
         {
             this.state = HasWorkspaceWarnings()
@@ -352,7 +370,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
         if (string.Equals(method, PublishDiagnosticsMethod, StringComparison.Ordinal))
         {
-            this.diagnosticNotifications?.Enqueue(parameters);
+            this.diagnosticNotifications?.Enqueue(generation, parameters);
             return;
         }
 
