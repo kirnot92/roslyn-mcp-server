@@ -73,8 +73,9 @@ Read-only Roslyn tools:
 - `go_to_definition` - Return definition locations for a source position.
 - `peek_definition` - Return definition locations plus bounded source snippets.
 - `find_references` - Return references for a source position.
-- `find_implementations` - Return implementation locations for an interface,
-  abstract member, or type position.
+- `find_implementations` - Return implementation locations from an interface,
+  abstract member, or base contract position. Calling it on a concrete
+  implementation may legitimately return only that implementation.
 - `find_symbols` - Search workspace symbols by name.
 - `diagnostics` - Return currently known file or workspace diagnostics.
 

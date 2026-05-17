@@ -41,6 +41,7 @@
 - M5 read productivity tool 일부 완료
   - `find_implementations(file, line, column, maxResults?)` tool을 추가했다.
   - LSP `textDocument/implementation`을 위치 기반으로 호출하며, `find_references`와 같은 bounded location metadata를 반환한다.
+  - 전체 구현체 탐색은 interface/abstract/base contract 위치에서 호출해야 한다. 구체 구현 class/member 위치에서는 자기 자신만 반환될 수 있으므로, agent에게 호출 위치를 명확히 안내한다.
 
 현재 MCP tool:
 

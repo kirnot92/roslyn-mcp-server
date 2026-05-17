@@ -128,6 +128,16 @@ cause. Read tools still return best-effort results with `workspaceState`,
 warming, retry hints use `retryAfterMs: 30000` so clients avoid tight polling on
 large repositories.
 
+`find_implementations` is position-based, not a symbol-name search. To discover
+all implementations, call it on the interface, abstract member, or base contract
+position, for example the `ICalculator` identifier in `interface ICalculator`,
+the `Add` identifier in an interface method declaration, or a usage whose static
+type is the contract. If it is called on a concrete class or concrete method
+implementation such as `class Calculator : ICalculator` or `Calculator.Add`, the
+language server may correctly return only that concrete implementation. When the
+result metadata says `completeness: "partial"` or includes `retryAfterMs`, retry
+after workspace warming before treating missing implementations as absent.
+
 ## Code Review Preflight
 
 For code review workflows, start workspace loading before reading the full diff:
