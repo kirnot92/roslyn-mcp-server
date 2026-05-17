@@ -65,16 +65,21 @@ M2 전체 read-only tool이 들어간 뒤 이 문서를 기준으로 coverage au
 - root 밖 path/URI 차단 테스트가 read tool 전체에 적용되는지 확인한다.
 - Roslyn LS 미설치 환경에서 integration test skip 메시지가 명확한지 확인한다.
 
-### M3 시작 전 또는 초반
+### M3 사용자/클라이언트 smoke - 완료된 기준
 
-실제 MCP client에 붙이기 전에 작은/중간 real repo로 smoke test를 수행한다. 이 단계의 성공 기준은 완전한 semantic 정확도가 아니라 hang/crash 없이 Agent CLI가 다음 행동을 결정할 수 있는 응답을 받는 것이다.
+M3에서는 작은/중간 real repo를 대상으로 stdio MCP smoke test를 수행했다. 이 단계의 성공 기준은 완전한 semantic 정확도가 아니라 hang/crash 없이 Agent CLI가 다음 행동을 결정할 수 있는 응답을 받는 것이다.
 
-권장 후보:
+기록된 후보:
 
 - `PowerShell/PowerShell`
 - `microsoft/semantic-kernel`
-- `dotnet/msbuild`
-- `dotnet/aspnetcore` 중 작은 범위
+- `dotnet/aspnetcore`
+
+결과 문서:
+
+- `docs/smoke-tests/m2-powershell-smoke.md`
+- `docs/smoke-tests/m2-semantic-kernel-smoke.md`
+- `docs/smoke-tests/m2-aspnetcore-smoke.md`
 
 검증 흐름:
 

@@ -4,7 +4,8 @@
 
 Do not implement `solution_overview` in M3.
 
-M3 is focused on user and Agent CLI usability before broader implementation
+M3 user and Agent CLI usability work is complete. The decision for that milestone
+was to avoid adding a new summary tool before broader implementation
 hardening. The current workspace and read-only tools are enough for the recommended
 client flow:
 

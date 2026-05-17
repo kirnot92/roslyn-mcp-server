@@ -4,7 +4,7 @@
 
 `roslyn-mcp-server`는 Agent CLI류 도구가 Roslyn 언어 기능을 사용할 수 있도록, `roslyn-language-server`를 자식 프로세스로 실행하고 MCP tool 호출을 LSP 요청으로 변환하는 MCP 서버다.
 
-현재 이 저장소는 M2 read-only tool 구현과 M2 large repo readiness 일부가 반영된 초기 구현 단계다.
+현재 이 저장소는 M2 read-only tool 구현, M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리까지 반영된 상태다.
 
 ## 목표
 
@@ -34,7 +34,7 @@ MCP 서버는 기본적으로 PATH에서 `roslyn-language-server`를 찾는다. 
 
 ## 현재 구현 범위
 
-현재 `main` 기준으로 M0/M1과 M2 read-only tool 범위가 구현되어 있다.
+현재 `main` 기준으로 M0/M1, M2 read-only tool, M3 사용자/클라이언트 사용성 범위가 구현되어 있다.
 
 M0/M1 포함:
 
@@ -64,13 +64,21 @@ M2 포함:
 - result limit, expensive LSP request limit, warming 중 metadata
 - LSP read loop fault handling, git scanner pathspec, filesystem scanner candidate-limit 조기 중단
 
-다음 범위는 후속 구현으로 남긴다.
+M3 포함:
+
+- `README.md`의 짧은 사용자 시작 흐름 정리
+- `docs/usage.md` 사용자 설치/설정 문서
+- `roslyn-language-server` 탐색/설치 오류 메시지 정리
+- PowerShell, Semantic Kernel, ASP.NET Core stdio smoke 기록
+- `solution_overview` M3 미구현 결정과 후속 후보 평가
+
+다음 범위는 M4 이후 후속 작업으로 남긴다.
 
 - `solution_overview`
 - write/refactoring tool
 - rename/code action/formatting/apply 계열 tool
 - diagnostics notification offload
-- 실제 MCP client smoke와 opt-in large repo 검증
+- 추가 실제 MCP client smoke 반복과 opt-in large repo 검증/default tuning
 
 ## 중요한 설계 메모
 
@@ -119,6 +127,6 @@ https://github.com/kirnot92/roslyn-mcp-server
 
 ## 현재 상태
 
-M2d(`diagnostics`, `DiagnosticStore`)와 M2 large repo readiness 일부가 완료되어 있다.
+M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리가 완료되어 있다.
 
-다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 diagnostics notification offload 설계, 실제 MCP client smoke, opt-in large repo 검증, 사용자용 설치/설정 문서 정리다.
+다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 diagnostics notification offload 설계, opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복이다.

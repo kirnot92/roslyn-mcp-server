@@ -6,6 +6,8 @@
 
 M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 가능해지는 것을 목표로 한다. 하지만 대형 mono-repo에서는 workspace 선택, LSP 응답 크기, scanner 비용, diagnostics notification 폭주가 별도의 실패 원인이 될 수 있다. 이 문서는 그 위험을 M3/M4로 넘어가기 전에 정리하기 위한 작업 지시서다.
 
+2026-05-17 현재 Phase 1/2와 CLI tuning은 반영됐고, M3 사용자/클라이언트 사용성 정리와 작은/중간 real repo smoke도 기록됐다. 이 문서는 readiness 이력과 M4 이후 남은 대형 repo 품질 후보를 판단하는 기준으로 유지한다.
+
 ## 배경
 
 대형 repository 관점의 리뷰에서 다음 문제가 확인됐다.
@@ -20,7 +22,7 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 ## 목표
 
 - M2 read-only tool의 public contract를 유지한다.
-- 실제 MCP client smoke 전에 blocker급 대형 repo 위험을 줄인다.
+- M2/M3 smoke 전에 blocker급 대형 repo 위험을 줄인다.
 - 문서와 구현의 차이를 줄인다.
 - 모든 변경은 테스트 가능한 단위로 작게 나눈다.
 
@@ -184,8 +186,8 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 
 ## 후속 단계
 
-이 계획의 Phase 1과 Phase 2가 끝나면 M2 completion smoke를 수행한다.
+이 계획의 Phase 1과 Phase 2 이후 M2/M3 smoke는 수행되어 `docs/smoke-tests/`에 기록되어 있다.
 
-- 작은/중간 real repo에서 MCP client smoke
-- 필요 시 Tier 1 repo 중 하나에서 opt-in `list_workspaces`/`load_solution`/read tool smoke
+- 작은/중간 real repo에서 stdio MCP smoke 완료: PowerShell, Semantic Kernel, ASP.NET Core
+- 필요 시 Tier 1 repo 중 하나에서 추가 opt-in `list_workspaces`/`load_solution`/read tool smoke
 - 본격적인 Tier 1/Tier 2 반복 검증과 default tuning은 M4 품질 강화 단계에서 수행한다.

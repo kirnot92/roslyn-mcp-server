@@ -26,6 +26,11 @@
   - git scanner pathspec
   - filesystem scanner candidate-limit 조기 중단
   - large repo tuning CLI option 공개
+- M3 사용자/클라이언트 사용성 정리 완료
+  - `README.md`와 `docs/usage.md`에 사용자 설치/설정 흐름 작성
+  - `roslyn-language-server` 탐색/설치 오류 메시지 정리
+  - PowerShell, Semantic Kernel, ASP.NET Core stdio smoke 결과 기록
+  - `solution_overview`는 M3에서 구현하지 않고 M4 이후 후보로 보류
 
 현재 MCP tool:
 
@@ -43,10 +48,9 @@
 현재 남은 주요 후보:
 
 - diagnostics notification offload
-- 실제 MCP client smoke
-- opt-in large repo 검증
-- 사용자용 설치/설정 문서 정리
-- `solution_overview` 필요성 재평가
+- 추가 실제 MCP client smoke 반복
+- opt-in large repo 검증과 default tuning
+- `solution_overview` M4 이후 구현 여부 판단
 
 최근 로컬 검증 결과:
 
@@ -57,6 +61,18 @@ dotnet test roslyn-mcp-server.sln
 - 94 passed / 0 failed / 1 skipped / 95 total
 
 아래 milestone별 완료 메모는 당시 구현 시점의 이력으로 남긴다.
+
+## M3 완료 메모
+
+2026-05-17 기준 M3 사용자/클라이언트 사용성 정리는 완료된 상태로 본다.
+
+- `README.md`는 현재 구현된 tool과 권장 시작 흐름을 짧게 안내한다.
+- `docs/usage.md`는 `roslyn-language-server` 별도 설치, MCP client 설정 예시, 권장 tool flow, large repo 주의사항을 담는다.
+- `roslyn-language-server` 미설치/탐색 실패 오류는 설치 명령과 명시 경로 옵션을 포함하도록 정리했다.
+- `docs/solution-overview-evaluation.md`는 `solution_overview`를 M3에서 구현하지 않고 M4 또는 별도 milestone 후보로 남긴다는 결정을 기록한다.
+- PowerShell, Semantic Kernel, ASP.NET Core smoke 결과는 `docs/smoke-tests/` 아래에 기록되어 있다.
+
+M3 이후 기준으로 사용자용 설치/설정 문서 정리는 남은 항목이 아니다. 후속 우선순위는 diagnostics notification offload, opt-in large repo 검증/default tuning, 필요 시 추가 실제 MCP client smoke 반복이다.
 
 ## M2b 완료 메모
 
