@@ -61,7 +61,7 @@ M2 전체 read-only tool이 들어간 뒤 이 문서를 기준으로 coverage au
 - `dotnet build roslyn-mcp-server.sln`
 - `dotnet test roslyn-mcp-server.sln`
 - result limit/truncation metadata가 모든 대량 결과 tool에 있는지 확인한다.
-- `StartingLanguageServer`, `LspReady`, `WorkspaceWarming`, `LoadedWithErrors`, `Ready`, `Failed` 상태별 tool 동작을 확인한다.
+- `StartingLanguageServer`, `WorkspaceWarming`, `LoadedWithErrors`, `Ready`, `Failed` 상태별 tool 동작을 확인한다.
 - root 밖 path/URI 차단 테스트가 read tool 전체에 적용되는지 확인한다.
 - Roslyn LS 미설치 환경에서 integration test skip 메시지가 명확한지 확인한다.
 
@@ -81,7 +81,7 @@ M2 전체 read-only tool이 들어간 뒤 이 문서를 기준으로 coverage au
 1. MCP client에서 서버를 repo root 기준으로 실행한다.
 2. `list_workspaces`가 제한 시간 안에 반환되는지 확인한다.
 3. 명시적으로 `load_solution` 또는 `load_project`를 호출한다.
-4. `get_workspace_status`가 `LspReady`, `WorkspaceWarming`, `LoadedWithErrors`, `Ready` 중 하나로 진행되는지 확인한다.
+4. `get_workspace_status`가 `WorkspaceWarming`, `LoadedWithErrors`, `Ready` 중 하나로 진행되는지 확인한다.
 5. `document_symbols`, `hover`, `go_to_definition`, `find_references`, `find_symbols`, file-specific `diagnostics`를 작은 범위에서 호출한다.
 6. warming 중 결과가 `completeness` metadata와 함께 반환되는지 확인한다.
 
@@ -185,7 +185,7 @@ ROSLYN_MCP_REAL_REPO_ASPNETCORE=D:\repos\aspnetcore
 - MCP 서버 process가 hang/crash하지 않는다.
 - `list_workspaces`가 제한 시간 안에 반환한다.
 - 후보가 많은 경우 `truncated` 또는 명시적 선택 요구가 나온다.
-- `load_solution` 이후 `LspReady` 또는 `WorkspaceWarming`까지 도달한다.
+- `load_solution` 이후 `WorkspaceWarming`까지 도달한다.
 - warming 중 navigation tool이 가능한 경우 best-effort 결과를 반환하거나 partial metadata를 포함한다.
 - 실패하더라도 user-facing 오류로 정리되어 Agent CLI가 다음 행동을 알 수 있다.
 
@@ -282,7 +282,8 @@ Fixture:
 
 - `StartingLanguageServer` 상태에서 navigation tool은 queue에 쌓이지 않고 즉시 `workspace_loading`을 반환한다.
 - `workspace_loading` 응답에는 `workspaceState`, `retryAfterMs`, 현재 operation이 포함된다.
-- `LspReady` 상태에서는 `find_symbols`, `hover`, `go_to_definition`, `diagnostics`가 best-effort로 실행된다.
+- 현재 구현은 load 성공 후 `LspReady`를 외부 상태로 노출하지 않고 곧바로 `WorkspaceWarming`으로 전환한다.
+- `WorkspaceWarming` 상태에서는 `find_symbols`, `hover`, `go_to_definition`, `diagnostics`가 best-effort로 실행된다.
 - `WorkspaceWarming` 상태에서는 결과에 `workspaceState: "WorkspaceWarming"`과 `completeness: "partial"` 또는 `unknown`이 포함된다.
 - `workspace/projectInitializationComplete` notification 수신 시 project load error가 없으면 상태가 `Ready`로 전환된다.
 - Roslyn LS가 project load error를 보고한 경우 `workspace/projectInitializationComplete` 이후 상태는 `LoadedWithErrors`가 되고, `get_workspace_status.warnings`에 관련 project와 원인을 포함한다.

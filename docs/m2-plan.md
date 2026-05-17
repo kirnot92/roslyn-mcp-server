@@ -52,7 +52,8 @@ M2의 핵심은 읽기 tool을 추가하되, 대규모 repo와 warming 상태에
 - 변환은 tool별로 흩뜨리지 않고 M2a에서 공통 mapper로 구현한다.
 - 모든 사용자 입력 file path는 `PathGuard`를 통과한다.
 - `StartingLanguageServer`에서는 navigation/diagnostics tool을 queue에 넣지 않고 즉시 `workspace_loading`을 반환한다.
-- `LspReady`, `WorkspaceWarming`에서는 best-effort로 실행하고 `workspaceState`, `completeness`를 포함한다.
+- 현재 구현은 load 성공 후 `LspReady`를 외부 상태로 노출하지 않고 `WorkspaceWarming`으로 전환한다.
+- `WorkspaceWarming`에서는 best-effort로 실행하고 `workspaceState`, `completeness`를 포함한다.
 - `completeness` 값은 `complete`, `partial`, `unknown`만 사용한다.
 - 대량 결과 tool은 `totalKnown`, `returned`, `truncated` metadata를 포함한다.
 - stdout logging 금지 원칙은 유지한다.
@@ -125,8 +126,8 @@ M2a부터 공통화한다.
 
 - `Ready`: 기본 `complete`
 - `WorkspaceWarming`: `document_symbols`는 `partial` 또는 `unknown`, `hover`는 `partial`
-- `LspReady`: `unknown` 또는 `partial`
 - 결과가 비어도 warming 중이면 `reason`을 포함한다.
+- 현재 구현에서는 load 성공 후 바로 `WorkspaceWarming`으로 전환하므로 `LspReady`는 외부 상태로 노출되지 않는다.
 
 ### result limiting 결정
 
@@ -198,11 +199,11 @@ M2a부터 helper를 만든다. `document_symbols`도 큰 파일에서는 symbol 
 - `go_to_definition`
   - `Ready`: `complete`
   - `WorkspaceWarming`: `partial`
-  - `LspReady`: `unknown`
 - `find_references`
   - `Ready`: `complete`
-  - `WorkspaceWarming`/`LspReady`: `partial`
+  - `WorkspaceWarming`: `partial`
   - cross-project 누락 가능성을 `reason`에 명시한다.
+- 현재 구현에서는 load 성공 후 바로 `WorkspaceWarming`으로 전환하므로 `LspReady`는 외부 상태로 노출되지 않는다.
 
 ### 대규모 repo 위험
 
@@ -263,8 +264,8 @@ workspace-wide symbol search를 독립 단계로 구현한다. 이는 대규모 
 
 - `Ready`: `complete` 또는 `unknown`
 - `WorkspaceWarming`: `partial`
-- `LspReady`: `unknown`
 - query가 너무 짧아 대량 결과를 유발할 수 있으면 명확한 user-facing validation 또는 낮은 limit을 적용한다.
+- 현재 구현에서는 load 성공 후 바로 `WorkspaceWarming`으로 전환하므로 `LspReady`는 외부 상태로 노출되지 않는다.
 
 ### 대규모 repo 위험
 

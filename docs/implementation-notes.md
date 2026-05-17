@@ -96,11 +96,11 @@ M2b metadata 계약:
 - `go_to_definition`
   - `Ready`: `complete`
   - `WorkspaceWarming`: `partial`
-  - `LspReady`: `unknown`
 - `find_references`
   - `Ready`: `complete`
-  - `WorkspaceWarming`/`LspReady`: `partial`
+  - `WorkspaceWarming`: `partial`
   - warming/early ready 상태에서는 cross-project reference 누락 가능성을 `reason`에 포함한다.
+- 현재 구현에서는 load 성공 후 바로 `WorkspaceWarming`으로 전환하므로 `LspReady`는 외부 상태로 노출되지 않는다.
 
 M2b 테스트 상태:
 
@@ -149,9 +149,9 @@ M2b 직후 남은 범위:
   - metadata에 `totalKnown`, `returned`, `truncated`를 포함한다.
 - workspace 상태 metadata
   - `WorkspaceWarming`: `partial`
-  - `LspReady`: `unknown`
   - `Ready`: Roslyn LS가 workspace symbol index completeness를 알려주지 않으므로 `unknown`
   - warming 중 빈 결과에는 symbol index가 불완전할 수 있다는 `reason`을 포함한다.
+  - 현재 구현에서는 load 성공 후 바로 `WorkspaceWarming`으로 전환하므로 `LspReady`는 외부 상태로 노출되지 않는다.
 - expensive request
   - `find_symbols`는 M2b에서 추가한 expensive LSP request limit을 재사용한다.
 
@@ -187,7 +187,8 @@ M2b 직후 남은 범위:
   - `NotLoaded`에서 workspace 후보가 하나면 자동 load
   - solution이 여러 개면 `workspace_not_loaded`
   - `StartingLanguageServer`에서는 queue하지 않고 즉시 `workspace_loading`
-  - `WorkspaceWarming`/`LspReady`에서는 best-effort 실행 및 metadata 반환
+  - 현재 구현은 load 성공 후 `LspReady`를 외부 상태로 노출하지 않고 바로 `WorkspaceWarming`으로 전환한다.
+  - `WorkspaceWarming`에서는 best-effort 실행 및 metadata 반환
 - common metadata/result DTO
   - `workspaceState`, `completeness`, `reason`, `retryAfterMs`, `truncated`
 - typed LSP model 추가
@@ -298,7 +299,7 @@ M2에서 주의할 점:
 
 - M2 read-only tool을 추가하기 전에 `DocumentStateManager`와 file URI/line-column 변환 테스트를 먼저 보강한다.
 - Roslyn navigation/diagnostics tool은 `StartingLanguageServer`에서 queue에 쌓지 말고 `workspace_loading`을 반환해야 한다.
-- `LspReady`/`WorkspaceWarming`에서는 가능한 read tool을 best-effort로 실행하되 `workspaceState`, `completeness` metadata를 포함한다.
+- 현재 구현은 load 성공 후 `WorkspaceWarming`으로 전환한다. `WorkspaceWarming`에서는 가능한 read tool을 best-effort로 실행하되 `workspaceState`, `completeness` metadata를 포함한다.
 - 모든 사용자 입력 path는 `PathGuard`를 통과해야 한다.
 - stdout에는 로그를 쓰지 않는다.
 - 대량 결과는 result limit/truncation metadata를 포함해야 한다.
