@@ -16,7 +16,9 @@ public static class ServerResources
     public static string Guide() => """
         Roslyn MCP Server is a best-effort, read-only C# context provider.
 
-        Start with list_workspaces and get_workspace_status, then load a solution or project when needed. Prefer Roslyn semantic tools for navigation, but treat warming, unknown completeness, and truncated results as partial context.
+        Start with list_workspaces and get_workspace_status, then load a solution or project when needed. Prefer Roslyn semantic tools for navigation. Use get_call_hierarchy on callable positions when you need direct depth-1 incoming callers, outgoing callees, or both.
+
+        Treat warming, unknown completeness, and truncated results as partial context.
         """;
 
     [McpServerResource(
@@ -26,7 +28,7 @@ public static class ServerResources
         MimeType = "text/markdown")]
     [Description("Short capability summary for this Roslyn MCP server.")]
     public static string Capabilities() => """
-        This server exposes read-only Roslyn context: workspace discovery, symbols, hover, definitions, references, implementations, snippets, and diagnostics.
+        This server exposes read-only Roslyn context: workspace discovery, symbols, hover, definitions, references, implementations, call hierarchy, snippets, and diagnostics.
 
         It does not edit, refactor, format, rename, or apply code actions.
         """;

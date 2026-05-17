@@ -1131,6 +1131,371 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task GetCallHierarchy_PrepareRequestUsesZeroBasedPositionAndIsNotExpensive()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(
+            Path.Combine(root.Path, "Program.cs"),
+            string.Join(Environment.NewLine, Enumerable.Repeat("// padding", 11).Append("class C { void M() { } }")));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy("Program.cs", line: 12, column: 5);
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        Assert.Empty(hierarchy.Roots);
+        Assert.Empty(hierarchy.Edges);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("textDocument/prepareCallHierarchy", request.Method);
+        Assert.False(request.IsExpensive);
+        Assert.Equal(11, request.Params.GetProperty("position").GetProperty("line").GetInt32());
+        Assert.Equal(4, request.Params.GetProperty("position").GetProperty("character").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_ReturnsEmptyWhenPrepareIsNullOrEmptyAndDoesNotCallFollowUp()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { void M() { } }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(null);
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var nullResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 16);
+        var emptyResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 16);
+
+        var nullHierarchy = Assert.IsType<CallHierarchyResult>(nullResult);
+        var emptyHierarchy = Assert.IsType<CallHierarchyResult>(emptyResult);
+        Assert.Empty(nullHierarchy.Roots);
+        Assert.Empty(nullHierarchy.Edges);
+        Assert.Empty(emptyHierarchy.Roots);
+        Assert.Empty(emptyHierarchy.Edges);
+        Assert.Equal(["textDocument/prepareCallHierarchy", "textDocument/prepareCallHierarchy"], client.Requests.Select(r => r.Method));
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_MapsIncomingCallerToRootAndCallSites()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var targetUri = CreateFileUri(root.Path, "Target.cs");
+        var callerUri = CreateFileUri(root.Path, "Caller.cs");
+        var target = CreateCallHierarchyItem("M", targetUri, range: CreateRange(1, 4, 1, 12), detail: "void Target.M()");
+        var caller = CreateCallHierarchyItem("Call", callerUri, range: CreateRange(3, 8, 3, 16), detail: "void Caller.Call()");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[]
+        {
+            CreateIncomingCall(
+                caller,
+                CreateRange(4, 20, 4, 23),
+                CreateRange(5, 12, 5, 15))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21);
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        var rootSymbol = Assert.Single(hierarchy.Roots);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal(rootSymbol.Id, edge.RootId);
+        Assert.Equal("incoming", edge.Direction);
+        Assert.Equal(1, edge.Depth);
+        Assert.Equal("Call", edge.From.Name);
+        Assert.Equal("M", edge.To.Name);
+        Assert.Equal("Caller.cs", edge.From.Location?.File);
+        Assert.Equal("Target.cs", edge.To.Location?.File);
+        Assert.Equal(2, edge.TotalCallSites);
+        Assert.False(edge.CallSitesTruncated);
+        Assert.Collection(
+            edge.CallSites,
+            site =>
+            {
+                Assert.Equal("Caller.cs", site.File);
+                Assert.Equal(5, site.Line);
+                Assert.Equal(21, site.Column);
+                Assert.Equal(5, site.Range.StartLine);
+                Assert.Equal(21, site.Range.StartColumn);
+            },
+            site =>
+            {
+                Assert.Equal("Caller.cs", site.File);
+                Assert.Equal(6, site.Line);
+                Assert.Equal(13, site.Column);
+            });
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+        Assert.False(hierarchy.Truncated);
+        Assert.Equal(["textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls"], client.Requests.Select(r => r.Method));
+        Assert.True(client.Requests[1].IsExpensive);
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_MapsOutgoingRootToCallee()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var targetUri = CreateFileUri(root.Path, "Target.cs");
+        var calleeUri = CreateFileUri(root.Path, "Callee.cs");
+        var target = CreateCallHierarchyItem("M", targetUri, range: CreateRange(1, 4, 1, 12));
+        var callee = CreateCallHierarchyItem("Other", calleeUri, range: CreateRange(6, 8, 6, 16));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[]
+        {
+            CreateOutgoingCall(callee, CreateRange(2, 18, 2, 23))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, direction: "outgoing");
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        var rootSymbol = Assert.Single(hierarchy.Roots);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal(rootSymbol.Id, edge.RootId);
+        Assert.Equal("outgoing", edge.Direction);
+        Assert.Equal("M", edge.From.Name);
+        Assert.Equal("Other", edge.To.Name);
+        Assert.Equal("Target.cs", edge.From.Location?.File);
+        Assert.Equal("Callee.cs", edge.To.Location?.File);
+        var callSite = Assert.Single(edge.CallSites);
+        Assert.Equal("Target.cs", callSite.File);
+        Assert.Equal(3, callSite.Line);
+        Assert.Equal(19, callSite.Column);
+        Assert.Equal(["textDocument/prepareCallHierarchy", "callHierarchy/outgoingCalls"], client.Requests.Select(r => r.Method));
+        Assert.True(client.Requests[1].IsExpensive);
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_BothRequestsIncomingThenOutgoingAndReturnsDeterministicEdges()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var target = CreateCallHierarchyItem("M", CreateFileUri(root.Path, "Target.cs"));
+        var caller = CreateCallHierarchyItem("Caller", CreateFileUri(root.Path, "Caller.cs"));
+        var callee = CreateCallHierarchyItem("Callee", CreateFileUri(root.Path, "Callee.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[] { CreateIncomingCall(caller, CreateRange(2, 0, 2, 1)) });
+        client.EnqueueResponse(new[] { CreateOutgoingCall(callee, CreateRange(3, 0, 3, 1)) });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, direction: "both");
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        Assert.Equal(["incoming", "outgoing"], hierarchy.Edges.Select(edge => edge.Direction));
+        Assert.Equal("Caller", hierarchy.Edges[0].From.Name);
+        Assert.Equal("Callee", hierarchy.Edges[1].To.Name);
+        Assert.Equal(
+            ["textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls"],
+            client.Requests.Select(r => r.Method));
+        Assert.True(client.Requests[1].IsExpensive);
+        Assert.True(client.Requests[2].IsExpensive);
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_PreservesOriginalPreparedItemInFollowUpParams()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var range = CreateRange(1, 4, 1, 12);
+        var target = new
+        {
+            name = "M",
+            kind = (int)SymbolKind.Method,
+            detail = "void Target.M()",
+            uri = CreateFileUri(root.Path, "Target.cs"),
+            range,
+            selectionRange = range,
+            data = new
+            {
+                opaque = "keep",
+                nested = new
+                {
+                    value = 42
+                }
+            }
+        };
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21);
+
+        Assert.IsType<CallHierarchyResult>(result);
+        var followUpItem = client.Requests[1].Params.GetProperty("item");
+        Assert.Equal("M", followUpItem.GetProperty("name").GetString());
+        Assert.Equal("void Target.M()", followUpItem.GetProperty("detail").GetString());
+        Assert.Equal("keep", followUpItem.GetProperty("data").GetProperty("opaque").GetString());
+        Assert.Equal(42, followUpItem.GetProperty("data").GetProperty("nested").GetProperty("value").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_FiltersEdgesWithOutsideRootNonFileOrInvalidFromAndToUris()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var target = CreateCallHierarchyItem("M", CreateFileUri(root.Path, "Target.cs"));
+        var validCaller = CreateCallHierarchyItem("ValidCaller", CreateFileUri(root.Path, "Caller.cs"));
+        var validCallee = CreateCallHierarchyItem("ValidCallee", CreateFileUri(root.Path, "Callee.cs"));
+        var outsideSymbol = CreateCallHierarchyItem("Outside", new Uri(Path.Combine(outside.Path, "Outside.cs")).AbsoluteUri);
+        var nonFileSymbol = CreateCallHierarchyItem("Remote", "https://example.test/Remote.cs");
+        var invalidUriSymbol = CreateCallHierarchyItem("Invalid", "not a uri");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[]
+        {
+            CreateIncomingCall(outsideSymbol, CreateRange(0, 0, 0, 1)),
+            CreateIncomingCall(nonFileSymbol, CreateRange(0, 0, 0, 1)),
+            CreateIncomingCall(invalidUriSymbol, CreateRange(0, 0, 0, 1)),
+            CreateIncomingCall(validCaller, CreateRange(1, 0, 1, 1))
+        });
+        client.EnqueueResponse(new[]
+        {
+            CreateOutgoingCall(outsideSymbol, CreateRange(0, 0, 0, 1)),
+            CreateOutgoingCall(nonFileSymbol, CreateRange(0, 0, 0, 1)),
+            CreateOutgoingCall(invalidUriSymbol, CreateRange(0, 0, 0, 1)),
+            CreateOutgoingCall(validCallee, CreateRange(2, 0, 2, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, direction: "both");
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        Assert.Equal(2, hierarchy.TotalKnown);
+        Assert.Equal(2, hierarchy.Returned);
+        Assert.Equal(["ValidCaller", "M"], hierarchy.Edges.Select(edge => edge.From.Name));
+        Assert.Equal(["M", "ValidCallee"], hierarchy.Edges.Select(edge => edge.To.Name));
+        Assert.DoesNotContain(hierarchy.Edges, edge => edge.From.Name is "Outside" or "Remote" or "Invalid");
+        Assert.DoesNotContain(hierarchy.Edges, edge => edge.To.Name is "Outside" or "Remote" or "Invalid");
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_TruncatesByEdgeCount()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var target = CreateCallHierarchyItem("M", CreateFileUri(root.Path, "Target.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[]
+        {
+            CreateIncomingCall(CreateCallHierarchyItem("Caller1", CreateFileUri(root.Path, "Caller1.cs")), CreateRange(0, 0, 0, 1)),
+            CreateIncomingCall(CreateCallHierarchyItem("Caller2", CreateFileUri(root.Path, "Caller2.cs")), CreateRange(1, 0, 1, 1)),
+            CreateIncomingCall(CreateCallHierarchyItem("Caller3", CreateFileUri(root.Path, "Caller3.cs")), CreateRange(2, 0, 2, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, maxResults: 2);
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        Assert.Equal(3, hierarchy.TotalKnown);
+        Assert.Equal(2, hierarchy.Returned);
+        Assert.Equal(2, hierarchy.Edges.Count);
+        Assert.True(hierarchy.Truncated);
+        Assert.Equal(["Caller1", "Caller2"], hierarchy.Edges.Select(edge => edge.From.Name));
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_TruncatesCallSitesAndSetsMetadata()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var target = CreateCallHierarchyItem("M", CreateFileUri(root.Path, "Target.cs"));
+        var caller = CreateCallHierarchyItem("Caller", CreateFileUri(root.Path, "Caller.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[] { CreateIncomingCall(caller, CreateCallSiteRanges(25)) });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21);
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal(25, edge.TotalCallSites);
+        Assert.Equal(20, edge.CallSites.Count);
+        Assert.True(edge.CallSitesTruncated);
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+        Assert.True(hierarchy.Truncated);
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_ReturnsValidationErrorsForInvalidDirectionAndMaxResults()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var invalidDirectionResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, direction: "sideways");
+        var invalidMaxResultsResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, maxResults: 0);
+
+        var invalidDirection = Assert.IsType<ToolError>(invalidDirectionResult);
+        Assert.Equal("invalid_direction", invalidDirection.Error);
+        var invalidMaxResults = Assert.IsType<ToolError>(invalidMaxResultsResult);
+        Assert.Equal("invalid_max_results", invalidMaxResults.Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_IncludesPartialMetadataWhileWorkspaceIsWarming()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var target = CreateCallHierarchyItem("M", CreateFileUri(root.Path, "Target.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21);
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        Assert.Equal(WorkspaceLoadState.WorkspaceWarming.ToString(), hierarchy.WorkspaceState);
+        Assert.Equal("partial", hierarchy.Completeness);
+        Assert.Equal(ToolRetryHints.WorkspaceWarmingMs, hierarchy.RetryAfterMs);
+        Assert.Contains("call hierarchy", hierarchy.Reason);
+    }
+
+    [Fact]
     public async Task FindSymbols_ReturnsValidationErrorForEmptyQuery()
     {
         using var root = TestRoot.Create();
@@ -1799,6 +2164,50 @@ public sealed class NavigationToolsTests
 
         return await tools.FindSymbols("Symbol");
     }
+
+    private static string CreateFileUri(string root, string relativePath) =>
+        new Uri(Path.Combine(root, relativePath)).AbsoluteUri;
+
+    private static Lsp.Range CreateRange(int startLine, int startColumn, int endLine, int endColumn) =>
+        new(new Position(startLine, startColumn), new Position(endLine, endColumn));
+
+    private static object CreateCallHierarchyItem(
+        string name,
+        string uri,
+        SymbolKind kind = SymbolKind.Method,
+        Lsp.Range? range = null,
+        string? detail = null)
+    {
+        var effectiveRange = range ?? CreateRange(0, 0, 0, 1);
+        return new
+        {
+            name,
+            kind = (int)kind,
+            detail,
+            uri,
+            range = effectiveRange,
+            selectionRange = effectiveRange
+        };
+    }
+
+    private static object CreateIncomingCall(object from, params Lsp.Range[] fromRanges) =>
+        new
+        {
+            from,
+            fromRanges
+        };
+
+    private static object CreateOutgoingCall(object to, params Lsp.Range[] fromRanges) =>
+        new
+        {
+            to,
+            fromRanges
+        };
+
+    private static Lsp.Range[] CreateCallSiteRanges(int count) =>
+        Enumerable.Range(0, count)
+            .Select(index => CreateRange(index, 0, index, 1))
+            .ToArray();
 
     private static object[] CreateWorkspaceSymbols(int count) =>
         Enumerable.Range(0, count)

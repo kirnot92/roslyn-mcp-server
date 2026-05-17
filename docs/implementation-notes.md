@@ -49,6 +49,10 @@
   - `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
   - 필터는 Roslyn LS `workspace/symbol` 응답을 받은 뒤 MCP 쪽에서 적용한다. Roslyn LS 검색 비용 절감을 보장하지 않고, 반환 noise 감소를 목적으로 한다.
   - `find_symbols` 결과 metadata에는 필터 후 mappable 결과 기준의 `totalKnown`, `returned`, `truncated`와 필터 전 mappable 결과 수인 `totalUnfilteredKnown`이 포함된다.
+  - `get_call_hierarchy(file, line, column, direction = "incoming", maxResults?)` tool을 추가했다.
+  - LSP call hierarchy의 prepare/incoming/outgoing 흐름을 사용하며 직접 depth-1 호출자/피호출자 관계만 반환한다.
+  - `direction`은 `incoming`, `outgoing`, `both`를 지원하고 recursive depth/maxDepth는 제공하지 않는다.
+  - 결과 metadata에는 edge 기준 `totalKnown`, `returned`, `truncated`와 warming/partial reason이 포함된다.
 - 제품 포지션을 best-effort read-only Roslyn context provider로 고정했다.
   - warming 중에도 가능한 read tool은 `workspaceState`, `completeness`, `reason`, `retryAfterMs` metadata와 함께 best-effort로 반환한다.
   - write/refactoring tool은 후속 후보에서 제외한다. rename/code action/formatting/apply 계열은 이 서버가 아니라 agent의 일반 파일 편집 흐름이나 별도 도구가 맡는다.
@@ -66,6 +70,7 @@
 - `find_references`
 - `peek_references`
 - `find_implementations`
+- `get_call_hierarchy`
 - `find_symbols`
 - `diagnostics`
 
@@ -76,8 +81,6 @@
 - 대형 solution startup 성능 측정과 상태 관측성 강화
 - Roslyn LS crash/restart 처리
 - M5 read productivity 후속 후보
-  - `get_call_hierarchy`: LSP call hierarchy의 prepare/incoming/outgoing 흐름으로 특정 callable의 호출자/피호출자 관계를 반환한다.
-  - `get_call_hierarchy`는 `get_type_hierarchy`와 역할이 다르다. call hierarchy는 호출 관계, type hierarchy는 base/derived type 관계를 다룬다.
   - `get_type_hierarchy`, `get_completions`는 계속 후속 후보로 둔다.
 - `solution_overview` M4 이후 구현 여부 판단
 - best-effort metadata와 상태 관측성 품질 강화

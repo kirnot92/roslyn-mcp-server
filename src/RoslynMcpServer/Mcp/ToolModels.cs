@@ -142,6 +142,41 @@ public sealed record ImplementationsResult(
     int? RetryAfterMs,
     bool Truncated);
 
+public sealed record CallHierarchySymbol(
+    string Id,
+    string Name,
+    SymbolKind Kind,
+    string KindName,
+    string? Detail,
+    NavigationLocation? Location);
+
+public sealed record CallHierarchyCallSite(
+    string File,
+    int Line,
+    int Column,
+    McpRange Range);
+
+public sealed record CallHierarchyEdge(
+    string RootId,
+    string Direction,
+    int Depth,
+    CallHierarchySymbol From,
+    CallHierarchySymbol To,
+    IReadOnlyList<CallHierarchyCallSite> CallSites,
+    int TotalCallSites,
+    bool CallSitesTruncated);
+
+public sealed record CallHierarchyResult(
+    IReadOnlyList<CallHierarchySymbol> Roots,
+    IReadOnlyList<CallHierarchyEdge> Edges,
+    int TotalKnown,
+    int Returned,
+    string WorkspaceState,
+    string Completeness,
+    string? Reason,
+    int? RetryAfterMs,
+    bool Truncated);
+
 public sealed record WorkspaceSymbolItem(
     string Name,
     SymbolKind Kind,

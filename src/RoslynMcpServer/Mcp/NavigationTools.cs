@@ -25,6 +25,9 @@ public sealed class NavigationTools(
     private const int MaxReferencesMaxResults = 1000;
     private const int DefaultImplementationsMaxResults = DefaultReferencesMaxResults;
     private const int MaxImplementationsMaxResults = MaxReferencesMaxResults;
+    private const int DefaultCallHierarchyMaxResults = DefaultReferencesMaxResults;
+    private const int MaxCallHierarchyMaxResults = MaxReferencesMaxResults;
+    private const int MaxCallHierarchyCallSites = 20;
     private const int DefaultSymbolMaxResults = 300;
     private const int MaxSymbolMaxResults = 1000;
     private const int MinSymbolQueryLength = 2;
@@ -32,6 +35,7 @@ public sealed class NavigationTools(
     private static readonly TimeSpan DefinitionTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ReferencesTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ImplementationsTimeout = ReferencesTimeout;
+    private static readonly TimeSpan CallHierarchyTimeout = ReferencesTimeout;
     private static readonly TimeSpan WorkspaceSymbolTimeout = TimeSpan.FromSeconds(30);
     private static readonly SymbolKind[] SupportedSymbolKinds = Enum.GetValues<SymbolKind>()
         .Where(kind => kind.ToMcpName() != "unknown")
@@ -344,6 +348,111 @@ public sealed class NavigationTools(
         }
     }
 
+    [McpServerTool(Name = "get_call_hierarchy")]
+    [Description("Get direct depth-1 incoming, outgoing, or both call relationships for a C# callable symbol.")]
+    public async Task<object> GetCallHierarchy(
+        string file,
+        int line,
+        int column,
+        string direction = "incoming",
+        int? maxResults = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var parsedDirection = ParseCallHierarchyDirection(direction);
+            var effectiveMaxResults = NormalizeCallHierarchyMaxResults(maxResults);
+            var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
+            var prepareResponse = await request.Context.Handle.Client.RequestAsync(
+                "textDocument/prepareCallHierarchy",
+                new
+                {
+                    textDocument = new TextDocumentIdentifier(request.Document.Uri),
+                    position = request.Position
+                },
+                CallHierarchyTimeout,
+                cancellationToken).ConfigureAwait(false);
+
+            var roots = MapPreparedCallHierarchyItems(prepareResponse);
+            if (roots.Count == 0)
+            {
+                var emptyMetadata = CreateMetadata(request.Context.State, ToolKind.CallHierarchy, truncated: false);
+                return new CallHierarchyResult(
+                    [],
+                    [],
+                    TotalKnown: 0,
+                    Returned: 0,
+                    emptyMetadata.WorkspaceState,
+                    emptyMetadata.Completeness,
+                    emptyMetadata.Reason,
+                    emptyMetadata.RetryAfterMs,
+                    emptyMetadata.Truncated);
+            }
+
+            var edges = new List<CallHierarchyEdge>();
+            var totalKnown = 0;
+            var returned = 0;
+            var callSitesTruncated = false;
+            foreach (var root in roots)
+            {
+                if (parsedDirection is CallHierarchyDirection.Incoming or CallHierarchyDirection.Both)
+                {
+                    var incomingResponse = await request.Context.Handle.Client.RequestAsync(
+                        "callHierarchy/incomingCalls",
+                        new { item = root.OriginalItem },
+                        CallHierarchyTimeout,
+                        cancellationToken,
+                        isExpensive: true).ConfigureAwait(false);
+                    AddCallHierarchyEdges(
+                        incomingResponse,
+                        root.Symbol,
+                        CallHierarchyDirection.Incoming,
+                        effectiveMaxResults,
+                        edges,
+                        ref totalKnown,
+                        ref returned,
+                        ref callSitesTruncated);
+                }
+
+                if (parsedDirection is CallHierarchyDirection.Outgoing or CallHierarchyDirection.Both)
+                {
+                    var outgoingResponse = await request.Context.Handle.Client.RequestAsync(
+                        "callHierarchy/outgoingCalls",
+                        new { item = root.OriginalItem },
+                        CallHierarchyTimeout,
+                        cancellationToken,
+                        isExpensive: true).ConfigureAwait(false);
+                    AddCallHierarchyEdges(
+                        outgoingResponse,
+                        root.Symbol,
+                        CallHierarchyDirection.Outgoing,
+                        effectiveMaxResults,
+                        edges,
+                        ref totalKnown,
+                        ref returned,
+                        ref callSitesTruncated);
+                }
+            }
+
+            var truncated = totalKnown > returned || callSitesTruncated;
+            var metadata = CreateMetadata(request.Context.State, ToolKind.CallHierarchy, truncated);
+            return new CallHierarchyResult(
+                roots.Select(root => root.Symbol).ToArray(),
+                edges,
+                totalKnown,
+                returned,
+                metadata.WorkspaceState,
+                metadata.Completeness,
+                metadata.Reason,
+                metadata.RetryAfterMs,
+                metadata.Truncated);
+        }
+        catch (UserFacingException ex)
+        {
+            return ToolError.FromException(ex);
+        }
+    }
+
     [McpServerTool(Name = "find_symbols")]
     [Description("Search workspace symbols by name when you do not already have a file location. Empty results can be inconclusive while warming.")]
     public async Task<object> FindSymbols(
@@ -526,6 +635,44 @@ public sealed class NavigationTools(
         return Math.Min(maxResults.Value, MaxImplementationsMaxResults);
     }
 
+    private static int NormalizeCallHierarchyMaxResults(int? maxResults)
+    {
+        if (maxResults is null)
+        {
+            return DefaultCallHierarchyMaxResults;
+        }
+
+        if (maxResults.Value < 1)
+        {
+            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
+        }
+
+        return Math.Min(maxResults.Value, MaxCallHierarchyMaxResults);
+    }
+
+    private static CallHierarchyDirection ParseCallHierarchyDirection(string direction)
+    {
+        var normalized = direction?.Trim();
+        if (string.Equals(normalized, "incoming", StringComparison.OrdinalIgnoreCase))
+        {
+            return CallHierarchyDirection.Incoming;
+        }
+
+        if (string.Equals(normalized, "outgoing", StringComparison.OrdinalIgnoreCase))
+        {
+            return CallHierarchyDirection.Outgoing;
+        }
+
+        if (string.Equals(normalized, "both", StringComparison.OrdinalIgnoreCase))
+        {
+            return CallHierarchyDirection.Both;
+        }
+
+        throw new UserFacingException(
+            "invalid_direction",
+            "direction must be one of: incoming, outgoing, both.");
+    }
+
     private static int NormalizePeekContextLines(int? contextLines)
     {
         if (contextLines is null)
@@ -555,6 +702,253 @@ public sealed class NavigationTools(
 
         return Math.Min(maxDefinitions.Value, MaxPeekMaxDefinitions);
     }
+
+    private IReadOnlyList<PreparedCallHierarchyItem> MapPreparedCallHierarchyItems(JsonElement response)
+    {
+        if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return [];
+        }
+
+        if (response.ValueKind != JsonValueKind.Array)
+        {
+            throw new UserFacingException("invalid_lsp_response", "textDocument/prepareCallHierarchy returned an unexpected response shape.");
+        }
+
+        var roots = new List<PreparedCallHierarchyItem>();
+        foreach (var item in response.EnumerateArray())
+        {
+            var symbol = TryMapCallHierarchySymbol(item);
+            if (symbol is null)
+            {
+                continue;
+            }
+
+            roots.Add(new PreparedCallHierarchyItem(symbol, item.Clone()));
+        }
+
+        return roots;
+    }
+
+    private void AddCallHierarchyEdges(
+        JsonElement response,
+        CallHierarchySymbol root,
+        CallHierarchyDirection direction,
+        int maxResults,
+        List<CallHierarchyEdge> edges,
+        ref int totalKnown,
+        ref int returned,
+        ref bool callSitesTruncated)
+    {
+        if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return;
+        }
+
+        if (response.ValueKind != JsonValueKind.Array)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned an unexpected response shape.");
+        }
+
+        foreach (var item in response.EnumerateArray())
+        {
+            var edge = TryMapCallHierarchyEdge(item, root, direction);
+            if (edge is null)
+            {
+                continue;
+            }
+
+            totalKnown++;
+            if (edge.CallSitesTruncated)
+            {
+                callSitesTruncated = true;
+            }
+
+            if (returned >= maxResults)
+            {
+                continue;
+            }
+
+            edges.Add(edge);
+            returned++;
+        }
+    }
+
+    private CallHierarchyEdge? TryMapCallHierarchyEdge(
+        JsonElement item,
+        CallHierarchySymbol root,
+        CallHierarchyDirection direction)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned a malformed call hierarchy item.");
+        }
+
+        var symbolPropertyName = direction == CallHierarchyDirection.Incoming ? "from" : "to";
+        if (!item.TryGetProperty(symbolPropertyName, out var symbolElement) ||
+            symbolElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned a malformed call hierarchy item.");
+        }
+
+        var otherSymbol = TryMapCallHierarchySymbol(symbolElement);
+        if (otherSymbol is null)
+        {
+            return null;
+        }
+
+        var from = direction == CallHierarchyDirection.Incoming ? otherSymbol : root;
+        var to = direction == CallHierarchyDirection.Incoming ? root : otherSymbol;
+        if (from.Location is null || to.Location is null)
+        {
+            return null;
+        }
+
+        var callSites = MapCallHierarchyCallSites(item, from.Location.File, direction);
+        return new CallHierarchyEdge(
+            root.Id,
+            CallHierarchyDirectionName(direction),
+            Depth: 1,
+            from,
+            to,
+            callSites.Items,
+            callSites.TotalKnown,
+            callSites.Truncated);
+    }
+
+    private CallHierarchyCallSiteMapResult MapCallHierarchyCallSites(
+        JsonElement item,
+        string callerFile,
+        CallHierarchyDirection direction)
+    {
+        if (!item.TryGetProperty("fromRanges", out var rangesElement) ||
+            rangesElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned malformed call site ranges.");
+        }
+
+        var items = new List<CallHierarchyCallSite>();
+        var totalKnown = 0;
+        foreach (var rangeElement in rangesElement.EnumerateArray())
+        {
+            var range = ReadCallHierarchyRange(rangeElement, direction);
+            var mcpRange = PositionMapper.ToMcpRange(range);
+            totalKnown++;
+            if (items.Count >= MaxCallHierarchyCallSites)
+            {
+                continue;
+            }
+
+            items.Add(new CallHierarchyCallSite(
+                callerFile,
+                mcpRange.StartLine,
+                mcpRange.StartColumn,
+                mcpRange));
+        }
+
+        return new CallHierarchyCallSiteMapResult(items, totalKnown, totalKnown > items.Count);
+    }
+
+    private static Lsp.Range ReadCallHierarchyRange(JsonElement rangeElement, CallHierarchyDirection direction)
+    {
+        if (rangeElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned malformed call site ranges.");
+        }
+
+        try
+        {
+            return rangeElement.Deserialize<Lsp.Range>(JsonOptions.Default)
+                ?? throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned malformed call site ranges.");
+        }
+        catch (JsonException ex)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned malformed call site ranges.", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned malformed call site ranges.", ex);
+        }
+    }
+
+    private CallHierarchySymbol? TryMapCallHierarchySymbol(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object ||
+            !item.TryGetProperty("name", out var nameElement) ||
+            !item.TryGetProperty("kind", out var kindElement) ||
+            nameElement.ValueKind != JsonValueKind.String ||
+            kindElement.ValueKind != JsonValueKind.Number ||
+            !kindElement.TryGetInt32(out var kindValue))
+        {
+            return null;
+        }
+
+        var name = nameElement.GetString();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var location = TryMapCallHierarchySymbolLocation(item);
+        if (location is null)
+        {
+            return null;
+        }
+
+        var kind = (SymbolKind)kindValue;
+        return new CallHierarchySymbol(
+            CreateCallHierarchySymbolId(name, kind, location),
+            name,
+            kind,
+            kind.ToMcpName(),
+            TryGetOptionalString(item, "detail"),
+            location);
+    }
+
+    private NavigationLocation? TryMapCallHierarchySymbolLocation(JsonElement item)
+    {
+        if (!item.TryGetProperty("uri", out var uriElement) ||
+            uriElement.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var uri = uriElement.GetString();
+        if (string.IsNullOrWhiteSpace(uri))
+        {
+            return null;
+        }
+
+        string relativePath;
+        try
+        {
+            relativePath = pathMapper.UriToRelativePath(uri);
+        }
+        catch (UserFacingException ex) when (ex.Code is "path_outside_root" or "invalid_lsp_uri")
+        {
+            return null;
+        }
+
+        var range = TryGetRangeOrNull(item, "range");
+        if (range is null)
+        {
+            return null;
+        }
+
+        var mcpRange = PositionMapper.ToMcpRange(range);
+        return new NavigationLocation(relativePath, mcpRange.StartLine, mcpRange.StartColumn, mcpRange);
+    }
+
+    private static string CreateCallHierarchySymbolId(string name, SymbolKind kind, NavigationLocation location) =>
+        $"{location.File}:{location.Range.StartLine}:{location.Range.StartColumn}-{location.Range.EndLine}:{location.Range.EndColumn}:{kind.ToMcpName()}:{name}";
+
+    private static string CallHierarchyMethodName(CallHierarchyDirection direction) =>
+        direction == CallHierarchyDirection.Incoming
+            ? "callHierarchy/incomingCalls"
+            : "callHierarchy/outgoingCalls";
+
+    private static string CallHierarchyDirectionName(CallHierarchyDirection direction) =>
+        direction == CallHierarchyDirection.Incoming ? "incoming" : "outgoing";
 
     private async Task<SourceSnippetReadResult> ReadSourceSnippetAsync(
         NavigationLocation location,
@@ -1187,6 +1581,7 @@ public sealed class NavigationTools(
                     ToolKind.Definition => "Workspace is still warming; definitions from projects not loaded yet may be missing.",
                     ToolKind.References => "Workspace is still warming; cross-project references may be missing.",
                     ToolKind.Implementations => "Workspace is still warming; implementations from projects not loaded yet may be missing.",
+                    ToolKind.CallHierarchy => "Workspace is still warming; call hierarchy may miss callers or callees from projects not loaded yet.",
                     ToolKind.Symbols => "Workspace is still warming; the workspace symbol index may be incomplete.",
                     _ => "Workspace is still warming; results may be incomplete."
                 },
@@ -1202,6 +1597,7 @@ public sealed class NavigationTools(
                     ToolKind.Definition => "Workspace loaded with project errors; definitions from failed projects may be missing.",
                     ToolKind.References => "Workspace loaded with project errors; cross-project references may be missing.",
                     ToolKind.Implementations => "Workspace loaded with project errors; implementations from failed projects may be missing.",
+                    ToolKind.CallHierarchy => "Workspace loaded with project errors; call hierarchy may miss callers or callees from failed projects.",
                     ToolKind.Symbols => "Workspace loaded with project errors; workspace symbol results may be incomplete or empty. Call get_workspace_status for load warnings.",
                     _ => "Workspace loaded with project errors; results may be incomplete."
                 },
@@ -1209,11 +1605,12 @@ public sealed class NavigationTools(
                 truncated),
             WorkspaceLoadState.LspReady => new ReadToolMetadata(
                 state.ToString(),
-                toolKind is ToolKind.References or ToolKind.Implementations ? "partial" : "unknown",
+                toolKind is ToolKind.References or ToolKind.Implementations or ToolKind.CallHierarchy ? "partial" : "unknown",
                 toolKind switch
                 {
                     ToolKind.References => "The language server is ready, but cross-project references may be missing until workspace loading completes.",
                     ToolKind.Implementations => "The language server is ready, but cross-project implementations may be missing until workspace loading completes.",
+                    ToolKind.CallHierarchy => "The language server is ready, but call hierarchy may be incomplete until workspace loading completes.",
                     ToolKind.Symbols => "The language server is ready, but workspace symbol index completeness is not known yet.",
                     _ => "The language server is ready, but workspace completeness is not known yet."
                 },
@@ -1266,6 +1663,15 @@ public sealed class NavigationTools(
         int Returned,
         bool Truncated);
 
+    private sealed record PreparedCallHierarchyItem(
+        CallHierarchySymbol Symbol,
+        JsonElement OriginalItem);
+
+    private sealed record CallHierarchyCallSiteMapResult(
+        IReadOnlyList<CallHierarchyCallSite> Items,
+        int TotalKnown,
+        bool Truncated);
+
     private sealed record PositionRequestContext(
         ReadToolContext Context,
         OpenDocumentState Document,
@@ -1278,6 +1684,14 @@ public sealed class NavigationTools(
         Definition,
         References,
         Implementations,
+        CallHierarchy,
         Symbols
+    }
+
+    private enum CallHierarchyDirection
+    {
+        Incoming,
+        Outgoing,
+        Both
     }
 }

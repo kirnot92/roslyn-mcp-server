@@ -117,8 +117,8 @@ To preload a solution during server startup, add `--load-solution`:
 5. Call `get_workspace_status`.
 6. Call read-only Roslyn tools such as `document_symbols`, `hover`,
    `go_to_definition`, `peek_definition`, `find_references`,
-   `peek_references`, `find_implementations`, `find_symbols`, or
-   `diagnostics`.
+   `peek_references`, `find_implementations`, `get_call_hierarchy`,
+   `find_symbols`, or `diagnostics`.
 
 During startup, read tools may return `workspace_loading` instead of blocking.
 After LSP initialize, large workspaces may remain in `WorkspaceWarming`. If
@@ -141,6 +141,13 @@ guidance.
 When the result metadata says `completeness: "partial"` or includes
 `retryAfterMs`, retry after workspace warming before treating missing
 implementations as absent.
+
+`get_call_hierarchy` is position-based. Call it on a method, constructor, or
+property accessor position. It supports `direction: "incoming"`, `"outgoing"`,
+or `"both"`, and only returns direct depth-1 callers/callees. Use incoming for
+impact analysis and outgoing for dependencies. It is static Roslyn context, not
+a runtime-complete graph, and results can be partial or truncated while the
+workspace is warming or when limits apply.
 
 `find_symbols` is a workspace symbol-name search. Its optional `kindFilter`
 accepts MCP symbol kind names such as `class`, `interface`, `method`,

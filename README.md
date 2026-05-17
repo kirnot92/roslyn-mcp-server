@@ -77,6 +77,8 @@ Read-only Roslyn tools:
 - `find_implementations` - Return implementation locations from an interface,
   abstract member, or base contract position. Calling it on a concrete
   implementation may legitimately return only that implementation.
+- `get_call_hierarchy` - Return direct depth-1 incoming callers, outgoing
+  callees, or both for a method, constructor, or property accessor position.
 - `find_symbols` - Search workspace symbols by name, optionally filtering
   returned results by kind such as `class`, `interface`, `method`, `property`,
   or `field`.
