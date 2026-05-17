@@ -109,6 +109,7 @@ public sealed class NavigationToolsTests
         var symbols = Assert.IsType<DocumentSymbolsResult>(result);
         Assert.Equal(WorkspaceLoadState.WorkspaceWarming.ToString(), symbols.WorkspaceState);
         Assert.Equal("partial", symbols.Completeness);
+        Assert.Equal(ToolRetryHints.WorkspaceWarmingMs, symbols.RetryAfterMs);
         Assert.False(symbols.Truncated);
         Assert.Equal(2, symbols.TotalKnown);
         Assert.Single(symbols.Items);
@@ -338,6 +339,7 @@ public sealed class NavigationToolsTests
         var references = Assert.IsType<ReferencesResult>(result);
         Assert.Equal(WorkspaceLoadState.WorkspaceWarming.ToString(), references.WorkspaceState);
         Assert.Equal("partial", references.Completeness);
+        Assert.Equal(ToolRetryHints.WorkspaceWarmingMs, references.RetryAfterMs);
         Assert.Contains("cross-project", references.Reason);
     }
 

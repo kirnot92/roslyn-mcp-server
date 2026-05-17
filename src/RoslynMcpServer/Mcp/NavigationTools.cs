@@ -784,7 +784,7 @@ public sealed class NavigationTools(
                     ToolKind.Symbols => "Workspace is still warming; the workspace symbol index may be incomplete.",
                     _ => "Workspace is still warming; results may be incomplete."
                 },
-                2000,
+                ToolRetryHints.WorkspaceWarmingMs,
                 truncated),
             WorkspaceLoadState.LoadedWithErrors => new ReadToolMetadata(
                 state.ToString(),
@@ -809,7 +809,7 @@ public sealed class NavigationTools(
                     ToolKind.Symbols => "The language server is ready, but workspace symbol index completeness is not known yet.",
                     _ => "The language server is ready, but workspace completeness is not known yet."
                 },
-                2000,
+                ToolRetryHints.WorkspaceWarmingMs,
                 truncated),
             _ => new ReadToolMetadata(
                 state.ToString(),

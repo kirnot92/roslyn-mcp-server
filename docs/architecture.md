@@ -382,7 +382,7 @@ Best-effort 결과는 공통 metadata를 포함한다.
   "workspaceState": "WorkspaceWarming",
   "completeness": "partial",
   "reason": "Workspace is still warming; symbols from projects not loaded yet may be missing.",
-  "retryAfterMs": 2000
+  "retryAfterMs": 30000
 }
 ```
 

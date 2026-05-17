@@ -101,7 +101,9 @@ After LSP initialize, large workspaces may remain in `WorkspaceWarming`. If
 Roslyn LS reports project load errors, the state becomes `LoadedWithErrors` and
 `get_workspace_status.warnings` includes the affected project paths and a short
 cause. Read tools still return best-effort results with `workspaceState`,
-`completeness`, and truncation metadata when applicable.
+`completeness`, and truncation metadata when applicable. While a workspace is
+warming, retry hints use `retryAfterMs: 30000` so clients avoid tight polling on
+large repositories.
 
 ## Notes For Large Repositories
 

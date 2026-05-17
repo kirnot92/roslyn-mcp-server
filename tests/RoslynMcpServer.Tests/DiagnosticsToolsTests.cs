@@ -65,6 +65,7 @@ public sealed class DiagnosticsToolsTests
         var diagnostics = Assert.IsType<DiagnosticsResult>(result);
         Assert.Empty(diagnostics.Items);
         Assert.Equal("unknown", diagnostics.Completeness);
+        Assert.Equal(ToolRetryHints.WorkspaceWarmingMs, diagnostics.RetryAfterMs);
         Assert.Contains("No textDocument/publishDiagnostics", diagnostics.Reason);
         Assert.Null(diagnostics.LastUpdatedAt);
         await session.DisposeAsync();
@@ -239,6 +240,7 @@ public sealed class DiagnosticsToolsTests
         var diagnostics = Assert.IsType<DiagnosticsResult>(result);
         Assert.Equal(WorkspaceLoadState.WorkspaceWarming.ToString(), diagnostics.WorkspaceState);
         Assert.Equal("partial", diagnostics.Completeness);
+        Assert.Equal(ToolRetryHints.WorkspaceWarmingMs, diagnostics.RetryAfterMs);
         await session.DisposeAsync();
     }
 

@@ -181,7 +181,7 @@ public sealed class DiagnosticsTools(
                 state.ToString(),
                 "unknown",
                 "No textDocument/publishDiagnostics notification has been received for this file yet; diagnostics are currently unknown.",
-                2000,
+                ToolRetryHints.WorkspaceWarmingMs,
                 truncated);
         }
 
@@ -191,7 +191,7 @@ public sealed class DiagnosticsTools(
                 state.ToString(),
                 "unknown",
                 "Diagnostics reflect the last textDocument/publishDiagnostics notification for this file; Roslyn LS does not report whether diagnostics have fully settled.",
-                state is WorkspaceLoadState.Ready or WorkspaceLoadState.LoadedWithErrors ? null : 2000,
+                state is WorkspaceLoadState.Ready or WorkspaceLoadState.LoadedWithErrors ? null : ToolRetryHints.WorkspaceWarmingMs,
                 truncated);
         }
 
@@ -213,7 +213,7 @@ public sealed class DiagnosticsTools(
                 state.ToString(),
                 "partial",
                 "Workspace diagnostics include only currently known textDocument/publishDiagnostics notifications while the workspace is still loading.",
-                2000,
+                ToolRetryHints.WorkspaceWarmingMs,
                 truncated),
             _ => new ReadToolMetadata(
                 state.ToString(),

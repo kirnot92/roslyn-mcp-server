@@ -12,9 +12,15 @@ public sealed record ToolError(string Error, string Message, string? WorkspaceSt
                 exception.Code,
                 exception.Message,
                 Workspace.WorkspaceLoadState.StartingLanguageServer.ToString(),
-                RetryAfterMs: 1000),
+                RetryAfterMs: ToolRetryHints.WorkspaceStartupMs),
             _ => new ToolError(exception.Code, exception.Message)
         };
+}
+
+public static class ToolRetryHints
+{
+    public const int WorkspaceStartupMs = 1000;
+    public const int WorkspaceWarmingMs = 30_000;
 }
 
 public sealed record ReadToolMetadata(
