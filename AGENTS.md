@@ -15,13 +15,14 @@
 - agent가 `load_solution`, `load_project` 같은 MCP tool로 `.sln`, `.slnx`, `.csproj`를 선택하게 한다.
 - 필요한 경우 `--load-solution <path>`로 MCP 서버 시작 직후 지정 solution을 background로 로드할 수 있게 한다.
 - 대규모 repository를 고려해 탐색 제한, timeout, 결과 제한, warming 중 best-effort 동작을 지원한다.
+- 이 프로젝트의 제품 방향은 best-effort read-only Roslyn context provider다. write/refactoring tool은 프로젝트 방향에 포함하지 않는다.
 
-## 당장 하지 않을 것
+## 하지 않을 것
 
 - 이 프로젝트를 NuGet/.NET global tool로 게시하지 않는다.
 - `roslyn-language-server`를 번들하지 않는다.
 - release 자동화는 아직 추가하지 않는다.
-- 현재 구현에서 write/refactoring tool을 구현하지 않는다.
+- write/refactoring tool을 구현하지 않는다.
 
 ## 외부 요구사항
 
@@ -113,8 +114,6 @@ M5 read productivity 일부 포함:
 - `get_type_hierarchy`
 - `get_completions`
 - `solution_overview`
-- write/refactoring tool
-- rename/code action/formatting/apply 계열 tool
 
 ## 중요한 설계 메모
 
@@ -125,6 +124,7 @@ M5 read productivity 일부 포함:
 - 적절한 solution이 정확히 하나면 첫 Roslyn tool 호출에서 자동 load할 수 있다.
 - `StartingLanguageServer` 상태에서는 Roslyn tool이 오래 대기하지 말고 `workspace_loading`을 반환한다.
 - LSP initialize 이후에는 workspace가 warming 중이어도 가능한 읽기 tool은 best-effort로 실행한다.
+- write/refactoring 계열은 후속 milestone 후보가 아니다. rename/code action/formatting/apply 계열은 이 서버가 아니라 agent의 일반 파일 편집 흐름이나 별도 도구가 맡는다.
 - warming 중 반환된 결과에는 `workspaceState`와 `completeness` metadata를 포함한다.
 - stdout에는 로그를 쓰지 않는다. stdout은 MCP protocol 채널이다.
 

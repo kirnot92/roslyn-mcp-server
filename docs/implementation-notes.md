@@ -48,6 +48,9 @@
   - `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
   - 필터는 Roslyn LS `workspace/symbol` 응답을 받은 뒤 MCP 쪽에서 적용한다. Roslyn LS 검색 비용 절감을 보장하지 않고, 반환 noise 감소를 목적으로 한다.
   - `find_symbols` 결과 metadata에는 필터 후 mappable 결과 기준의 `totalKnown`, `returned`, `truncated`와 필터 전 mappable 결과 수인 `totalUnfilteredKnown`이 포함된다.
+- 제품 포지션을 best-effort read-only Roslyn context provider로 고정했다.
+  - warming 중에도 가능한 read tool은 `workspaceState`, `completeness`, `reason`, `retryAfterMs` metadata와 함께 best-effort로 반환한다.
+  - write/refactoring tool은 후속 후보에서 제외한다. rename/code action/formatting/apply 계열은 이 서버가 아니라 agent의 일반 파일 편집 흐름이나 별도 도구가 맡는다.
 
 현재 MCP tool:
 
@@ -75,6 +78,7 @@
   - `get_call_hierarchy`는 `get_type_hierarchy`와 역할이 다르다. call hierarchy는 호출 관계, type hierarchy는 base/derived type 관계를 다룬다.
   - `get_type_hierarchy`, `get_completions`는 계속 후속 후보로 둔다.
 - `solution_overview` M4 이후 구현 여부 판단
+- best-effort metadata와 상태 관측성 품질 강화
 
 최근 로컬 검증 결과:
 
@@ -160,7 +164,6 @@ M2b 직후 남은 범위:
 - `diagnostics`
 - `DiagnosticStore`
 - incremental text edit sync
-- write/refactoring tool
 
 후속 구현 주의사항:
 
@@ -271,7 +274,6 @@ M2a 직후 남은 범위:
 - `diagnostics`
 - `DiagnosticStore`
 - incremental text edit sync
-- write/refactoring tool
 
 후속 구현 주의사항:
 
@@ -552,12 +554,13 @@ tool 응답에는 명시적 error code를 선호한다.
 - `request_timeout`
 - `result_truncated`
 
-## 아직 하지 않을 것
+## 하지 않을 것
 
 - NuGet global tool로 게시하지 않는다.
 - GitHub Actions release 자동화는 아직 추가하지 않는다.
 - `roslyn-language-server`를 번들하지 않는다.
-- M1에서 write/refactoring tool을 구현하지 않는다.
+- write/refactoring tool을 구현하지 않는다.
+- rename/code action/formatting/apply 계열 tool은 roadmap에 두지 않는다.
 - `load_solution`이 모든 diagnostics 완료까지 기다리게 만들지 않는다.
 - 대규모 repo를 제한 없이 재귀 탐색하지 않는다.
 - workspace 전체 diagnostics를 제한 없이 반환하지 않는다.

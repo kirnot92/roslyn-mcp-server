@@ -81,8 +81,10 @@ Read-only Roslyn tools:
   or `field`.
 - `diagnostics` - Return currently known file or workspace diagnostics.
 
-The current implementation is read-only. Rename, code actions, formatting, and
-apply/edit tools are intentionally out of scope for now.
+This project is intentionally read-only. Rename, code actions, formatting, and
+apply/edit tools are outside the product direction; agents should make file
+changes with their normal workspace editing tools after using Roslyn context to
+understand the code.
 
 ## Getting Started
 
