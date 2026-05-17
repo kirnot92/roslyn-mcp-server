@@ -8,6 +8,8 @@ public sealed class RoslynWorkspaceLoader(
     IRoslynLanguageServerProcess process)
     : IRoslynWorkspaceLoader
 {
+    private const string LanguageServerLocale = "en-US";
+
     public async Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken)
     {
         var handle = process.Start(target);
@@ -18,6 +20,7 @@ public sealed class RoslynWorkspaceLoader(
             await handle.Client.RequestAsync("initialize", new
             {
                 processId = Environment.ProcessId,
+                locale = LanguageServerLocale,
                 rootUri,
                 workspaceFolders = new[]
                 {

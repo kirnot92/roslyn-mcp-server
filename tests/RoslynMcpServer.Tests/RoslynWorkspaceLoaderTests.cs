@@ -26,7 +26,9 @@ public sealed class RoslynWorkspaceLoaderTests
 
         Assert.Same(client, handle.Client);
         Assert.Same(target, Assert.Single(process.StartedTargets));
-        Assert.Equal("initialize", Assert.Single(client.Requests).Method);
+        var initializeRequest = Assert.Single(client.Requests);
+        Assert.Equal("initialize", initializeRequest.Method);
+        Assert.Equal("en-US", initializeRequest.Params.GetProperty("locale").GetString());
         Assert.Collection(
             client.Notifications,
             notification => Assert.Equal("initialized", notification.Method),
@@ -53,7 +55,9 @@ public sealed class RoslynWorkspaceLoaderTests
 
         Assert.Same(client, handle.Client);
         Assert.Same(target, Assert.Single(process.StartedTargets));
-        Assert.Equal("initialize", Assert.Single(client.Requests).Method);
+        var initializeRequest = Assert.Single(client.Requests);
+        Assert.Equal("initialize", initializeRequest.Method);
+        Assert.Equal("en-US", initializeRequest.Params.GetProperty("locale").GetString());
         Assert.Collection(
             client.Notifications,
             notification => Assert.Equal("initialized", notification.Method),
