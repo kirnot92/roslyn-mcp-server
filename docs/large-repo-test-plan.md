@@ -404,7 +404,7 @@ Fixture:
 
 - file별 diagnostic cache가 상한을 따른다.
 - publishDiagnostics handler는 store update를 inline으로 수행하지 않고 bounded queue에 넣는다.
-- queue overflow 시 `drop_oldest_when_full` 정책에 따라 가장 오래된 pending notification을 drop하고 새 notification을 enqueue해서 최신 diagnostics snapshot을 우선한다. dropped count는 queue overflow 때문에 처리 전에 밀려난 pending notification 수를 의미한다.
+- queue overflow 시 `drop_newest_when_full` 정책에 따라 새 notification을 drop하고 기존 pending notification을 유지한다. dropped count는 queue overflow 때문에 enqueue되지 못한 incoming notification 수를 의미한다.
 - workspace reload 이후 이전 generation diagnostics가 새 workspace store에 섞이지 않는다.
 - 오래된 상세 diagnostics는 버리고 summary count는 유지한다.
 - `diagnostics` 기본 호출은 열린 문서와 최근 diagnostics 중심으로 반환한다.

@@ -36,7 +36,7 @@
   - 지정하지 않으면 기존 명시적 load 또는 첫 read tool auto-load 동작을 유지한다.
 - M4 diagnostics notification offload 완료
   - `textDocument/publishDiagnostics` notification은 bounded background queue를 통해 처리한다.
-  - queue overflow는 `drop_oldest_when_full` 정책으로 가장 오래된 pending notification을 drop하고 새 notification을 enqueue해 최신 diagnostics snapshot을 우선한다.
+  - queue overflow는 `drop_newest_when_full` 정책으로 새 notification을 drop하고 기존 pending notification을 유지한다.
   - workspace reload generation을 캡처해 이전 workspace diagnostics가 새 store에 섞이지 않게 한다.
 - M5 read productivity tool 일부 완료
   - `find_implementations(file, line, column, maxResults?)` tool을 추가했다.
@@ -598,7 +598,7 @@ tool 응답에는 명시적 error code를 선호한다.
 
 - `textDocument/publishDiagnostics` notification handler는 `DiagnosticStore`를 직접 update하지 않고 bounded background queue에 enqueue한 뒤 즉시 반환한다.
 - Background worker가 queue에서 notification을 꺼내 `DiagnosticStore.TryUpdateFromPublishDiagnostics`를 호출한다.
-- Queue capacity 기본값은 1024이고 overflow 정책은 `drop_oldest_when_full`이다. Queue가 full이면 가장 오래된 pending notification을 drop하고 새 notification을 enqueue한다.
+- Queue capacity 기본값은 1024이고 overflow 정책은 `drop_newest_when_full`이다. Queue가 full이면 새 notification을 drop하고 기존 pending notification을 유지한다.
 - `get_workspace_status`는 diagnostics queue capacity, pending, processed, dropped, stale count와 overflow policy를 additive field로 반환한다. `dropped`는 queue overflow 때문에 처리 전에 밀려난 pending notification 수이고, stale generation incoming notification과 workspace reset clear는 `stale`로 집계한다.
 - Workspace reload 시 diagnostics generation을 증가시키고 queue를 clear하며 store를 clear한다. Notification handler는 구독 시점의 generation을 캡처해 enqueue에 전달하므로, unsubscribe 직후 이전 read loop가 이미 잡아 둔 delegate를 호출해도 이전 generation으로 discard된다. 이미 처리 중이던 이전 generation notification은 reload lock 순서상 reload 전 반영 후 clear되거나, generation mismatch로 discard된다.
 - `diagnostics` tool 결과와 메시지는 마지막으로 처리 완료된 `textDocument/publishDiagnostics` 기준이다.

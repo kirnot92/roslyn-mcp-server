@@ -263,7 +263,7 @@ public sealed class DiagnosticsToolsTests
         Assert.Equal(0, store.KnownFileCount);
         Assert.Equal(1, status.PendingDiagnosticNotifications);
         Assert.Equal(0, status.ProcessedDiagnosticNotifications);
-        Assert.Equal(DiagnosticNotificationProcessor.DropOldestWhenFullPolicy, status.DiagnosticNotificationOverflowPolicy);
+        Assert.Equal(DiagnosticNotificationProcessor.DropNewestWhenFullPolicy, status.DiagnosticNotificationOverflowPolicy);
         await session.DisposeAsync();
     }
 

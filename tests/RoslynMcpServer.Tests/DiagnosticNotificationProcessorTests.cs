@@ -26,28 +26,28 @@ public sealed class DiagnosticNotificationProcessorTests
     }
 
     [Fact]
-    public async Task QueueOverflow_DropsOldestPendingNotificationAndReportsDroppedCount()
+    public async Task QueueOverflow_DropsNewestNotificationAndReportsDroppedCount()
     {
         using var root = TestRoot.Create();
         var store = CreateStore(root.Path);
         await using var processor = new DiagnosticNotificationProcessor(store, capacity: 1, startAutomatically: false);
 
         Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "A.cs", Diagnostic("first", DiagnosticSeverity.Error))));
-        Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "B.cs", Diagnostic("latest", DiagnosticSeverity.Warning))));
+        Assert.False(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "B.cs", Diagnostic("latest", DiagnosticSeverity.Warning))));
 
         Assert.Equal(1, processor.Statistics.Pending);
         Assert.Equal(1, processor.Statistics.Dropped);
-        Assert.Equal(DiagnosticNotificationProcessor.DropOldestWhenFullPolicy, processor.Statistics.OverflowPolicy);
+        Assert.Equal(DiagnosticNotificationProcessor.DropNewestWhenFullPolicy, processor.Statistics.OverflowPolicy);
 
         processor.Start();
         await WaitForConditionAsync(() => store.KnownFileCount == 1);
 
-        Assert.Null(store.GetFile("A.cs", severity: null));
-        Assert.NotNull(store.GetFile("B.cs", severity: null));
+        Assert.NotNull(store.GetFile("A.cs", severity: null));
+        Assert.Null(store.GetFile("B.cs", severity: null));
     }
 
     [Fact]
-    public async Task QueueOverflow_WhenRepeated_KeepsNewestPendingNotifications()
+    public async Task QueueOverflow_WhenRepeated_KeepsOldestPendingNotifications()
     {
         using var root = TestRoot.Create();
         var store = CreateStore(root.Path);
@@ -55,8 +55,8 @@ public sealed class DiagnosticNotificationProcessorTests
 
         Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "A.cs", Diagnostic("first", DiagnosticSeverity.Error))));
         Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "B.cs", Diagnostic("second", DiagnosticSeverity.Warning))));
-        Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "C.cs", Diagnostic("third", DiagnosticSeverity.Information))));
-        Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "D.cs", Diagnostic("fourth", DiagnosticSeverity.Hint))));
+        Assert.False(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "C.cs", Diagnostic("third", DiagnosticSeverity.Information))));
+        Assert.False(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "D.cs", Diagnostic("fourth", DiagnosticSeverity.Hint))));
 
         Assert.Equal(2, processor.Statistics.Pending);
         Assert.Equal(2, processor.Statistics.Dropped);
@@ -64,10 +64,10 @@ public sealed class DiagnosticNotificationProcessorTests
         processor.Start();
         await WaitForConditionAsync(() => store.KnownFileCount == 2);
 
-        Assert.Null(store.GetFile("A.cs", severity: null));
-        Assert.Null(store.GetFile("B.cs", severity: null));
-        Assert.NotNull(store.GetFile("C.cs", severity: null));
-        Assert.NotNull(store.GetFile("D.cs", severity: null));
+        Assert.NotNull(store.GetFile("A.cs", severity: null));
+        Assert.NotNull(store.GetFile("B.cs", severity: null));
+        Assert.Null(store.GetFile("C.cs", severity: null));
+        Assert.Null(store.GetFile("D.cs", severity: null));
     }
 
     [Fact]
