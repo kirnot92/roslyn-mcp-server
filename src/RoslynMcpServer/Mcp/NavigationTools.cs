@@ -354,7 +354,9 @@ public sealed class NavigationTools(
         string file,
         int line,
         int column,
+        [Description("Call direction to inspect: incoming callers, outgoing callees, or both. Defaults to incoming.")]
         string direction = "incoming",
+        [Description("Maximum number of direct call relationship edges to return.")]
         int? maxResults = null,
         CancellationToken cancellationToken = default)
     {
