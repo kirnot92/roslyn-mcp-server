@@ -150,11 +150,29 @@ M2에서 구현된 읽기 중심 기능은 다음과 같다.
 
 아직 구현하지 않은 읽기/요약 기능은 후속 milestone로 남긴다.
 
+- `peek_definition`
+  - `go_to_definition` 결과 위치와 함께 제한된 코드 snippet을 반환
+  - 1차 구현은 `contextLines`, `maxLines`, `maxBytes`, `maxDefinitions` 제한을 둔 위치 기반 snippet으로 시작한다.
+  - 2차 구현에서는 `document_symbols` range를 활용해 enclosing method/class 범위를 더 정확히 잡을 수 있다.
+
+- `find_implementations`
+  - 파일, 라인, 컬럼 기준으로 interface member, abstract member, type 구현 위치를 반환
+  - LSP `textDocument/implementation` capability를 spike한 뒤 bounded result와 warming metadata를 붙인다.
+
+- `get_type_hierarchy`
+  - 파일, 라인, 컬럼 기준으로 base type 또는 derived type 계층을 반환
+  - LSP type hierarchy의 prepare/supertypes/subtypes 흐름을 사용하되 `direction`, `maxDepth`, `maxResults`를 둔다.
+
+- `get_completions`
+  - 파일, 라인, 컬럼 기준 completion 후보를 제한적으로 반환
+  - 결과가 noisy하고 많을 수 있으므로 `maxResults`, kind filter, documentation 포함 여부를 명시한다.
+  - 저장되지 않은 임시 코드에는 현재 file sync 모델만으로 한계가 있으므로 우선순위는 낮게 둔다.
+
 - `solution_overview`
   - 로드된 솔루션/프로젝트, 프로젝트 목록, 타깃 프레임워크 요약
   - M3에서는 기존 workspace tool과 targeted read tool로 충분하다고 판단해 구현하지 않았다.
 
-2차 버전에서 변경 작업을 추가한다.
+변경 작업은 별도 write/refactor milestone에서 추가한다.
 
 - `rename_symbol`
 - `code_actions`
@@ -316,7 +334,32 @@ M0/M1, M2, M3는 완료된 상태로 본다. Target framework는 `net10.0`으로
 - 필요 시 추가 실제 MCP client smoke 반복
 - `solution_overview` 구현 여부 재판단
 
-### M5: 변경 작업 도구
+### M5: Agent read productivity tools
+
+Gemini CLI 실사용 피드백 기준으로, 에이전트가 Roslyn 위치 정보를 받은 뒤 다시 파일을 읽어야 하는 왕복 비용과 interface/hierarchy 탐색 비용을 줄이는 read-only 도구를 추가한다. 이 milestone은 write/refactor tool보다 먼저 진행할 수 있다.
+
+- `peek_definition`
+  - 입력: `file`, `line`, `column`, optional `contextLines`, `maxDefinitions`
+  - `textDocument/definition` 결과와 root-relative file, 1-based range, 제한된 source snippet을 함께 반환한다.
+  - snippet은 path guard, `MaxDocumentBytes`, `maxLines`, `maxBytes` 제한을 따른다.
+  - 여러 definition이 나오면 기본 상한 안에서 모두 반환하고 truncation metadata를 포함한다.
+  - 처음에는 위치 기반 context snippet으로 구현하고, 이후 enclosing symbol range 기반 확장을 검토한다.
+- `find_implementations`
+  - 입력: `file`, `line`, `column`, optional `maxResults`
+  - LSP `textDocument/implementation` capability와 Roslyn LS 실제 응답 shape를 spike한다.
+  - 결과는 `find_references`와 같은 bounded location list, `totalKnown`, `returned`, `truncated`, warming metadata를 갖는다.
+- `get_type_hierarchy`
+  - 입력: `file`, `line`, `column`, `direction`, optional `maxDepth`, optional `maxResults`
+  - LSP `typeHierarchy/prepare`, `typeHierarchy/supertypes`, `typeHierarchy/subtypes` 지원 여부를 spike한다.
+  - 대형 solution에서 결과 폭주를 막기 위해 expensive request limit과 depth/result cap을 적용한다.
+- `get_completions`
+  - 입력: `file`, `line`, `column`, optional `maxResults`, optional kind/documentation 옵션
+  - LSP `textDocument/completion` 결과를 제한적으로 반환한다.
+  - 결과 품질과 noise를 실제 agent workflow에서 확인한 뒤 구현 여부를 확정한다.
+
+이 milestone은 모두 read-only다. 파일 수정, rename apply, code action apply는 포함하지 않는다.
+
+### M6: 변경 작업 도구
 
 - code action 미리보기
 - rename preview
