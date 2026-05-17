@@ -145,3 +145,43 @@ Status and symbol checkpoints:
 - `get_workspace_status` currently lacks a Roslyn-internal project/document progress metric. `openDocumentCount` and `knownDiagnosticsFileCount` stayed 0 during passive polling because no file-specific read tool or publish diagnostics changed those MCP-side counters before the final probes.
 - The server remained usable after 10 minutes: final `document_symbols` returned 33 items and final `find_references` returned 3 items.
 - Follow-up should focus on better observability or Roslyn LS load behavior for large `.slnx` workspaces rather than increasing smoke wait time beyond 10 minutes.
+
+## 10-Minute SDK-Aligned Retest
+- Date: 2026-05-17 (Asia/Seoul)
+- roslyn-mcp-server commit: `9dfa960 Increase warming retry hint to thirty seconds`
+- aspnetcore commit: `93a1b5295d92954d46e26f2bbb3abde15f332a4b`
+- MCP client method: `.local/mcp_aspnetcore_long_warmup.py`
+- Raw local artifacts: `.local/aspnetcore-long-warmup-20260517-094921-raw.json`, `.local/aspnetcore-long-warmup-20260517-094921.log`, `.local/aspnetcore-long-warmup-20260517-094921-stderr.log`, `.local/aspnetcore-ls-20260517-094921/`.
+
+Environment changes:
+
+- ASP.NET Core `global.json` now requests SDK `11.0.100-preview.5.26227.104`.
+- Installed SDK `11.0.100-preview.5.26227.104` into `C:\Users\Beretta\AppData\Local\Microsoft\dotnet`.
+- Smoke command used `DOTNET_ROOT=C:\Users\Beretta\AppData\Local\Microsoft\dotnet` and a `PATH` prefix of `C:\Users\Beretta\AppData\Local\Microsoft\dotnet;C:\Users\Beretta\.dotnet\tools`.
+- In `D:\Workspace\real-repos\aspnetcore`, `dotnet --version` resolved to `11.0.100-preview.5.26227.104`.
+
+Status and symbol checkpoints:
+
+| Warmup | Tool | Result | Elapsed | Count | Workspace State | Completeness | Notes |
+| ---: | --- | --- | ---: | ---: | --- | --- | --- |
+| - | list_workspaces | OK | 0.284s | 611 |  |  | 2 solutions, 609 projects, `truncated: false` |
+| - | load_solution | OK | 0.506s | 0 | WorkspaceWarming |  | Loaded `AspNetCore.slnx` |
+| 0s | get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  | 0 warnings |
+| 60s | get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  | 50 `workspace_project_load_failed` warnings surfaced |
+| 120s | get_workspace_status | OK | 0.041s | 0 | WorkspaceWarming |  | 50 warnings |
+| 180s | get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  | 50 warnings |
+| 180s | find_symbols | OK | 4.776s | 20 | WorkspaceWarming | partial | Query `HttpContext`; `totalKnown: 122`, `returned: 20`, `retryAfterMs: 30000` |
+| 300s | find_symbols | OK | 0.040s | 20 | WorkspaceWarming | partial | Query `HttpContext`; `totalKnown: 122`, `returned: 20`, `retryAfterMs: 30000` |
+| 600s | get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  | 50 warnings |
+| 600s | find_symbols | OK | 0.041s | 20 | WorkspaceWarming | partial | Query `HttpContext`; `totalKnown: 122`, `returned: 20`, `retryAfterMs: 30000` |
+| 600s | document_symbols | OK | 0.081s | 33 | WorkspaceWarming | partial | Final usability probe; `retryAfterMs: 30000` |
+| 600s | find_references | OK | 0.587s | 3 | WorkspaceWarming | partial | Final usability probe for `HttpContext`; `retryAfterMs: 30000` |
+
+Retest findings:
+
+- Waiting 10 minutes still did not move aspnetcore from `WorkspaceWarming` to `Ready`.
+- With the exact SDK requested by current aspnetcore `global.json`, `find_symbols("HttpContext")` no longer returns 0. It returned 20 capped results at 3, 5, and 10 minutes.
+- `get_workspace_status` surfaced 50 project load warnings from 60 seconds onward. The first warning path was `src/Middleware/Microsoft.AspNetCore.OutputCaching.StackExchangeRedis/src/Microsoft.AspNetCore.OutputCaching.StackExchangeRedis.csproj`.
+- No `workspace/projectInitializationComplete` notification was observed in the captured logs, so the state remained `WorkspaceWarming` rather than moving to `LoadedWithErrors`.
+- Roslyn LS was launched with `--logLevel Trace --extensionLogDirectory`, but no files were emitted under `.local/aspnetcore-ls-20260517-094921/`.
+- The new 30-second warming retry hint is visible in read-tool results as `retryAfterMs: 30000`.
