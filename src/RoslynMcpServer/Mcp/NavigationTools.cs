@@ -175,7 +175,7 @@ public sealed class NavigationTools(
             var items = new List<PeekDefinitionItem>(locations.Items.Count);
             foreach (var location in locations.Items)
             {
-                var snippet = await ReadSourceSnippetAsync(location, effectiveContextLines, cancellationToken).ConfigureAwait(false);
+                var snippet = await ReadSourceSnippetAsync(location, effectiveContextLines, "Definition", cancellationToken).ConfigureAwait(false);
                 items.Add(new PeekDefinitionItem(
                     location.File,
                     location.Line,
@@ -230,6 +230,63 @@ public sealed class NavigationTools(
             var metadata = CreateMetadata(request.Context.State, ToolKind.References, locations.Truncated);
             return new ReferencesResult(
                 locations.Items,
+                locations.TotalKnown,
+                locations.Returned,
+                metadata.WorkspaceState,
+                metadata.Completeness,
+                metadata.Reason,
+                metadata.RetryAfterMs,
+                metadata.Truncated);
+        }
+        catch (UserFacingException ex)
+        {
+            return ToolError.FromException(ex);
+        }
+    }
+
+    [McpServerTool(Name = "peek_references")]
+    [Description("Find reference locations plus bounded source snippets for each returned location.")]
+    public async Task<object> PeekReferences(
+        string file,
+        int line,
+        int column,
+        bool includeDeclaration = true,
+        int? maxResults = null,
+        int? contextLines = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var effectiveMaxResults = NormalizeReferenceMaxResults(maxResults);
+            var effectiveContextLines = NormalizePeekContextLines(contextLines);
+            var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
+            var response = await request.Context.Handle.Client.RequestAsync(
+                "textDocument/references",
+                new ReferenceParams(
+                    new TextDocumentIdentifier(request.Document.Uri),
+                    request.Position,
+                    new ReferenceContext(includeDeclaration)),
+                ReferencesTimeout,
+                cancellationToken,
+                isExpensive: true).ConfigureAwait(false);
+
+            var locations = MapLocations(response, "textDocument/references", effectiveMaxResults);
+            var items = new List<PeekReferenceItem>(locations.Items.Count);
+            foreach (var location in locations.Items)
+            {
+                var snippet = await ReadSourceSnippetAsync(location, effectiveContextLines, "Reference", cancellationToken).ConfigureAwait(false);
+                items.Add(new PeekReferenceItem(
+                    location.File,
+                    location.Line,
+                    location.Column,
+                    location.Range,
+                    snippet.Snippet,
+                    snippet.Error));
+            }
+
+            var metadata = CreateMetadata(request.Context.State, ToolKind.References, locations.Truncated);
+            return new PeekReferencesResult(
+                items,
                 locations.TotalKnown,
                 locations.Returned,
                 metadata.WorkspaceState,
@@ -502,6 +559,7 @@ public sealed class NavigationTools(
     private async Task<SourceSnippetReadResult> ReadSourceSnippetAsync(
         NavigationLocation location,
         int contextLines,
+        string rangeDescription,
         CancellationToken cancellationToken)
     {
         string fullPath;
@@ -542,7 +600,7 @@ public sealed class NavigationTools(
                     null,
                     new SourceSnippetError(
                         "invalid_range",
-                        $"Definition range is outside the readable source file: {location.File}"));
+                        $"{rangeDescription} range is outside the readable source file: {location.File}"));
             }
 
             var startLine = Math.Max(location.Range.StartLine - contextLines, 1);
@@ -553,7 +611,7 @@ public sealed class NavigationTools(
                     null,
                     new SourceSnippetError(
                         "invalid_range",
-                        $"Definition range is outside the readable source file: {location.File}"));
+                        $"{rangeDescription} range is outside the readable source file: {location.File}"));
             }
 
             var snippet = BuildSourceSnippet(lines, startLine, requestedEndLine);
@@ -565,13 +623,13 @@ public sealed class NavigationTools(
         {
             return new SourceSnippetReadResult(
                 null,
-                new SourceSnippetError("file_read_error", $"Could not read definition source: {ex.Message}"));
+                new SourceSnippetError("file_read_error", $"Could not read {rangeDescription.ToLowerInvariant()} source: {ex.Message}"));
         }
         catch (UnauthorizedAccessException ex)
         {
             return new SourceSnippetReadResult(
                 null,
-                new SourceSnippetError("file_read_error", $"Could not read definition source: {ex.Message}"));
+                new SourceSnippetError("file_read_error", $"Could not read {rangeDescription.ToLowerInvariant()} source: {ex.Message}"));
         }
     }
 

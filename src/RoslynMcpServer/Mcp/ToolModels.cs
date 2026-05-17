@@ -103,6 +103,24 @@ public sealed record PeekDefinitionResult(
     int? RetryAfterMs,
     bool Truncated);
 
+public sealed record PeekReferenceItem(
+    string File,
+    int Line,
+    int Column,
+    McpRange Range,
+    SourceSnippet? Snippet,
+    SourceSnippetError? SnippetError);
+
+public sealed record PeekReferencesResult(
+    IReadOnlyList<PeekReferenceItem> Items,
+    int TotalKnown,
+    int Returned,
+    string WorkspaceState,
+    string Completeness,
+    string? Reason,
+    int? RetryAfterMs,
+    bool Truncated);
+
 public sealed record ReferencesResult(
     IReadOnlyList<NavigationLocation> Items,
     int TotalKnown,

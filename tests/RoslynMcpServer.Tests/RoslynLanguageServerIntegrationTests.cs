@@ -100,6 +100,14 @@ public sealed class RoslynLanguageServerIntegrationTests
         var references = Assert.IsType<ReferencesResult>(referencesResult);
         Assert.Contains(references.Items, item => item.File == "Calculator.cs");
 
+        var peekReferencesResult = await tools.PeekReferences("Calculator.cs", line: 9, column: 17, contextLines: 1);
+        var peekReferences = Assert.IsType<PeekReferencesResult>(peekReferencesResult);
+        Assert.Contains(
+            peekReferences.Items,
+            item => item.File == "Calculator.cs" &&
+                item.Snippet is not null &&
+                item.Snippet.Text.Contains("Add", StringComparison.Ordinal));
+
         var implementations = await WaitForImplementationAsync(
             tools,
             "Calculator.cs",

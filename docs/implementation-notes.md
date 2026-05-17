@@ -43,6 +43,7 @@
   - LSP `textDocument/implementation`을 위치 기반으로 호출하며, `find_references`와 같은 bounded location metadata를 반환한다.
   - 전체 구현체 탐색은 interface/abstract/base contract 위치에서 호출해야 한다. 구체 구현 class/member 위치에서는 자기 자신만 반환될 수 있으므로, MCP tool description과 결과 `usageHint`에서 호출 위치를 명확히 안내한다.
   - `peek_definition(file, line, column, contextLines?, maxDefinitions?)` tool을 추가했다.
+  - `peek_references(file, line, column, includeDeclaration?, maxResults?, contextLines?)` tool을 추가했다.
   - LSP `textDocument/definition` 결과를 원본 파일 snippet과 함께 반환하며, root 밖 또는 읽을 수 없는 파일은 건너뛰고 mappable definition 기준 metadata를 반환한다.
   - `find_symbols(query, maxResults?, kindFilter?)`의 `kindFilter` 옵션을 추가했다.
   - `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
@@ -63,6 +64,7 @@
 - `go_to_definition`
 - `peek_definition`
 - `find_references`
+- `peek_references`
 - `find_implementations`
 - `find_symbols`
 - `diagnostics`
@@ -74,8 +76,6 @@
 - 대형 solution startup 성능 측정과 상태 관측성 강화
 - Roslyn LS crash/restart 처리
 - M5 read productivity 후속 후보
-  - `peek_references`: `find_references` 결과 위치마다 root 내부 source snippet을 함께 반환해, agent가 reference 사용 맥락을 보기 위해 다시 파일을 여는 왕복을 줄인다.
-  - `peek_references`는 `file`, `line`, `column`, `includeDeclaration`, `maxResults`, `contextLines`를 입력으로 받고, snippet은 `peek_definition`과 같은 path guard, document size, line/context, character cap 제한을 따른다.
   - `get_call_hierarchy`: LSP call hierarchy의 prepare/incoming/outgoing 흐름으로 특정 callable의 호출자/피호출자 관계를 반환한다.
   - `get_call_hierarchy`는 `get_type_hierarchy`와 역할이 다르다. call hierarchy는 호출 관계, type hierarchy는 base/derived type 관계를 다룬다.
   - `get_type_hierarchy`, `get_completions`는 계속 후속 후보로 둔다.

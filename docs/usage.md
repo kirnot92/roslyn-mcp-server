@@ -116,8 +116,9 @@ To preload a solution during server startup, add `--load-solution`:
    between multiple solutions or projects.
 5. Call `get_workspace_status`.
 6. Call read-only Roslyn tools such as `document_symbols`, `hover`,
-   `go_to_definition`, `find_references`, `find_implementations`,
-   `find_symbols`, or `diagnostics`.
+   `go_to_definition`, `peek_definition`, `find_references`,
+   `peek_references`, `find_implementations`, `find_symbols`, or
+   `diagnostics`.
 
 During startup, read tools may return `workspace_loading` instead of blocking.
 After LSP initialize, large workspaces may remain in `WorkspaceWarming`. If
@@ -157,9 +158,9 @@ For code review workflows, start workspace loading before reading the full diff:
 1. Inspect only the changed file list first, for example `git diff --name-only`.
 2. Call `load_solution` or the relevant `load_project` immediately.
 3. Do not wait for `Ready`; read the diff while the workspace is warming.
-4. Use `go_to_definition`, `hover`, `find_references`, and
-   `find_implementations` from the changed code once the review needs semantic
-   context.
+4. Use `go_to_definition`, `peek_definition`, `hover`, `find_references`,
+   `peek_references`, and `find_implementations` from the changed code once the
+   review needs semantic context.
 
 This lets Roslyn LS use the human/agent diff-reading time for background project
 load and keeps the later navigation calls from paying the full cold-start cost.
