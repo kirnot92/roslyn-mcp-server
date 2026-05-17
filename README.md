@@ -112,8 +112,8 @@ the diff while Roslyn LS warms in the background.
 Build the server first, then point your MCP client at the built executable. Use
 `cwd` or `--root <repo-root>` so the server knows which repository to inspect.
 Solution paths passed to `--load-solution` must be the exact root-relative path,
-such as `Unity/Server.sln`, or an absolute path inside the root. The server does
-not recursively search for a matching file name from this option.
+such as `Sources/Server.sln`, or an absolute path inside the root. The server
+does not recursively search for a matching file name from this option.
 
 ### 1. Claude Code
 

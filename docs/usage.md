@@ -34,7 +34,7 @@ root.
 
 Use `--load-solution <path>` when you want a specific `.sln` or `.slnx` to start
 loading as soon as the MCP server starts. The path must be the exact
-root-relative path, such as `Unity/Server.sln`, or an absolute path inside the
+root-relative path, such as `Sources/Server.sln`, or an absolute path inside the
 configured root. The server does not recursively search for a matching file name
 from this option. The option is optional, only accepts solution files, and can be
 specified once.
