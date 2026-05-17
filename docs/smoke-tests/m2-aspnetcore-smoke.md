@@ -185,3 +185,28 @@ Retest findings:
 - No `workspace/projectInitializationComplete` notification was observed in the captured logs, so the state remained `WorkspaceWarming` rather than moving to `LoadedWithErrors`.
 - Roslyn LS was launched with `--logLevel Trace --extensionLogDirectory`, but no files were emitted under `.local/aspnetcore-ls-20260517-094921/`.
 - The new 30-second warming retry hint is visible in read-tool results as `retryAfterMs: 30000`.
+
+## 0-180s Symbol Ramp Retest
+- Date: 2026-05-17 (Asia/Seoul)
+- roslyn-mcp-server commit: `8f91cb3 Document ASP.NET Core SDK-aligned smoke retest`
+- aspnetcore commit: `93a1b5295d92954d46e26f2bbb3abde15f332a4b`
+- MCP client method: `.local/mcp_aspnetcore_symbol_ramp.py`
+- Raw local artifact: `.local/aspnetcore-symbol-ramp-20260517-100948-raw.json`
+
+This run cleaned stale MSBuild node-reuse processes from prior ASP.NET Core smoke runs before starting. It then loaded `AspNetCore.slnx` and called `find_symbols("HttpContext", maxResults: 20)` every 10 seconds from 0s through 180s.
+
+| Warmup | Elapsed | Returned | Total Known | Workspace State | Completeness | Notes |
+| ---: | ---: | ---: | ---: | --- | --- | --- |
+| 0s | 0.061s | 0 | 0 | WorkspaceWarming | partial | Empty partial result |
+| 10s | 1.319s | 3 | 3 | WorkspaceWarming | partial | First non-empty result |
+| 20s | 0.406s | 20 | 33 | WorkspaceWarming | partial | First capped page |
+| 30s | 0.809s | 20 | 43 | WorkspaceWarming | partial | Total known still growing |
+| 40s | 1.129s | 20 | 47 | WorkspaceWarming | partial | Total known reached 47 |
+| 50s-180s | ~0.020s each | 20 | 47 | WorkspaceWarming | partial | Result count stayed capped; `retryAfterMs: 30000` |
+
+Ramp findings:
+
+- The first incomplete non-empty symbol result appeared at the 10-second checkpoint after `load_solution`.
+- The first capped result page appeared at the 20-second checkpoint.
+- In this active polling run, `totalKnown` grew to 47 by 40 seconds and then stayed there through 180 seconds.
+- The 180-second final `get_workspace_status` still reported `WorkspaceWarming`, with 50 `workspace_project_load_failed` warnings and no open documents or known diagnostics.
