@@ -114,7 +114,7 @@ roslyn-language-server
 
 ## MCP 도구 로드맵
 
-2026-05-17 현재 `main` 기준으로 M0/M1 workspace tool, M2 read-only tool, M3 사용자/클라이언트 사용성 정리가 완료되어 있다. 현재 제공하는 workspace tool은 다음과 같다.
+2026-05-17 현재 `main` 기준으로 M0/M1 workspace tool, M2 read-only tool, M3 사용자/클라이언트 사용성 정리, M4 일부 품질 강화, M5 read productivity tool 일부가 완료되어 있다. 현재 제공하는 workspace tool은 다음과 같다.
 
 - `list_workspaces`
   - 현재 root 기준 발견된 `.sln`, `.slnx`, `.csproj` 후보 반환
@@ -136,8 +136,14 @@ M2에서 구현된 읽기 중심 기능은 다음과 같다.
 - `go_to_definition`
   - 파일, 라인, 컬럼 기준 정의 위치 반환
 
+- `peek_definition`
+  - 파일, 라인, 컬럼 기준 정의 위치와 제한된 코드 snippet 반환
+
 - `find_references`
   - 심볼 참조 목록 반환
+
+- `find_implementations`
+  - 파일, 라인, 컬럼 기준 interface, abstract member, type 구현 위치 반환
 
 - `hover`
   - Roslyn hover 정보를 반환
@@ -149,15 +155,6 @@ M2에서 구현된 읽기 중심 기능은 다음과 같다.
   - 파일 내 클래스, 메서드, 속성 등의 구조 반환
 
 아직 구현하지 않은 읽기/요약 기능은 후속 milestone로 남긴다.
-
-- `peek_definition`
-  - `go_to_definition` 결과 위치와 함께 제한된 코드 snippet을 반환
-  - 1차 구현은 `contextLines`, `maxLines`, `maxBytes`, `maxDefinitions` 제한을 둔 위치 기반 snippet으로 시작한다.
-  - 2차 구현에서는 `document_symbols` range를 활용해 enclosing method/class 범위를 더 정확히 잡을 수 있다.
-
-- `find_implementations`
-  - 파일, 라인, 컬럼 기준으로 interface member, abstract member, type 구현 위치를 반환
-  - LSP `textDocument/implementation` capability를 spike한 뒤 bounded result와 warming metadata를 붙인다.
 
 - `get_type_hierarchy`
   - 파일, 라인, 컬럼 기준으로 base type 또는 derived type 계층을 반환
@@ -334,19 +331,18 @@ M0/M1, M2, M3는 완료된 상태로 본다. Target framework는 `net10.0`으로
 - 필요 시 추가 실제 MCP client smoke 반복
 - `solution_overview` 구현 여부 재판단
 
-### M5: Agent read productivity tools
+### M5: Agent read productivity tools - 진행 중
 
 Gemini CLI 실사용 피드백 기준으로, 에이전트가 Roslyn 위치 정보를 받은 뒤 다시 파일을 읽어야 하는 왕복 비용과 interface/hierarchy 탐색 비용을 줄이는 read-only 도구를 추가한다. 이 milestone은 write/refactor tool보다 먼저 진행할 수 있다.
 
-- `peek_definition`
+- `peek_definition` - 완료
   - 입력: `file`, `line`, `column`, optional `contextLines`, `maxDefinitions`
   - `textDocument/definition` 결과와 root-relative file, 1-based range, 제한된 source snippet을 함께 반환한다.
-  - snippet은 path guard, `MaxDocumentBytes`, `maxLines`, `maxBytes` 제한을 따른다.
+  - snippet은 path guard, `MaxDocumentBytes`, context line, character cap 제한을 따른다.
   - 여러 definition이 나오면 기본 상한 안에서 모두 반환하고 truncation metadata를 포함한다.
-  - 처음에는 위치 기반 context snippet으로 구현하고, 이후 enclosing symbol range 기반 확장을 검토한다.
-- `find_implementations`
+- `find_implementations` - 완료
   - 입력: `file`, `line`, `column`, optional `maxResults`
-  - LSP `textDocument/implementation` capability와 Roslyn LS 실제 응답 shape를 spike한다.
+  - LSP `textDocument/implementation`을 호출한다.
   - 결과는 `find_references`와 같은 bounded location list, `totalKnown`, `returned`, `truncated`, warming metadata를 갖는다.
 - `get_type_hierarchy`
   - 입력: `file`, `line`, `column`, `direction`, optional `maxDepth`, optional `maxResults`
