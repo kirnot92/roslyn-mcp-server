@@ -356,7 +356,6 @@ public sealed class NavigationTools(
         int column,
         [Description("One of {incoming|outgoing|both}. Defaults to incoming.")]
         string direction = "incoming",
-        [Description("Maximum number of direct call relationship edges to return.")]
         int? maxResults = null,
         CancellationToken cancellationToken = default)
     {
