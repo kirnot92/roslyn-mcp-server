@@ -293,6 +293,15 @@ M0/M1, M2, M3는 완료된 상태로 본다. Target framework는 `net10.0`으로
 
 ### M4: 품질 강화 - 다음 후보
 
+- startup initial solution load
+  - `--load-solution <path>` CLI 옵션을 추가한다.
+  - 옵션 값은 `--root` 또는 현재 작업 디렉터리 기준 root 내부의 `.sln`/`.slnx`만 허용한다.
+  - 지정되면 MCP 서버 시작 후 background 초기화 단계에서 기존 `load_solution`과 같은 경로로 Roslyn LS를 시작하고 `solution/open`을 보낸다.
+  - `--load-solution`은 optional이다. 지정하지 않으면 기존처럼 agent가 `load_solution`/`load_project`를 필요할 때 호출하거나, 단일 후보 자동 load가 동작한다.
+  - 같은 서버 인스턴스에서 여러 solution을 동시에 load하지 않는다. 여러 solution이 필요한 Unity server/client 같은 repo는 MCP client 설정에 server entry를 여러 개 두는 방식을 권장한다.
+  - 중복 지정은 `CliUsageException`으로 명확히 거부한다.
+  - startup load 중 read tool은 기존 계약대로 `workspace_loading` 또는 warming metadata를 반환해야 한다.
+  - 테스트는 CLI parse, invalid extension/path, 중복 옵션, startup load 상태 전이, 기존 explicit `load_solution`과 같은 target 생성 경로를 검증한다.
 - 통합 테스트 추가
 - 대형 솔루션 startup 성능 측정
 - Roslyn LS crash/restart 처리
