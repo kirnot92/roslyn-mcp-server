@@ -142,3 +142,52 @@ Retest tool summary:
 | find_symbols | OK | 1.013s | 0 | LoadedWithErrors | partial | false | Query `ManagedPSEntry`; reason points to `get_workspace_status` warnings |
 | diagnostics(file) | OK | 0.020s | 0 | LoadedWithErrors | unknown | false | No publish diagnostics received for file yet |
 | diagnostics(workspace) | OK | 0.021s | 0 | LoadedWithErrors | partial | false | Project load errors surfaced in metadata |
+
+## SDK Installed Retest
+- Date: 2026-05-17 (Asia/Seoul)
+- roslyn-mcp-server commit: `91e8d62 Surface Roslyn project load errors`
+- PowerShell commit: `90d3b7f2e355e457d92b6929f6b4cfe4fa651e35`
+- MCP client method: `.local/mcp_powershell_smoke.py`, then a 10-minute wait variant based on the same local script
+- Raw outputs: `.local/powershell-smoke-raw.json`, `.local/powershell-smoke-wait10m-raw.json`
+- Roslyn/MCP log file: `.local/powershell-smoke.log`
+
+Environment changes:
+
+- Installed SDK `11.0.100-preview.3.26207.106` into `C:\Users\Beretta\AppData\Local\Microsoft\dotnet` to satisfy PowerShell `global.json`.
+- Installed SDK `10.0.203` into the same user-local dotnet root so `dotnet run` can execute the `net10.0` MCP server while the user-local dotnet remains first on `PATH`.
+- Smoke commands used `DOTNET_ROOT=C:\Users\Beretta\AppData\Local\Microsoft\dotnet` and a `PATH` prefix of `C:\Users\Beretta\AppData\Local\Microsoft\dotnet;C:\Users\Beretta\.dotnet\tools`.
+- In `D:\Workspace\real-repos\PowerShell`, `dotnet --version` resolved to `11.0.100-preview.3.26207.106`.
+
+Immediate smoke summary:
+
+| Tool | Result | Elapsed | Count | Workspace State | Completeness | Truncated | Notes |
+| --- | --- | ---: | ---: | --- | --- | --- | --- |
+| list_workspaces | OK | 0.121s | 45 |  |  | false | Default options; 3 solutions, 42 projects |
+| load_solution | OK | 0.465s | 0 | WorkspaceWarming |  |  | Loaded `PowerShell.sln` |
+| get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  |  | Immediate, +3s, and +10s polls stayed `WorkspaceWarming`; 0 warnings |
+| document_symbols | OK | 1.700s | 2 | WorkspaceWarming | partial | false | `ManagedPSEntry` and `Main(string[] args)` |
+| hover | OK | 0.162s | 0 | WorkspaceWarming | partial | false | Returned hover metadata/text for `ManagedPSEntry` |
+| go_to_definition | OK | 0.041s | 0 | WorkspaceWarming | partial | false | `UnmanagedPSEntry.Start`; no locations, no error |
+| find_references | OK | 0.611s | 1 | WorkspaceWarming | partial | false | `ManagedPSEntry`; `totalKnown: 1`, `returned: 1` |
+| find_symbols | OK | 0.891s | 2 | WorkspaceWarming | partial | false | `ManagedPSEntry` and `UnmanagedPSEntry` |
+| diagnostics(file) | OK | 0.020s | 0 | WorkspaceWarming | unknown | false | No publish diagnostics received for file yet |
+| diagnostics(workspace) | OK | 0.021s | 0 | WorkspaceWarming | partial | false | Current known diagnostics only |
+
+10-minute wait summary:
+
+| Tool | Result | Elapsed | Count | Workspace State | Completeness | Truncated | Notes |
+| --- | --- | ---: | ---: | --- | --- | --- | --- |
+| list_workspaces | OK | 0.122s | 45 |  |  | false | Default options; 3 solutions, 42 projects |
+| load_solution | OK | 0.486s | 0 | WorkspaceWarming |  |  | Loaded `PowerShell.sln` |
+| get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  |  | Immediate; 0 warnings |
+| get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  |  | +60s; 0 warnings |
+| get_workspace_status | OK | 0.021s | 0 | Ready |  |  | +120s; 0 warnings |
+| get_workspace_status | OK | 0.020s | 0 | Ready |  |  | +180s through +600s stayed `Ready`; 0 warnings |
+| find_symbols | OK | 1.242s | 2 | Ready | unknown | false | After 10 minutes, returned `UnmanagedPSEntry` and `ManagedPSEntry` |
+
+Findings:
+
+- Installing the exact .NET 11 preview SDK removed the PowerShell project load failures. The latest 10-minute log check found no `LanguageServerProjectLoader`, `Error while loading`, or `A compatible .NET SDK was not found` entries.
+- `get_workspace_status` reached `Ready` after about 120 seconds on this machine, so a 10-minute wait is more than enough for this PowerShell checkout when the required SDK is present.
+- `find_symbols("ManagedPSEntry")` is no longer 0 after the SDK fix. It returned 2 results during warming and 2 results after the 10-minute wait.
+- The immediate smoke still marks symbol search `partial` while warming. After the workspace is `Ready`, `find_symbols` returns the right items but still reports `completeness: unknown`; that is a metadata classification issue to track separately from the previous SDK/load failure.
