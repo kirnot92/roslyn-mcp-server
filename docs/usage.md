@@ -32,6 +32,11 @@ Use `--root <path>` only as an escape hatch when your MCP client cannot set the
 server working directory. User-supplied paths still must stay under the configured
 root.
 
+Use `--load-solution <path>` when you want a specific `.sln` or `.slnx` to start
+loading as soon as the MCP server starts. The path is resolved under the
+configured root. The option is optional, only accepts solution files, and can be
+specified once.
+
 ## Client Configuration
 
 Windows example, assuming the client starts the server with the target repository
@@ -85,15 +90,30 @@ If the Roslyn language server is installed outside `PATH`, add the explicit path
 }
 ```
 
+To preload a solution during server startup, add `--load-solution`:
+
+```json
+{
+  "mcpServers": {
+    "roslyn": {
+      "command": "D:\\Workspace\\roslyn-mcp-server\\src\\RoslynMcpServer\\bin\\Debug\\net10.0\\roslyn-mcp-server.exe",
+      "args": ["--root", "D:\\Workspace\\my-csharp-repo", "--load-solution", "Server.sln"]
+    }
+  }
+}
+```
+
 ## Recommended Tool Flow
 
-1. Call `list_workspaces`.
-2. If one intended `.sln`, `.slnx`, or `.csproj` candidate is visible, call
+1. Optionally configure `--load-solution <path>` for the intended `.sln` or
+   `.slnx`.
+2. Call `list_workspaces`.
+3. If one intended `.sln`, `.slnx`, or `.csproj` candidate is visible, call
    `load_solution` or `load_project` with its root-relative path.
-3. If multiple candidates are visible, choose explicitly. The server does not guess
+4. If multiple candidates are visible, choose explicitly. The server does not guess
    between multiple solutions or projects.
-4. Call `get_workspace_status`.
-5. Call read-only Roslyn tools such as `document_symbols`, `hover`,
+5. Call `get_workspace_status`.
+6. Call read-only Roslyn tools such as `document_symbols`, `hover`,
    `go_to_definition`, `find_references`, `find_symbols`, or `diagnostics`.
 
 During startup, read tools may return `workspace_loading` instead of blocking.

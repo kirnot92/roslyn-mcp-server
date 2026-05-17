@@ -53,10 +53,13 @@ public sealed class WorkspaceSession(
     }
 
     public Task<WorkspaceStatus> LoadSolutionAsync(string path, CancellationToken cancellationToken = default) =>
-        LoadAsync(path, [".sln", ".slnx"], WorkspaceKind.Solution, cancellationToken);
+        LoadAsync(path, [".sln", ".slnx"], WorkspaceKind.Solution, recordValidationFailure: false, cancellationToken);
+
+    public Task<WorkspaceStatus> LoadStartupSolutionAsync(string path, CancellationToken cancellationToken = default) =>
+        LoadAsync(path, [".sln", ".slnx"], WorkspaceKind.Solution, recordValidationFailure: true, cancellationToken);
 
     public Task<WorkspaceStatus> LoadProjectAsync(string path, CancellationToken cancellationToken = default) =>
-        LoadAsync(path, [".csproj"], WorkspaceKind.Project, cancellationToken);
+        LoadAsync(path, [".csproj"], WorkspaceKind.Project, recordValidationFailure: false, cancellationToken);
 
     public async Task<ReadToolContext> PrepareReadToolAsync(CancellationToken cancellationToken = default)
     {
@@ -138,12 +141,25 @@ public sealed class WorkspaceSession(
         string path,
         string[] allowedExtensions,
         WorkspaceKind requestedKind,
+        bool recordValidationFailure,
         CancellationToken cancellationToken)
     {
         await this.stateLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var target = CreateTarget(path, allowedExtensions, requestedKind);
+            WorkspaceTarget target;
+            try
+            {
+                target = CreateTarget(path, allowedExtensions, requestedKind);
+            }
+            catch (UserFacingException ex) when (recordValidationFailure)
+            {
+                this.state = WorkspaceLoadState.Failed;
+                this.failureCode = ex.Code;
+                this.failureMessage = ex.Message;
+                throw;
+            }
+
             await LoadTargetCoreAsync(target, cancellationToken).ConfigureAwait(false);
 
             return ToStatus(ListWorkspaces(refresh: false, cancellationToken));

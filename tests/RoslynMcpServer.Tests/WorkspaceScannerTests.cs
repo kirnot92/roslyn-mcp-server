@@ -36,6 +36,7 @@ public sealed class WorkspaceScannerTests
         var options = new CliOptions(
             root.Path,
             null,
+            null,
             LogLevel.Information,
             null,
             null,
@@ -69,6 +70,7 @@ public sealed class WorkspaceScannerTests
         var options = new CliOptions(
             root.Path,
             null,
+            null,
             LogLevel.Information,
             null,
             null,
@@ -95,6 +97,7 @@ public sealed class WorkspaceScannerTests
     {
         var options = new CliOptions(
             root,
+            null,
             null,
             LogLevel.Information,
             null,

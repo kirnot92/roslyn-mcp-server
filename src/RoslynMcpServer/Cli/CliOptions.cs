@@ -5,6 +5,7 @@ namespace RoslynMcpServer.Cli;
 public sealed record CliOptions(
     string Root,
     string? RoslynLanguageServerPath,
+    string? LoadSolutionPath,
     LogLevel LogLevel,
     string? LogFile,
     string? LanguageServerLogDirectory,
@@ -31,6 +32,7 @@ public sealed record CliOptions(
     {
         string? root = null;
         string? roslynLanguageServerPath = null;
+        string? loadSolutionPath = null;
         var logLevel = LogLevel.Information;
         string? logFile = null;
         string? languageServerLogDirectory = null;
@@ -54,6 +56,14 @@ public sealed record CliOptions(
                     break;
                 case "--roslyn-language-server":
                     roslynLanguageServerPath = ReadValue(args, ref i, arg);
+                    break;
+                case "--load-solution":
+                    if (loadSolutionPath is not null)
+                    {
+                        throw new CliUsageException("--load-solution can only be specified once.");
+                    }
+
+                    loadSolutionPath = ReadValue(args, ref i, arg);
                     break;
                 case "--log-level":
                     logLevel = ParseLogLevel(ReadValue(args, ref i, arg));
@@ -103,6 +113,7 @@ public sealed record CliOptions(
         return new CliOptions(
             normalizedRoot,
             roslynLanguageServerPath,
+            loadSolutionPath,
             logLevel,
             logFile is null ? null : Path.GetFullPath(logFile),
             languageServerLogDirectory is null ? null : Path.GetFullPath(languageServerLogDirectory),
@@ -122,6 +133,7 @@ public sealed record CliOptions(
         roslyn-mcp-server
           --root <path>
           --roslyn-language-server <path>
+          --load-solution <path>
           --log-level <trace|debug|info|warn|error>
           --log-file <path>
           --ls-log-dir <path>

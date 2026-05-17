@@ -73,6 +73,7 @@ public sealed class RoslynWorkspaceLoaderTests
         new(
             root,
             null,
+            null,
             LogLevel.Information,
             null,
             null,

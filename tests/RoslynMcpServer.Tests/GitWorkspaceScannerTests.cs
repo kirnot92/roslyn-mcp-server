@@ -171,6 +171,7 @@ public sealed class GitWorkspaceScannerTests
         new(
             root,
             null,
+            null,
             LogLevel.Information,
             null,
             null,

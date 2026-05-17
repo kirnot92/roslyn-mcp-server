@@ -39,6 +39,7 @@ public sealed class RoslynLanguageServerLocatorTests
         new(
             root,
             languageServerPath,
+            null,
             LogLevel.Information,
             null,
             null,

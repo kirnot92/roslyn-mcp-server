@@ -26,6 +26,80 @@ public sealed class WorkspaceSessionTests
     }
 
     [Fact]
+    public async Task StartupSolutionLoader_LoadsConfiguredSolutionInBackground()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        await using var session = CreateSession(root.Path, new ImmediateLoader(new NotificationRecordingClient()));
+        var service = new StartupSolutionLoader(
+            CreateOptions(root.Path, loadSolutionPath: "App.sln"),
+            session,
+            NullLogger<StartupSolutionLoader>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        var status = await WaitForStateAsync(session, WorkspaceLoadState.WorkspaceWarming);
+
+        Assert.Equal(WorkspaceLoadState.WorkspaceWarming, status.State);
+        Assert.Equal("App.sln", status.CurrentTarget?.RelativePath);
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task LoadStartupSolution_InvalidExtensionRecordsFailure()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        await using var session = CreateSession(root.Path, new ImmediateLoader(new NotificationRecordingClient()));
+
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() => session.LoadStartupSolutionAsync("App.csproj"));
+        var status = await session.GetStatusAsync();
+
+        Assert.Equal("invalid_workspace_file", ex.Code);
+        Assert.Equal(WorkspaceLoadState.Failed, status.State);
+        Assert.Equal("invalid_workspace_file", status.FailureCode);
+    }
+
+    [Fact]
+    public async Task LoadStartupSolution_OutsideRootRecordsFailure()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        var solutionPath = Path.Combine(outside.Path, "Outside.sln");
+        File.WriteAllText(solutionPath, string.Empty);
+        await using var session = CreateSession(root.Path, new ImmediateLoader(new NotificationRecordingClient()));
+
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() => session.LoadStartupSolutionAsync(solutionPath));
+        var status = await session.GetStatusAsync();
+
+        Assert.Equal("path_outside_root", ex.Code);
+        Assert.Equal(WorkspaceLoadState.Failed, status.State);
+        Assert.Equal("path_outside_root", status.FailureCode);
+    }
+
+    [Fact]
+    public async Task StartupSolutionLoader_ReadToolPreparationReturnsWorkspaceLoadingWhileLanguageServerStarts()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        var loader = new BlockingLoader();
+        await using var session = CreateSession(root.Path, loader);
+        var service = new StartupSolutionLoader(
+            CreateOptions(root.Path, loadSolutionPath: "App.sln"),
+            session,
+            NullLogger<StartupSolutionLoader>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await loader.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() => session.PrepareReadToolAsync());
+
+        Assert.Equal("workspace_loading", ex.Code);
+
+        loader.Release.SetResult();
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task LoadSolution_TransitionsToReadyWhenInitializationNotificationArrivedDuringLoad()
     {
         using var root = TestRoot.Create();
@@ -143,9 +217,37 @@ public sealed class WorkspaceSessionTests
 
     private static WorkspaceSession CreateSession(string root, IRoslynWorkspaceLoader loader)
     {
-        var options = new CliOptions(
+        var options = CreateOptions(root, loadSolutionPath: null);
+        var guard = new PathGuard(root);
+        return new WorkspaceSession(new WorkspaceScanner(options, guard, gitScanner: null), guard, loader);
+    }
+
+    private static async Task<WorkspaceStatus> WaitForStateAsync(
+        WorkspaceSession session,
+        WorkspaceLoadState expectedState)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2);
+        WorkspaceStatus status;
+        do
+        {
+            status = await session.GetStatusAsync();
+            if (status.State == expectedState)
+            {
+                return status;
+            }
+
+            await Task.Delay(10);
+        }
+        while (DateTimeOffset.UtcNow < deadline);
+
+        return status;
+    }
+
+    private static CliOptions CreateOptions(string root, string? loadSolutionPath) =>
+        new(
             root,
             null,
+            loadSolutionPath,
             LogLevel.Information,
             null,
             null,
@@ -158,9 +260,6 @@ public sealed class WorkspaceSessionTests
             2 * 1024 * 1024,
             16,
             2);
-        var guard = new PathGuard(root);
-        return new WorkspaceSession(new WorkspaceScanner(options, guard, gitScanner: null), guard, loader);
-    }
 
     private sealed class FakeLoader : IRoslynWorkspaceLoader
     {
@@ -195,6 +294,19 @@ public sealed class WorkspaceSessionTests
     {
         public Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken) =>
             Task.FromResult(new RoslynWorkspaceHandle(target, client));
+    }
+
+    private sealed class BlockingLoader : IRoslynWorkspaceLoader
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken)
+        {
+            Started.SetResult();
+            await Release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return new RoslynWorkspaceHandle(target, new NotificationRecordingClient());
+        }
     }
 
     private sealed class FaultableClient : ILspClient

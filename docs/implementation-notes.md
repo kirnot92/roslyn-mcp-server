@@ -31,6 +31,9 @@
   - `roslyn-language-server` 탐색/설치 오류 메시지 정리
   - PowerShell, Semantic Kernel, ASP.NET Core stdio smoke 결과 기록
   - `solution_overview`는 M3에서 구현하지 않고 M4 이후 후보로 보류
+- M4 startup initial solution load 완료
+  - `--load-solution <path>`가 지정되면 MCP 서버 시작 후 background task가 기존 solution load 경로로 `.sln`/`.slnx`를 로드한다.
+  - 지정하지 않으면 기존 명시적 load 또는 첫 read tool auto-load 동작을 유지한다.
 
 현재 MCP tool:
 

@@ -97,6 +97,7 @@ public sealed class DocumentStateManagerTests
         var options = new CliOptions(
             root,
             null,
+            null,
             LogLevel.Information,
             null,
             null,

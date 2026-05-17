@@ -11,10 +11,49 @@ public sealed class CliOptionsTests
 
         var options = CliOptions.Parse(["--root", root.Path]);
 
+        Assert.Null(options.LoadSolutionPath);
         Assert.Equal(CliOptions.DefaultMaxSolutionCandidates, options.MaxSolutionCandidates);
         Assert.Equal(100, options.MaxSolutionCandidates);
         Assert.Equal(CliOptions.DefaultMaxProjectCandidates, options.MaxProjectCandidates);
         Assert.Equal(1000, options.MaxProjectCandidates);
+    }
+
+    [Fact]
+    public void Parse_AcceptsLoadSolutionPath()
+    {
+        using var root = TestRoot.Create();
+
+        var options = CliOptions.Parse(["--root", root.Path, "--load-solution", "Foo.sln"]);
+
+        Assert.Equal("Foo.sln", options.LoadSolutionPath);
+    }
+
+    [Fact]
+    public void Parse_AcceptsLoadSolutionSlnxPath()
+    {
+        using var root = TestRoot.Create();
+
+        var options = CliOptions.Parse(["--root", root.Path, "--load-solution", "Foo.slnx"]);
+
+        Assert.Equal("Foo.slnx", options.LoadSolutionPath);
+    }
+
+    [Fact]
+    public void Parse_RejectsDuplicateLoadSolution()
+    {
+        var ex = Assert.Throws<CliUsageException>(() =>
+            CliOptions.Parse(["--load-solution", "One.sln", "--load-solution", "Two.sln"]));
+
+        Assert.Contains("--load-solution can only be specified once", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_RejectsMissingLoadSolutionValue()
+    {
+        var ex = Assert.Throws<CliUsageException>(() =>
+            CliOptions.Parse(["--load-solution"]));
+
+        Assert.Contains("Missing value for --load-solution", ex.Message);
     }
 
     [Fact]

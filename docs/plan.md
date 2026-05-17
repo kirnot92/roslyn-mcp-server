@@ -80,7 +80,7 @@ roslyn-language-server
   <-> cwd 기준 .sln/.slnx/.csproj workspace
 ```
 
-`roslyn-mcp-server`는 MCP stdio 서버로 실행된다. 서버 시작 시 현재 작업 디렉터리를 기본 root로 삼고, `.sln`, `.slnx`, `.csproj` 후보를 탐색한다. 이 단계에서는 무조건 솔루션을 로드하지 않는다. Agent가 `load_solution` 또는 `load_project` tool을 호출하거나, 후보가 하나뿐인 상태에서 Roslyn tool이 처음 호출될 때 로드한다.
+`roslyn-mcp-server`는 MCP stdio 서버로 실행된다. 서버 시작 시 현재 작업 디렉터리를 기본 root로 삼고, `.sln`, `.slnx`, `.csproj` 후보를 탐색한다. 기본값으로는 무조건 솔루션을 로드하지 않는다. `--load-solution <path>`가 지정된 경우에만 background startup load로 지정 solution을 로드한다. 그 외에는 Agent가 `load_solution` 또는 `load_project` tool을 호출하거나, 후보가 하나뿐인 상태에서 Roslyn tool이 처음 호출될 때 로드한다.
 
 내부에서는 `roslyn-language-server --stdio`를 자식 프로세스로 띄우고, LSP initialize 뒤 선택된 `.sln`/`.slnx`에는 `solution/open`, 선택된 `.csproj`에는 `project/open` notification을 보내며, 필요한 LSP 요청/응답 관리를 담당한다.
 
@@ -190,6 +190,7 @@ MCP 서버 시작 또는 첫 Roslyn tool 호출 시 `roslyn-language-server`를 
 roslyn-mcp-server
   --root <path>                      기준 디렉터리. 기본값은 현재 작업 디렉터리
   --roslyn-language-server <path>     외부 Roslyn LS 경로
+  --load-solution <path>              시작 후 background로 로드할 .sln/.slnx
   --log-level <level>                 trace|debug|info|warn|error
   --log-file <path>                   MCP 서버 로그 파일
   --ls-log-dir <path>                 Roslyn LS 로그 디렉터리
@@ -291,9 +292,9 @@ M0/M1, M2, M3는 완료된 상태로 본다. Target framework는 `net10.0`으로
 - `solution_overview` 필요성 평가 및 M4 이후 후보로 보류
 - 배포 채널은 구현 안정화 뒤 별도 결정
 
-### M4: 품질 강화 - 다음 후보
+### M4: 품질 강화 - 진행 중
 
-- startup initial solution load
+- startup initial solution load - 완료
   - `--load-solution <path>` CLI 옵션을 추가한다.
   - 옵션 값은 `--root` 또는 현재 작업 디렉터리 기준 root 내부의 `.sln`/`.slnx`만 허용한다.
   - 지정되면 MCP 서버 시작 후 background 초기화 단계에서 기존 `load_solution`과 같은 경로로 Roslyn LS를 시작하고 `solution/open`을 보낸다.

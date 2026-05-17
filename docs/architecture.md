@@ -9,8 +9,9 @@
 - MCP 서버는 C#/.NET으로 작성한다.
 - MCP 구현은 `modelcontextprotocol/csharp-sdk`를 사용한다.
 - `roslyn-language-server`는 사용자가 별도로 설치한 실행 파일을 PATH 또는 명시 경로에서 찾는다.
-- 서버 시작 시 솔루션을 자동으로 강제 로드하지 않는다.
-- 현재 작업 디렉터리 또는 `--root` 아래의 `.sln`, `.slnx`, `.csproj` 후보를 탐색하고, `load_solution`/`load_project` tool 호출로 workspace를 선택한다.
+- 기본적으로 서버 시작 시 솔루션을 자동으로 강제 로드하지 않는다. 단,
+  `--load-solution <path>`가 지정되면 해당 `.sln`/`.slnx`를 background startup load로 로드한다.
+- 현재 작업 디렉터리 또는 `--root` 아래의 `.sln`, `.slnx`, `.csproj` 후보를 탐색하고, 기본적으로 `load_solution`/`load_project` tool 호출로 workspace를 선택한다. `--load-solution`이 있으면 startup background task가 같은 solution load 경로를 사용한다.
 - 읽기 전용 tool을 먼저 구현한다. 파일을 수정하는 refactoring/code action 계열은 별도 단계에서 opt-in으로 추가한다.
 - 대규모 repo를 기본 대상으로 보고, 모든 탐색/진단/검색 tool은 timeout, result limit, cancellation, pagination을 갖는다.
 
@@ -27,7 +28,7 @@ roslyn-language-server
 
 `roslyn-mcp-server`는 MCP 클라이언트와 stdio로 통신한다. Roslyn 기능이 필요한 시점에 `roslyn-language-server --stdio`를 자식 프로세스로 실행하고, LSP initialize 뒤 선택된 `.sln`/`.slnx`에는 `solution/open`, 선택된 `.csproj`에는 `project/open` notification을 보낸다. 별도의 LSP read loop/write queue를 통해 요청을 중계한다.
 
-중요한 선택은 Roslyn LS를 서버 시작 직후 띄우지 않는 것이다. 먼저 workspace 후보를 탐색하고, 실제로 어떤 솔루션 또는 프로젝트를 사용할지 정해진 뒤 Roslyn LS를 시작한다. 이렇게 해야 여러 `.sln`이 있는 repo에서 모호한 자동 로드를 피할 수 있다.
+중요한 선택은 기본 동작에서 Roslyn LS를 서버 시작 직후 띄우지 않는 것이다. 먼저 workspace 후보를 탐색하고, 실제로 어떤 솔루션 또는 프로젝트를 사용할지 정해진 뒤 Roslyn LS를 시작한다. 이렇게 해야 여러 `.sln`이 있는 repo에서 모호한 자동 로드를 피할 수 있다. startup preload가 필요한 클라이언트는 `--load-solution <path>`로 명시적인 `.sln`/`.slnx`만 선택할 수 있다.
 
 ## .NET 프로젝트 구성
 
@@ -90,6 +91,7 @@ tests/
 public sealed record CliOptions(
     string Root,
     string? RoslynLanguageServerPath,
+    string? LoadSolutionPath,
     LogLevel LogLevel,
     string? LogFile,
     string? LanguageServerLogDirectory,

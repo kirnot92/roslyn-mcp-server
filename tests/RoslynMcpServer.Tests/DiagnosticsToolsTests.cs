@@ -309,6 +309,7 @@ public sealed class DiagnosticsToolsTests
         new(
             root,
             null,
+            null,
             LogLevel.Information,
             null,
             null,

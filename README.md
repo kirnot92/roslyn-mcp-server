@@ -34,7 +34,8 @@ slow restore state, or partial Roslyn indexing.
 
 That leads to a few design choices:
 
-- The server does not load a solution at startup.
+- By default the server does not load a solution at startup; `--load-solution`
+  can opt into early solution loading.
 - Workspace discovery is bounded by scan depth, timeout, and candidate limits.
 - If multiple `.sln`, `.slnx`, or `.csproj` files exist, the agent must choose.
 - Roslyn LS is launched only after `load_solution`, `load_project`, or an

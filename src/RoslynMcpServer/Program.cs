@@ -41,6 +41,7 @@ builder.Services.AddSingleton<RoslynLanguageServerLocator>();
 builder.Services.AddSingleton<IRoslynLanguageServerProcess, RoslynLanguageServerProcess>();
 builder.Services.AddSingleton<IRoslynWorkspaceLoader, RoslynWorkspaceLoader>();
 builder.Services.AddSingleton<WorkspaceSession>();
+builder.Services.AddHostedService<StartupSolutionLoader>();
 
 builder.Services
     .AddMcpServer()
