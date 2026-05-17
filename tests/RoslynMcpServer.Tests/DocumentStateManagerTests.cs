@@ -75,6 +75,19 @@ public sealed class DocumentStateManagerTests
     }
 
     [Fact]
+    public async Task EnsureOpenAsync_TracksLineLengthsForCrLfLfAndTrailingNewline()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "alpha\r\n\r\nomega\n");
+        var manager = CreateManager(root.Path);
+
+        var state = await manager.EnsureOpenAsync("Program.cs", new FakeLspClient());
+
+        Assert.Equal(4, state.LineCount);
+        Assert.Equal(new[] { 5, 0, 5, 0 }, state.LineMap.LineLengths);
+    }
+
+    [Fact]
     public async Task EnsureOpenAsync_DoesNotOpenSameWindowsPathCasingTwice()
     {
         using var root = TestRoot.Create();

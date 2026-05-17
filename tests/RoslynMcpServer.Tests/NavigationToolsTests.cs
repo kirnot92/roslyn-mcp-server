@@ -143,7 +143,11 @@ public sealed class NavigationToolsTests
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
-        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { string Name => \"\"; }");
+        File.WriteAllText(
+            Path.Combine(root.Path, "Program.cs"),
+            string.Join(
+                Environment.NewLine,
+                Enumerable.Repeat("// padding", 11).Append("class C { string Name => \"\"; }")));
         var client = new FakeLspClient();
         client.EnqueueResponse(new
         {
@@ -170,6 +174,27 @@ public sealed class NavigationToolsTests
         Assert.Equal("textDocument/hover", request.Method);
         Assert.Equal(11, request.Params.GetProperty("position").GetProperty("line").GetInt32());
         Assert.Equal(4, request.Params.GetProperty("position").GetProperty("character").GetInt32());
+    }
+
+    [Fact]
+    public async Task Hover_ReturnsPositionOutOfRangeWhenLineExceedsFileLineCount()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }\nclass D { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.Hover("Program.cs", line: 3, column: 1);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("position_out_of_range", error.Error);
+        Assert.Contains("line 3", error.Message);
+        Assert.Contains("column 1", error.Message);
+        Assert.Contains("1..2", error.Message);
+        Assert.Empty(client.Requests);
     }
 
     [Fact]
@@ -240,6 +265,28 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task GoToDefinition_ReturnsPositionOutOfRangeWhenColumnExceedsLineEnd()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GoToDefinition("Program.cs", line: 1, column: 13);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("position_out_of_range", error.Error);
+        Assert.Contains("line 1", error.Message);
+        Assert.Contains("column 13", error.Message);
+        Assert.Contains("1..12", error.Message);
+        Assert.Contains("line length 11", error.Message);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
     public async Task GoToDefinition_MapsLocationLinkUsingTargetRange()
     {
         using var root = TestRoot.Create();
@@ -279,7 +326,9 @@ public sealed class NavigationToolsTests
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
-        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Caller { }");
+        File.WriteAllText(
+            Path.Combine(root.Path, "Program.cs"),
+            string.Join(Environment.NewLine, Enumerable.Repeat("// caller", 8).Append("class Caller { }")));
         File.WriteAllText(Path.Combine(root.Path, "Target.cs"), """
             namespace Sample;
             public class Target
@@ -318,6 +367,26 @@ public sealed class NavigationToolsTests
         Assert.Equal("textDocument/definition", request.Method);
         Assert.Equal(8, request.Params.GetProperty("position").GetProperty("line").GetInt32());
         Assert.Equal(3, request.Params.GetProperty("position").GetProperty("character").GetInt32());
+    }
+
+    [Fact]
+    public async Task PeekDefinition_ReturnsPositionOutOfRangeWhenLineExceedsFileLineCount()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Caller { }\nclass Other { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.PeekDefinition("Program.cs", line: 9999, column: 1);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("position_out_of_range", error.Error);
+        Assert.Contains("line 9999", error.Message);
+        Assert.Contains("column 1", error.Message);
+        Assert.Empty(client.Requests);
     }
 
     [Fact]
@@ -545,11 +614,69 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task FindReferences_AllowsEmptyLineColumnOneAndLineEndPosition()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "alpha\r\n\r\nomega");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var emptyLineResult = await tools.FindReferences("Program.cs", line: 2, column: 1);
+        var lineEndResult = await tools.GoToDefinition("Program.cs", line: 1, column: 6);
+
+        Assert.IsType<ReferencesResult>(emptyLineResult);
+        Assert.IsType<DefinitionResult>(lineEndResult);
+        Assert.Collection(
+            client.Requests,
+            request =>
+            {
+                Assert.Equal("textDocument/references", request.Method);
+                Assert.Equal(1, request.Params.GetProperty("position").GetProperty("line").GetInt32());
+                Assert.Equal(0, request.Params.GetProperty("position").GetProperty("character").GetInt32());
+            },
+            request =>
+            {
+                Assert.Equal("textDocument/definition", request.Method);
+                Assert.Equal(0, request.Params.GetProperty("position").GetProperty("line").GetInt32());
+                Assert.Equal(5, request.Params.GetProperty("position").GetProperty("character").GetInt32());
+            });
+    }
+
+    [Fact]
+    public async Task FindReferences_ReturnsPositionOutOfRangeForColumnTwoOnEmptyLine()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "alpha\n\nomega");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindReferences("Program.cs", line: 2, column: 2);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("position_out_of_range", error.Error);
+        Assert.Contains("line 2", error.Message);
+        Assert.Contains("column 2", error.Message);
+        Assert.Contains("1..1", error.Message);
+        Assert.Contains("line length 0", error.Message);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
     public async Task FindImplementations_UsesImplementationMethodAndConvertsPosition()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
-        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        File.WriteAllText(
+            Path.Combine(root.Path, "Program.cs"),
+            string.Join(Environment.NewLine, Enumerable.Repeat("// padding", 11).Append("interface I { }")));
         var client = new FakeLspClient();
         client.EnqueueResponse(Array.Empty<Lsp.Location>());
         await using var session = CreateSession(root.Path, new ImmediateLoader(client));
@@ -566,6 +693,26 @@ public sealed class NavigationToolsTests
         Assert.True(request.IsExpensive);
         Assert.Equal(11, request.Params.GetProperty("position").GetProperty("line").GetInt32());
         Assert.Equal(4, request.Params.GetProperty("position").GetProperty("character").GetInt32());
+    }
+
+    [Fact]
+    public async Task FindImplementations_ReturnsPositionOutOfRangeWhenColumnExceedsLineEnd()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 1, column: 17);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("position_out_of_range", error.Error);
+        Assert.Contains("line 1", error.Message);
+        Assert.Contains("column 17", error.Message);
+        Assert.Empty(client.Requests);
     }
 
     [Fact]

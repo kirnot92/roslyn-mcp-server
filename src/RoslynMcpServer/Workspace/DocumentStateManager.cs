@@ -53,7 +53,14 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
             if (!this.documents.TryGetValue(key, out var state))
             {
                 var text = await File.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
-                state = new OpenDocumentState(uri, key, Version: 1, lastWriteTime, info.Length, now);
+                state = new OpenDocumentState(
+                    uri,
+                    key,
+                    Version: 1,
+                    lastWriteTime,
+                    info.Length,
+                    now,
+                    DocumentLineMap.FromText(text));
                 await client.NotifyAsync(
                     "textDocument/didOpen",
                     new DidOpenTextDocumentParams(new TextDocumentItem(uri, "csharp", state.Version, text)),
@@ -72,7 +79,8 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
                     Version = state.Version + 1,
                     LastWriteTime = lastWriteTime,
                     Length = info.Length,
-                    LastAccessedAt = now
+                    LastAccessedAt = now,
+                    LineMap = DocumentLineMap.FromText(text)
                 };
 
                 await client.NotifyAsync(
@@ -94,6 +102,32 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
         finally
         {
             this.syncLock.Release();
+        }
+    }
+
+    public void ValidatePosition(OpenDocumentState document, string file, int line, int column)
+    {
+        if (line < 1 || column < 1)
+        {
+            throw new UserFacingException(
+                "invalid_position",
+                "line and column must be 1-based positive integers.");
+        }
+
+        if (line > document.LineCount)
+        {
+            throw new UserFacingException(
+                "position_out_of_range",
+                $"Position line {line}, column {column} is outside {file}. Allowed line range is 1..{document.LineCount}.");
+        }
+
+        var lineLength = document.GetLineLength(line);
+        var maxColumn = lineLength + 1;
+        if (column > maxColumn)
+        {
+            throw new UserFacingException(
+                "position_out_of_range",
+                $"Position line {line}, column {column} is outside {file}. Allowed column range for line {line} is 1..{maxColumn} (line length {lineLength}).");
         }
     }
 
@@ -126,4 +160,51 @@ public sealed record OpenDocumentState(
     int Version,
     DateTimeOffset LastWriteTime,
     long Length,
-    DateTimeOffset LastAccessedAt);
+    DateTimeOffset LastAccessedAt,
+    DocumentLineMap LineMap)
+{
+    public int LineCount => this.LineMap.LineCount;
+
+    public int GetLineLength(int line) => this.LineMap.GetLineLength(line);
+}
+
+public sealed record DocumentLineMap(IReadOnlyList<int> LineLengths)
+{
+    public int LineCount => this.LineLengths.Count;
+
+    public static DocumentLineMap FromText(string text)
+    {
+        var lineLengths = new List<int>();
+        var currentLineLength = 0;
+
+        for (var index = 0; index < text.Length; index++)
+        {
+            var character = text[index];
+            if (character == '\r')
+            {
+                lineLengths.Add(currentLineLength);
+                currentLineLength = 0;
+                if (index + 1 < text.Length && text[index + 1] == '\n')
+                {
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (character == '\n')
+            {
+                lineLengths.Add(currentLineLength);
+                currentLineLength = 0;
+                continue;
+            }
+
+            currentLineLength++;
+        }
+
+        lineLengths.Add(currentLineLength);
+        return new DocumentLineMap(lineLengths.ToArray());
+    }
+
+    public int GetLineLength(int line) => this.LineLengths[line - 1];
+}

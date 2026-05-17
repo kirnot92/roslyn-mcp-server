@@ -84,21 +84,19 @@ public sealed class NavigationTools(
     {
         try
         {
-            var position = PositionMapper.ToLspPosition(line, column);
-            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
-            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
-            var response = await context.Handle.Client.RequestAsync(
+            var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
+            var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/hover",
                 new
                 {
-                    textDocument = new TextDocumentIdentifier(document.Uri),
-                    position
+                    textDocument = new TextDocumentIdentifier(request.Document.Uri),
+                    position = request.Position
                 },
                 NavigationTimeout,
                 cancellationToken).ConfigureAwait(false);
 
             var hover = MapHover(response);
-            var metadata = CreateMetadata(context.State, ToolKind.Hover, hover.Truncated);
+            var metadata = CreateMetadata(request.Context.State, ToolKind.Hover, hover.Truncated);
             return new HoverResult(
                 hover.Contents,
                 hover.Kind,
@@ -121,21 +119,19 @@ public sealed class NavigationTools(
     {
         try
         {
-            var position = PositionMapper.ToLspPosition(line, column);
-            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
-            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
-            var response = await context.Handle.Client.RequestAsync(
+            var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
+            var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/definition",
                 new
                 {
-                    textDocument = new TextDocumentIdentifier(document.Uri),
-                    position
+                    textDocument = new TextDocumentIdentifier(request.Document.Uri),
+                    position = request.Position
                 },
                 DefinitionTimeout,
                 cancellationToken).ConfigureAwait(false);
 
             var locations = MapLocations(response, "textDocument/definition", maxResults: null);
-            var metadata = CreateMetadata(context.State, ToolKind.Definition, truncated: false);
+            var metadata = CreateMetadata(request.Context.State, ToolKind.Definition, truncated: false);
             return new DefinitionResult(
                 locations.Items,
                 metadata.WorkspaceState,
@@ -164,15 +160,13 @@ public sealed class NavigationTools(
         {
             var effectiveContextLines = NormalizePeekContextLines(contextLines);
             var effectiveMaxDefinitions = NormalizePeekMaxDefinitions(maxDefinitions);
-            var position = PositionMapper.ToLspPosition(line, column);
-            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
-            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
-            var response = await context.Handle.Client.RequestAsync(
+            var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
+            var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/definition",
                 new
                 {
-                    textDocument = new TextDocumentIdentifier(document.Uri),
-                    position
+                    textDocument = new TextDocumentIdentifier(request.Document.Uri),
+                    position = request.Position
                 },
                 DefinitionTimeout,
                 cancellationToken).ConfigureAwait(false);
@@ -191,7 +185,7 @@ public sealed class NavigationTools(
                     snippet.Error));
             }
 
-            var metadata = CreateMetadata(context.State, ToolKind.Definition, locations.Truncated);
+            var metadata = CreateMetadata(request.Context.State, ToolKind.Definition, locations.Truncated);
             return new PeekDefinitionResult(
                 items,
                 locations.TotalKnown,
@@ -221,21 +215,19 @@ public sealed class NavigationTools(
         try
         {
             var effectiveMaxResults = NormalizeReferenceMaxResults(maxResults);
-            var position = PositionMapper.ToLspPosition(line, column);
-            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
-            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
-            var response = await context.Handle.Client.RequestAsync(
+            var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
+            var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/references",
                 new ReferenceParams(
-                    new TextDocumentIdentifier(document.Uri),
-                    position,
+                    new TextDocumentIdentifier(request.Document.Uri),
+                    request.Position,
                     new ReferenceContext(includeDeclaration)),
                 ReferencesTimeout,
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
             var locations = MapLocations(response, "textDocument/references", effectiveMaxResults);
-            var metadata = CreateMetadata(context.State, ToolKind.References, locations.Truncated);
+            var metadata = CreateMetadata(request.Context.State, ToolKind.References, locations.Truncated);
             return new ReferencesResult(
                 locations.Items,
                 locations.TotalKnown,
@@ -264,22 +256,20 @@ public sealed class NavigationTools(
         try
         {
             var effectiveMaxResults = NormalizeImplementationMaxResults(maxResults);
-            var position = PositionMapper.ToLspPosition(line, column);
-            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
-            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
-            var response = await context.Handle.Client.RequestAsync(
+            var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
+            var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/implementation",
                 new
                 {
-                    textDocument = new TextDocumentIdentifier(document.Uri),
-                    position
+                    textDocument = new TextDocumentIdentifier(request.Document.Uri),
+                    position = request.Position
                 },
                 ImplementationsTimeout,
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
             var locations = MapLocations(response, "textDocument/implementation", effectiveMaxResults);
-            var metadata = CreateMetadata(context.State, ToolKind.Implementations, locations.Truncated);
+            var metadata = CreateMetadata(request.Context.State, ToolKind.Implementations, locations.Truncated);
             return new ImplementationsResult(
                 locations.Items,
                 locations.TotalKnown,
@@ -335,6 +325,20 @@ public sealed class NavigationTools(
         {
             return ToolError.FromException(ex);
         }
+    }
+
+    private async Task<PositionRequestContext> PreparePositionRequestAsync(
+        string file,
+        int line,
+        int column,
+        CancellationToken cancellationToken)
+    {
+        var position = PositionMapper.ToLspPosition(line, column);
+        var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
+        var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
+        documents.ValidatePosition(document, file, line, column);
+
+        return new PositionRequestContext(context, document, position);
     }
 
     private LocationMapResult MapLocations(JsonElement response, string method, int? maxResults)
@@ -1202,6 +1206,11 @@ public sealed class NavigationTools(
         int TotalUnfilteredKnown,
         int Returned,
         bool Truncated);
+
+    private sealed record PositionRequestContext(
+        ReadToolContext Context,
+        OpenDocumentState Document,
+        Position Position);
 
     private enum ToolKind
     {
