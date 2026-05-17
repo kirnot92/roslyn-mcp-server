@@ -94,6 +94,12 @@ understand the code.
 
 ## Getting Started
 
+Prerequisites:
+
+- Git
+- .NET 10 SDK
+- `roslyn-language-server`
+
 Install `roslyn-language-server` separately:
 
 ```text
@@ -101,8 +107,34 @@ dotnet tool install --global roslyn-language-server --prerelease
 ```
 
 `roslyn-mcp-server` does not bundle Roslyn LS and is not currently published as a
-NuGet/.NET global tool. Build it from source, then configure your MCP client to
-run the server from the repository root you want to inspect.
+NuGet/.NET global tool. Clone and build this repository from source:
+
+```powershell
+git clone https://github.com/kirnot92/roslyn-mcp-server.git
+cd roslyn-mcp-server
+dotnet build .\src\RoslynMcpServer\RoslynMcpServer.csproj -c Release
+```
+
+The built server executable will be under:
+
+```text
+src/RoslynMcpServer/bin/Release/net10.0/
+```
+
+On Windows, the executable is typically:
+
+```text
+src/RoslynMcpServer/bin/Release/net10.0/roslyn-mcp-server.exe
+```
+
+On macOS or Linux, the executable is typically:
+
+```text
+src/RoslynMcpServer/bin/Release/net10.0/roslyn-mcp-server
+```
+
+After building, configure your MCP client to run this executable from the
+repository root you want to inspect.
 
 With the default configuration, the current working directory becomes the
 workspace root. Use `--root <path>` only when your MCP client cannot set the
