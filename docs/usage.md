@@ -173,6 +173,9 @@ Large result tools include metadata such as `totalKnown`, `returned`, and
 Diagnostics are currently based on diagnostics already published by Roslyn LS
 and processed by the bounded background diagnostics queue. The server does not
 perform unbounded workspace-wide diagnostics computation. If the queue is full,
-new publish diagnostics notifications are dropped. `get_workspace_status`
-exposes the queue capacity, pending, processed, dropped, and stale notification
-counts plus the overflow policy.
+the oldest pending publish diagnostics notification is dropped so the latest
+snapshot can be queued. `get_workspace_status` exposes the queue capacity,
+pending, processed, dropped, and stale notification counts plus the overflow
+policy. `dropped` counts pending notifications evicted by queue overflow before
+processing; stale generation notifications and workspace reset clears are
+reported as `stale`.

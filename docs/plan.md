@@ -329,7 +329,7 @@ M0/M1, M2, M3는 완료된 상태로 본다. Target framework는 `net10.0`으로
 - diagnostics notification offload - 완료
   - `textDocument/publishDiagnostics` notification은 bounded background queue에서 처리한다.
   - notification handler는 enqueue 후 즉시 반환해 LSP read loop가 request response 처리를 계속할 수 있게 한다.
-  - overflow 정책은 `drop_newest_when_full`이고 pending/processed/dropped/stale 통계를 `get_workspace_status`에 노출한다.
+  - overflow 정책은 `drop_oldest_when_full`이고 pending/processed/dropped/stale 통계를 `get_workspace_status`에 노출한다. Queue가 full이면 최신 diagnostics snapshot을 우선하기 위해 가장 오래된 pending notification을 drop한다.
   - workspace reload generation을 기준으로 stale diagnostics notification을 버린다.
 - 통합 테스트 추가
 - 대형 솔루션 startup 성능 측정

@@ -5,7 +5,7 @@ namespace RoslynMcpServer.Lsp;
 public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
 {
     public const int DefaultQueueCapacity = 1024;
-    public const string DropNewestWhenFullPolicy = "drop_newest_when_full";
+    public const string DropOldestWhenFullPolicy = "drop_oldest_when_full";
 
     private readonly DiagnosticStore store;
     private readonly int capacity;
@@ -44,7 +44,7 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
         Interlocked.Read(ref this.processed),
         Interlocked.Read(ref this.dropped),
         Interlocked.Read(ref this.stale),
-        DropNewestWhenFullPolicy);
+        DropOldestWhenFullPolicy);
 
     public int CurrentGeneration => Volatile.Read(ref this.generation);
 
@@ -88,13 +88,13 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
                 return false;
             }
 
+            shouldSignal = this.queue.Count == 0;
             if (this.queue.Count >= this.capacity)
             {
+                _ = this.queue.Dequeue();
                 Interlocked.Increment(ref this.dropped);
-                return false;
             }
 
-            shouldSignal = this.queue.Count == 0;
             this.queue.Enqueue(new QueuedDiagnosticNotification(generation, parameters));
             Volatile.Write(ref this.pending, this.queue.Count);
         }

@@ -45,7 +45,7 @@ Diagnostics queue status at immediate, +3s, and +10s:
 
 | Capacity | Pending | Processed | Dropped | Stale | Overflow Policy |
 | ---: | ---: | ---: | ---: | ---: | --- |
-| 1024 | 0 | 0 | 0 | 0 | `drop_newest_when_full` |
+| 1024 | 0 | 0 | 0 | 0 | `drop_oldest_when_full` |
 
 ## ASP.NET Core 60s Warmup Smoke
 
@@ -73,7 +73,7 @@ Diagnostics queue status at load, 0s, 20s, 40s, and 60s:
 
 | Capacity | Pending | Processed | Dropped | Stale | Overflow Policy |
 | ---: | ---: | ---: | ---: | ---: | --- |
-| 1024 | 0 | 0 | 0 | 0 | `drop_newest_when_full` |
+| 1024 | 0 | 0 | 0 | 0 | `drop_oldest_when_full` |
 
 ## Findings
 
@@ -83,7 +83,7 @@ Diagnostics queue status at load, 0s, 20s, 40s, and 60s:
   - No real `textDocument/publishDiagnostics` traffic arrived during these short Semantic Kernel and ASP.NET Core observation windows, so this smoke confirms status exposure and bounded behavior at idle, but does not yet stress the background diagnostics queue.
 - Observations:
   - `get_workspace_status` exposes the new diagnostics queue fields in both repos.
-  - The queue capacity is `1024` and the overflow policy is `drop_newest_when_full`.
+  - The queue capacity is `1024` and the overflow policy is `drop_oldest_when_full`; under pressure it preserves newer pending diagnostics snapshots by evicting the oldest pending notification.
   - `pending`, `processed`, `dropped`, and `stale` stayed at 0 in both runs.
   - Large-repo read tools remained responsive while workspaces stayed in `WorkspaceWarming`.
   - ASP.NET Core `find_references` on `HttpContext` completed in 22.281s with partial metadata rather than hanging.

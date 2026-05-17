@@ -90,7 +90,7 @@ M4 diagnostics notification offload 포함:
 
 - `textDocument/publishDiagnostics` notification은 bounded background queue를 통해 `DiagnosticStore`에 반영한다.
 - LSP read loop의 notification handler는 queue enqueue 후 즉시 반환한다.
-- Queue overflow 정책은 `drop_newest_when_full`이며, pending/processed/dropped/stale 통계와 queue capacity를 `get_workspace_status`에 노출한다.
+- Queue overflow 정책은 `drop_oldest_when_full`이며, pending/processed/dropped/stale 통계와 queue capacity를 `get_workspace_status`에 노출한다.
 - Workspace reload 시 generation을 증가시키고 이전 generation diagnostics notification은 stale로 집계해 새 workspace store에 섞이지 않게 한다.
 
 M5 read productivity 일부 포함:
