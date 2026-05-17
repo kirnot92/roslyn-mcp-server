@@ -38,6 +38,7 @@ public sealed class RoslynWorkspaceHandle : IAsyncDisposable
     public ILspClient Client { get; }
     public bool IsRunning => this.isRunning();
     public int PendingRequestCount => Client.PendingRequestCount;
+    public DateTimeOffset? LastLspResponseAt => Client.LastResponseAt;
 
     public ValueTask DisposeAsync() => this.disposable?.DisposeAsync() ?? ValueTask.CompletedTask;
 }

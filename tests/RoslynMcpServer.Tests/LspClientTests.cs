@@ -51,6 +51,51 @@ public sealed class LspClientTests
     }
 
     [Fact]
+    public async Task RequestAsync_RecordsLastResponseAtForLanguageServerResponses()
+    {
+        var responseAt = new DateTimeOffset(2026, 5, 17, 12, 34, 56, 789, TimeSpan.Zero);
+        var clock = new MutableClock(responseAt.AddMinutes(-1));
+        await using var harness = LspClientHarness.Create(maxInFlightRequests: 4, clock: clock);
+        var responseTask = harness.Client.RequestAsync(
+            "initialize",
+            new { },
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None);
+
+        using var clientRequest = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None);
+        Assert.NotNull(clientRequest);
+        var id = clientRequest.RootElement.GetProperty("id").GetInt64();
+
+        await LspFraming.WriteAsync(harness.ServerOutput, new
+        {
+            jsonrpc = "2.0",
+            id,
+            method = "workspace/configuration",
+            @params = new { }
+        }, CancellationToken.None);
+
+        using var serverRequestResponse = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.NotNull(serverRequestResponse);
+        Assert.Null(harness.Client.LastResponseAt);
+
+        clock.UtcNow = responseAt;
+        await LspFraming.WriteAsync(harness.ServerOutput, new
+        {
+            jsonrpc = "2.0",
+            id,
+            result = new
+            {
+                capabilities = new { }
+            }
+        }, CancellationToken.None);
+
+        await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(responseAt, harness.Client.LastResponseAt);
+    }
+
+    [Fact]
     public async Task ReadLoop_FailsPendingRequestWhenServerStreamCloses()
     {
         await using var harness = LspClientHarness.Create(maxInFlightRequests: 4);
@@ -285,7 +330,8 @@ public sealed class LspClientTests
         public static LspClientHarness Create(
             int maxInFlightRequests,
             int maxExpensiveRequests = 2,
-            int maxResponsePayloadBytes = LspFraming.DefaultMaxContentLength)
+            int maxResponsePayloadBytes = LspFraming.DefaultMaxContentLength,
+            IClock? clock = null)
         {
             var clientToServer = new BlockingStream();
             var serverToClient = new BlockingStream();
@@ -296,7 +342,8 @@ public sealed class LspClientTests
                 maxInFlightRequests,
                 maxExpensiveRequests,
                 NullLogger<LspClient>.Instance,
-                maxResponsePayloadBytes);
+                maxResponsePayloadBytes,
+                clock);
 
             return new LspClientHarness(clientToServer, serverToClient, client);
         }
@@ -389,5 +436,10 @@ public sealed class LspClientTests
 
             base.Dispose(disposing);
         }
+    }
+
+    private sealed class MutableClock(DateTimeOffset utcNow) : IClock
+    {
+        public DateTimeOffset UtcNow { get; set; } = utcNow;
     }
 }

@@ -28,6 +28,24 @@ public sealed class WorkspaceSessionTests
     }
 
     [Fact]
+    public async Task WorkspaceStatus_IncludesLastLspResponseAt()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        var lastResponseAt = new DateTimeOffset(2026, 5, 17, 13, 45, 12, TimeSpan.Zero);
+        var client = new NotificationRecordingClient
+        {
+            LastResponseAt = lastResponseAt
+        };
+        var session = CreateSession(root.Path, new ImmediateLoader(client));
+
+        var status = await session.LoadSolutionAsync("App.sln");
+
+        Assert.Equal(lastResponseAt, status.LastLspResponseAt);
+        await session.DisposeAsync();
+    }
+
+    [Fact]
     public async Task StartupSolutionLoader_LoadsConfiguredSolutionInBackground()
     {
         using var root = TestRoot.Create();
@@ -354,6 +372,7 @@ public sealed class WorkspaceSessionTests
         public event Action<string, JsonElement?>? NotificationReceived;
 
         public int PendingRequestCount => 0;
+        public DateTimeOffset? LastResponseAt { get; set; }
 
         public bool HasReceivedNotification(string method) => this.receivedNotifications.Contains(method);
 

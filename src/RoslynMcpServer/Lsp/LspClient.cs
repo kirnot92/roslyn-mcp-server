@@ -10,6 +10,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     private readonly Stream input;
     private readonly Stream output;
     private readonly ILogger logger;
+    private readonly IClock clock;
     private readonly int maxResponsePayloadBytes;
     private readonly ConcurrentDictionary<long, PendingRequest> pendingRequests = new();
     private readonly ConcurrentDictionary<string, byte> receivedNotifications = new(StringComparer.Ordinal);
@@ -18,6 +19,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     private readonly SemaphoreSlim writeLock = new(1, 1);
     private readonly CancellationTokenSource disposeCts = new();
     private long nextId;
+    private long lastResponseAtUnixTimeMilliseconds;
     private Exception? faultException;
     private Task? readLoop;
 
@@ -27,11 +29,13 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         int maxInFlightRequests,
         int maxExpensiveRequests,
         ILogger logger,
-        int maxResponsePayloadBytes = LspFraming.DefaultMaxContentLength)
+        int maxResponsePayloadBytes = LspFraming.DefaultMaxContentLength,
+        IClock? clock = null)
     {
         this.input = input;
         this.output = output;
         this.logger = logger;
+        this.clock = clock ?? new SystemClock();
         this.maxResponsePayloadBytes = Math.Max(1, maxResponsePayloadBytes);
         this.inFlightLimit = new SemaphoreSlim(Math.Max(1, maxInFlightRequests), Math.Max(1, maxInFlightRequests));
         this.expensiveLimit = new SemaphoreSlim(Math.Max(1, maxExpensiveRequests), Math.Max(1, maxExpensiveRequests));
@@ -41,6 +45,15 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     public event Action<Exception>? Faulted;
 
     public int PendingRequestCount => this.pendingRequests.Count;
+    public DateTimeOffset? LastResponseAt
+    {
+        get
+        {
+            var timestamp = Interlocked.Read(ref this.lastResponseAtUnixTimeMilliseconds);
+            return timestamp == 0 ? null : DateTimeOffset.FromUnixTimeMilliseconds(timestamp);
+        }
+    }
+
     public bool IsFaulted => this.faultException is not null;
     public Exception? FaultException => this.faultException;
     public bool HasReceivedNotification(string method) => this.receivedNotifications.ContainsKey(method);
@@ -208,6 +221,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
                 }
                 else if (root.TryGetProperty("id", out idElement) && idElement.TryGetInt64(out id))
                 {
+                    RecordResponseReceived();
                     if (!this.pendingRequests.TryRemove(id, out var pending))
                     {
                         continue;
@@ -256,6 +270,11 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
             MarkFaulted(userFacingException);
         }
     }
+
+    private void RecordResponseReceived() =>
+        Interlocked.Exchange(
+            ref this.lastResponseAtUnixTimeMilliseconds,
+            this.clock.UtcNow.ToUnixTimeMilliseconds());
 
     private Task NotifyCoreAsync(string method, object? parameters, CancellationToken cancellationToken)
     {

@@ -12,6 +12,7 @@ public interface ILspClient
     }
 
     int PendingRequestCount { get; }
+    DateTimeOffset? LastResponseAt => null;
     bool IsFaulted => false;
     Exception? FaultException => null;
     bool HasReceivedNotification(string method) => false;

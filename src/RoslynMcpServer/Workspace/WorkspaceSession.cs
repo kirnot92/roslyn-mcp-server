@@ -436,6 +436,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
             this.handle?.Target,
             this.handle?.IsRunning ?? false,
             this.handle?.PendingRequestCount ?? 0,
+            this.handle?.LastLspResponseAt,
             scan,
             this.failureCode,
             this.failureMessage,

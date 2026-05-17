@@ -46,6 +46,7 @@ public sealed record WorkspaceStatus(
     WorkspaceTarget? CurrentTarget,
     bool LanguageServerRunning,
     int PendingLspRequests,
+    DateTimeOffset? LastLspResponseAt,
     WorkspaceScanResult Workspaces,
     string? FailureCode,
     string? FailureMessage,
