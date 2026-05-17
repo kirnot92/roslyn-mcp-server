@@ -559,7 +559,7 @@ public sealed class NavigationToolsTests
         var result = await tools.FindImplementations("Program.cs", line: 12, column: 5);
 
         var implementations = Assert.IsType<ImplementationsResult>(result);
-        Assert.Contains("position-based", implementations.UsageHint);
+        Assert.Contains("contract positions", implementations.UsageHint);
         Assert.Contains("concrete", implementations.UsageHint);
         var request = Assert.Single(client.Requests);
         Assert.Equal("textDocument/implementation", request.Method);

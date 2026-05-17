@@ -26,13 +26,9 @@ public sealed class NavigationTools(
     private const int DefaultImplementationsMaxResults = DefaultReferencesMaxResults;
     private const int MaxImplementationsMaxResults = MaxReferencesMaxResults;
     private const string FindImplementationsToolDescription =
-        "Return implementation locations for a C# contract position. line and column are 1-based. " +
-        "Use an interface, abstract member, base contract declaration, or a usage statically typed as that contract; " +
-        "concrete implementation positions may return only themselves.";
+        "Return implementation locations for a C# contract position.";
     private const string FindImplementationsUsageHint =
-        "find_implementations is position-based. For all implementations, call it on an interface, abstract member, " +
-        "base contract declaration, or a usage statically typed as that contract. Calling it on a concrete class or " +
-        "concrete method implementation may return only that implementation.";
+        "Use interface/abstract/base contract positions; concrete implementation positions may return only themselves.";
     private const int DefaultSymbolMaxResults = 300;
     private const int MaxSymbolMaxResults = 1000;
     private const int MinSymbolQueryLength = 2;
@@ -255,13 +251,9 @@ public sealed class NavigationTools(
     [McpServerTool(Name = "find_implementations")]
     [Description(FindImplementationsToolDescription)]
     public async Task<object> FindImplementations(
-        [Description("Root-relative C# file path containing the contract symbol or typed usage position.")]
         string file,
-        [Description("1-based line for the interface, abstract member, base contract, or typed usage position.")]
         int line,
-        [Description("1-based column for the interface, abstract member, base contract, or typed usage position.")]
         int column,
-        [Description("Optional maximum number of implementation locations to return.")]
         int? maxResults = null,
         CancellationToken cancellationToken = default)
     {
