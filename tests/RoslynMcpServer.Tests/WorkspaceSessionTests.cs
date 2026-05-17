@@ -22,6 +22,8 @@ public sealed class WorkspaceSessionTests
 
         Assert.Equal(WorkspaceLoadState.WorkspaceWarming, status.State);
         Assert.Equal("App.sln", status.CurrentTarget?.RelativePath);
+        Assert.Contains(ServerResourceUris.Guide, status.GuidanceResources);
+        Assert.Contains(ServerResourceUris.Capabilities, status.GuidanceResources);
         await session.DisposeAsync();
     }
 

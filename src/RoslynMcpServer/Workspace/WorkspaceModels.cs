@@ -1,3 +1,5 @@
+using RoslynMcpServer.Infrastructure;
+
 namespace RoslynMcpServer.Workspace;
 
 public enum WorkspaceKind
@@ -56,7 +58,10 @@ public sealed record WorkspaceStatus(
     long DroppedDiagnosticNotifications,
     long StaleDiagnosticNotifications,
     string? DiagnosticNotificationOverflowPolicy,
-    IReadOnlyList<WorkspaceWarning> Warnings);
+    IReadOnlyList<WorkspaceWarning> Warnings)
+{
+    public IReadOnlyList<string> GuidanceResources { get; init; } = ServerResourceUris.GuidanceResources;
+}
 
 public sealed record WorkspaceWarning(
     string Code,
