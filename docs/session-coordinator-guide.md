@@ -60,6 +60,7 @@ rg --files docs
 - 현재 read-only Roslyn tool은 `document_symbols`, `hover`, `go_to_definition`, `peek_definition`, `find_references`, `find_implementations`, `find_symbols`, `diagnostics`다.
 - `peek_definition`은 symbol name 검색이 아니라 `file`, `line`, `column` 위치 기반 tool이다. `go_to_definition` 결과 위치와 bounded source snippet을 함께 반환하며, snippet은 path guard, document size, line/context, character cap을 따라야 한다.
 - `find_implementations`도 위치 기반 tool이다. LSP `textDocument/implementation`을 호출하고, `find_references`와 같은 bounded location metadata를 반환해야 한다. 전체 구현체를 찾게 하려면 interface/abstract/base contract의 선언 위치나 그 contract로 정적으로 타입 지정된 사용 위치에서 호출하게 한다. 구체 class/member 구현 위치에서 호출하면 Roslyn LS가 자기 자신만 반환할 수 있으며, 이는 정상 응답일 수 있다.
+- 다음 read productivity 후보는 `find_symbols` kind filtering, `get_call_hierarchy`, `get_type_hierarchy`, `get_completions`다. `get_call_hierarchy`는 callable의 incoming/outgoing 호출 관계를 다루고, `get_type_hierarchy`는 타입의 base/derived 관계를 다루므로 역할을 분리한다.
 - `diagnostics`는 bounded background queue를 통해 처리된 `textDocument/publishDiagnostics` 기준이다. `get_workspace_status`는 diagnostics queue capacity, pending, processed, dropped, stale count와 overflow policy를 노출한다.
 
 ## 진행 방식

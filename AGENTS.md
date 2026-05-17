@@ -99,6 +99,10 @@ M4 diagnostics notification offload 포함:
 - 대형 솔루션 startup 성능 측정
 - Roslyn LS crash/restart 처리
 - 오류/상태 관측성 강화
+- `find_symbols` kind filtering
+- `get_call_hierarchy`
+- `get_type_hierarchy`
+- `get_completions`
 - `solution_overview`
 - write/refactoring tool
 - rename/code action/formatting/apply 계열 tool
@@ -152,6 +156,6 @@ https://github.com/kirnot92/roslyn-mcp-server
 
 ## 현재 상태
 
-M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload가 완료되어 있다.
+M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload, M5 read productivity tool 일부가 완료되어 있다.
 
-다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복, 대형 solution startup 성능과 관측성 강화다.
+다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복, 대형 solution startup 성능과 관측성 강화, M5 후속 read productivity 후보(`find_symbols` kind filtering, `get_call_hierarchy`, `get_type_hierarchy`, `get_completions`)다.

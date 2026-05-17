@@ -63,6 +63,11 @@
 - 추가 실제 MCP client smoke 반복
 - 대형 solution startup 성능 측정과 상태 관측성 강화
 - Roslyn LS crash/restart 처리
+- M5 read productivity 후속 후보
+  - `find_symbols` kind filtering: 기존 workspace symbol 결과를 `class`, `interface`, `method`, `property`, `field` 같은 LSP `SymbolKind` 기준으로 제한해 agent 노이즈를 줄인다.
+  - `get_call_hierarchy`: LSP call hierarchy의 prepare/incoming/outgoing 흐름으로 특정 callable의 호출자/피호출자 관계를 반환한다.
+  - `get_call_hierarchy`는 `get_type_hierarchy`와 역할이 다르다. call hierarchy는 호출 관계, type hierarchy는 base/derived type 관계를 다룬다.
+  - `get_type_hierarchy`, `get_completions`는 계속 후속 후보로 둔다.
 - `solution_overview` M4 이후 구현 여부 판단
 
 최근 로컬 검증 결과:
