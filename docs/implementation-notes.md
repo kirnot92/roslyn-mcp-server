@@ -34,6 +34,10 @@
 - M4 startup initial solution load 완료
   - `--load-solution <path>`가 지정되면 MCP 서버 시작 후 background task가 기존 solution load 경로로 `.sln`/`.slnx`를 로드한다.
   - 지정하지 않으면 기존 명시적 load 또는 첫 read tool auto-load 동작을 유지한다.
+- M4 diagnostics notification offload 완료
+  - `textDocument/publishDiagnostics` notification은 bounded background queue를 통해 처리한다.
+  - queue overflow는 `drop_newest_when_full` 정책으로 새 notification을 drop한다.
+  - workspace reload generation을 캡처해 이전 workspace diagnostics가 새 store에 섞이지 않게 한다.
 
 현재 MCP tool:
 
@@ -50,9 +54,10 @@
 
 현재 남은 주요 후보:
 
-- diagnostics notification offload
-- 추가 실제 MCP client smoke 반복
 - opt-in large repo 검증과 default tuning
+- 추가 실제 MCP client smoke 반복
+- 대형 solution startup 성능 측정과 상태 관측성 강화
+- Roslyn LS crash/restart 처리
 - `solution_overview` M4 이후 구현 여부 판단
 
 최근 로컬 검증 결과:
@@ -61,7 +66,7 @@
 dotnet test roslyn-mcp-server.sln
 ```
 
-- 94 passed / 0 failed / 1 skipped / 95 total
+- 121 passed / 0 failed / 1 skipped / 122 total
 
 아래 milestone별 완료 메모는 당시 구현 시점의 이력으로 남긴다.
 
@@ -75,7 +80,7 @@ dotnet test roslyn-mcp-server.sln
 - `docs/solution-overview-evaluation.md`는 `solution_overview`를 M3에서 구현하지 않고 M4 또는 별도 milestone 후보로 남긴다는 결정을 기록한다.
 - PowerShell, Semantic Kernel, ASP.NET Core smoke 결과는 `docs/smoke-tests/` 아래에 기록되어 있다.
 
-M3 이후 기준으로 사용자용 설치/설정 문서 정리는 남은 항목이 아니다. 후속 우선순위는 diagnostics notification offload, opt-in large repo 검증/default tuning, 필요 시 추가 실제 MCP client smoke 반복이다.
+M3 이후 기준으로 사용자용 설치/설정 문서 정리는 남은 항목이 아니다. diagnostics notification offload도 M4에서 완료됐다. 후속 우선순위는 opt-in large repo 검증/default tuning, 필요 시 추가 실제 MCP client smoke 반복, 대형 solution startup 성능과 관측성 강화다.
 
 ## M2b 완료 메모
 

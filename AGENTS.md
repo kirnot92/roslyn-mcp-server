@@ -4,7 +4,7 @@
 
 `roslyn-mcp-server`는 Agent CLI류 도구가 Roslyn 언어 기능을 사용할 수 있도록, `roslyn-language-server`를 자식 프로세스로 실행하고 MCP tool 호출을 LSP 요청으로 변환하는 MCP 서버다.
 
-현재 이 저장소는 M2 read-only tool 구현, M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load까지 반영된 상태다.
+현재 이 저장소는 M2 read-only tool 구현, M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload까지 반영된 상태다.
 
 ## 목표
 
@@ -35,7 +35,7 @@ MCP 서버는 기본적으로 PATH에서 `roslyn-language-server`를 찾는다. 
 
 ## 현재 구현 범위
 
-현재 `main` 기준으로 M0/M1, M2 read-only tool, M3 사용자/클라이언트 사용성 범위, M4 startup initial solution load가 구현되어 있다.
+현재 `main` 기준으로 M0/M1, M2 read-only tool, M3 사용자/클라이언트 사용성 범위, M4 startup initial solution load와 diagnostics notification offload가 구현되어 있다.
 
 M0/M1 포함:
 
@@ -85,9 +85,15 @@ M4 startup initial solution load 포함:
 - startup load 중 read tool은 기존 계약대로 `workspace_loading` 또는 warming metadata 반환
 - `--load-solution` 경로는 root 아래를 재귀 탐색하지 않는다. 정확한 root-relative path 또는 root 내부 absolute path를 지정해야 한다.
 
+M4 diagnostics notification offload 포함:
+
+- `textDocument/publishDiagnostics` notification은 bounded background queue를 통해 `DiagnosticStore`에 반영한다.
+- LSP read loop의 notification handler는 queue enqueue 후 즉시 반환한다.
+- Queue overflow 정책은 `drop_newest_when_full`이며, pending/processed/dropped/stale 통계와 queue capacity를 `get_workspace_status`에 노출한다.
+- Workspace reload 시 generation을 증가시키고 이전 generation diagnostics notification은 stale로 집계해 새 workspace store에 섞이지 않게 한다.
+
 다음 범위는 M4 이후 후속 작업으로 남긴다.
 
-- diagnostics notification offload
 - opt-in large repo 검증과 default tuning
 - 추가 실제 MCP client smoke 반복
 - 대형 솔루션 startup 성능 측정
@@ -146,6 +152,6 @@ https://github.com/kirnot92/roslyn-mcp-server
 
 ## 현재 상태
 
-M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load가 완료되어 있다.
+M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload가 완료되어 있다.
 
-다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 diagnostics notification offload 설계/구현, opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복이다.
+다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복, 대형 solution startup 성능과 관측성 강화다.

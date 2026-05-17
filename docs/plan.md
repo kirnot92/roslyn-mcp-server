@@ -303,11 +303,15 @@ M0/M1, M2, M3는 완료된 상태로 본다. Target framework는 `net10.0`으로
   - 중복 지정은 `CliUsageException`으로 명확히 거부한다.
   - startup load 중 read tool은 기존 계약대로 `workspace_loading` 또는 warming metadata를 반환해야 한다.
   - 테스트는 CLI parse, invalid extension/path, 중복 옵션, startup load 상태 전이, 기존 explicit `load_solution`과 같은 target 생성 경로를 검증한다.
+- diagnostics notification offload - 완료
+  - `textDocument/publishDiagnostics` notification은 bounded background queue에서 처리한다.
+  - notification handler는 enqueue 후 즉시 반환해 LSP read loop가 request response 처리를 계속할 수 있게 한다.
+  - overflow 정책은 `drop_newest_when_full`이고 pending/processed/dropped/stale 통계를 `get_workspace_status`에 노출한다.
+  - workspace reload generation을 기준으로 stale diagnostics notification을 버린다.
 - 통합 테스트 추가
 - 대형 솔루션 startup 성능 측정
-- Roslyn LS crash/restart 처리
+- Roslyn LS crash/restart 처리. 현재는 LSP fault 시 `Failed`로 전환하고 `load_solution`/`load_project` 재호출로 복구한다.
 - 오류/상태 관측성 강화
-- diagnostics notification offload
 - opt-in real repo 검증과 default tuning
 - 필요 시 추가 실제 MCP client smoke 반복
 - `solution_overview` 구현 여부 재판단

@@ -35,9 +35,9 @@ and targeted reads.
 
 ## Recommended Milestone
 
-Keep `solution_overview` as an M4 or separate milestone candidate, after:
+Keep `solution_overview` as a post-M4 or separate milestone candidate, after:
 
-- diagnostics notification offload is designed or implemented
+- the completed diagnostics notification offload behavior has been validated in larger repositories
 - additional real MCP client smoke has been repeated
 - large repository default tuning is revisited
 

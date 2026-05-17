@@ -47,7 +47,9 @@ That leads to a few design choices:
   `workspaceState`, `completeness`, and retry metadata.
 - Diagnostics are based on `textDocument/publishDiagnostics` notifications
   already processed by the bounded background diagnostics queue; the server does
-  not run an unbounded workspace-wide diagnostic computation.
+  not run an unbounded workspace-wide diagnostic computation. Queue capacity and
+  pending/processed/dropped/stale counts are exposed through
+  `get_workspace_status`.
 
 In practice, `WorkspaceWarming` is a normal state for large repositories. Agents
 should use partial results when they are good enough and call

@@ -6,7 +6,7 @@
 
 M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 가능해지는 것을 목표로 한다. 하지만 대형 mono-repo에서는 workspace 선택, LSP 응답 크기, scanner 비용, diagnostics notification 폭주가 별도의 실패 원인이 될 수 있다. 이 문서는 그 위험을 M3/M4로 넘어가기 전에 정리하기 위한 작업 지시서다.
 
-2026-05-17 현재 Phase 1/2와 CLI tuning은 반영됐고, M3 사용자/클라이언트 사용성 정리와 작은/중간 real repo smoke도 기록됐다. 이 문서는 readiness 이력과 M4 이후 남은 대형 repo 품질 후보를 판단하는 기준으로 유지한다.
+2026-05-17 현재 Phase 1/2, CLI tuning, diagnostics notification offload가 반영됐고, M3 사용자/클라이언트 사용성 정리와 작은/중간 real repo smoke도 기록됐다. 이 문서는 readiness 이력과 M4 이후 남은 대형 repo 품질 후보를 판단하는 기준으로 유지한다.
 
 ## 배경
 
@@ -36,10 +36,13 @@ M2의 read tool 자체는 작은/중간 repository에서 제한적 실사용이 
 - stdio MCP 환경에서 git child process stdin 상속을 끊고 null-delimited output을 streaming 처리하도록 git scanner 보강
 - filesystem fallback scanner candidate-limit 조기 중단
 - large repo tuning CLI 옵션 공개
+- diagnostics notification bounded background queue와 overflow/stale 통계 노출
 
 아직 남은 항목:
 
-- diagnostics notification offload. bounded background queue와 overflow 정책을 함께 설계해야 하므로 후속 작업으로 남긴다.
+- opt-in Tier 1 large repo 검증과 그 결과에 따른 default timeout/result limit/cache tuning
+- 대형 solution startup 성능 측정과 관측성 강화
+- Roslyn LS crash/restart 복구 정책 구체화
 
 ## 하지 않을 것
 
