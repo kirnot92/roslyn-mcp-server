@@ -95,6 +95,8 @@ M4 diagnostics notification offload 포함:
 M5 read productivity 일부 포함:
 
 - `find_implementations`
+- `peek_definition`
+- `peek_definition`은 definition 위치와 함께 root 내부 source snippet을 반환하고, root 밖 또는 읽을 수 없는 파일은 건너뛴다.
 - `find_symbols` kind filtering
 - `find_symbols`의 `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
 - `kindFilter`는 Roslyn LS `workspace/symbol` 응답을 받은 뒤 MCP 쪽에서 적용한다. Roslyn LS 검색 비용 절감을 보장하지 않고, 반환 noise 감소를 목적으로 한다.
@@ -163,6 +165,6 @@ https://github.com/kirnot92/roslyn-mcp-server
 
 ## 현재 상태
 
-M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload, M5 read productivity tool 일부(`find_implementations`, `find_symbols` kind filtering)가 완료되어 있다.
+M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload, M5 read productivity tool 일부(`find_implementations`, `peek_definition`, `find_symbols` kind filtering)가 완료되어 있다.
 
 다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복, 대형 solution startup 성능과 관측성 강화, M5 후속 read productivity 후보(`get_call_hierarchy`, `get_type_hierarchy`, `get_completions`)다.

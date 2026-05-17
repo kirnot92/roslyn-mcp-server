@@ -152,15 +152,23 @@ public sealed class GitWorkspaceScanner(
         }
     }
 
-    private sealed class GitScanResultBuilder(CliOptions options, PathGuard pathGuard)
+    private sealed class GitScanResultBuilder
     {
-        private readonly List<WorkspaceCandidate> _solutions = [];
-        private readonly List<WorkspaceCandidate> _projects = [];
-        private readonly HashSet<string> _seen = new(OperatingSystem.IsWindows()
+        private readonly CliOptions options;
+        private readonly PathGuard pathGuard;
+        private readonly List<WorkspaceCandidate> solutions = [];
+        private readonly List<WorkspaceCandidate> projects = [];
+        private readonly HashSet<string> seen = new(OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal);
 
-        private string? _truncationReason;
+        private string? truncationReason;
+
+        public GitScanResultBuilder(CliOptions options, PathGuard pathGuard)
+        {
+            this.options = options;
+            this.pathGuard = pathGuard;
+        }
 
         public bool StoppedAfterCandidateLimit { get; private set; }
 
@@ -181,62 +189,62 @@ public sealed class GitWorkspaceScanner(
             string fullPath;
             try
             {
-                fullPath = pathGuard.ResolveInsideRoot(relativePath);
+                fullPath = this.pathGuard.ResolveInsideRoot(relativePath);
             }
             catch
             {
                 return;
             }
 
-            if (!File.Exists(fullPath) || !_seen.Add(fullPath))
+            if (!File.Exists(fullPath) || !this.seen.Add(fullPath))
             {
                 return;
             }
 
             if (IsSolutionExtension(extension))
             {
-                if (_solutions.Count >= options.MaxSolutionCandidates)
+                if (this.solutions.Count >= this.options.MaxSolutionCandidates)
                 {
-                    _truncationReason = "solution_candidate_limit";
+                    this.truncationReason = "solution_candidate_limit";
                     return;
                 }
 
-                _solutions.Add(ToCandidate(fullPath, string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
+                this.solutions.Add(this.ToCandidate(fullPath, string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
                     ? WorkspaceKind.SolutionX
                     : WorkspaceKind.Solution));
             }
             else
             {
-                if (_projects.Count >= options.MaxProjectCandidates)
+                if (this.projects.Count >= this.options.MaxProjectCandidates)
                 {
-                    _truncationReason = "project_candidate_limit";
+                    this.truncationReason = "project_candidate_limit";
                     return;
                 }
 
-                _projects.Add(ToCandidate(fullPath, WorkspaceKind.Project));
+                this.projects.Add(this.ToCandidate(fullPath, WorkspaceKind.Project));
             }
 
-            if (_solutions.Count >= options.MaxSolutionCandidates &&
-                _projects.Count >= options.MaxProjectCandidates)
+            if (this.solutions.Count >= this.options.MaxSolutionCandidates &&
+                this.projects.Count >= this.options.MaxProjectCandidates)
             {
-                _truncationReason ??= "candidate_limit";
-                StoppedAfterCandidateLimit = true;
+                this.truncationReason ??= "candidate_limit";
+                this.StoppedAfterCandidateLimit = true;
             }
         }
 
         public WorkspaceScanResult ToResult(TimeSpan elapsed) =>
             new(
-                pathGuard.Root,
-                WorkspaceScanner.SortCandidates(_solutions),
-                WorkspaceScanner.SortCandidates(_projects),
-                _truncationReason is not null,
-                _truncationReason,
+                this.pathGuard.Root,
+                WorkspaceScanner.SortCandidates(this.solutions),
+                WorkspaceScanner.SortCandidates(this.projects),
+                this.truncationReason is not null,
+                this.truncationReason,
                 elapsed);
 
         private WorkspaceCandidate ToCandidate(string fullPath, WorkspaceKind kind)
         {
             var normalized = Path.GetFullPath(fullPath);
-            return new WorkspaceCandidate(kind, normalized, pathGuard.ToRelativePath(normalized));
+            return new WorkspaceCandidate(kind, normalized, this.pathGuard.ToRelativePath(normalized));
         }
     }
 

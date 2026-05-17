@@ -135,7 +135,8 @@ the `Add` identifier in an interface method declaration, or a usage whose static
 type is the contract. If it is called on a concrete class or concrete method
 implementation such as `class Calculator : ICalculator` or `Calculator.Add`, the
 language server may correctly return only that concrete implementation. The tool
-description and each result include a `usageHint` with this call-site guidance.
+description and top-level tool result include a `usageHint` with this call-site
+guidance.
 When the result metadata says `completeness: "partial"` or includes
 `retryAfterMs`, retry after workspace warming before treating missing
 implementations as absent.

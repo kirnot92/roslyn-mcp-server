@@ -27,7 +27,9 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
         "target"
     };
 
-    public WorkspaceScanResult Scan(CancellationToken cancellationToken = default)
+    public WorkspaceScanResult Scan() => Scan(CancellationToken.None);
+
+    public WorkspaceScanResult Scan(CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         // Try git first so .gitignore, .git/info/exclude, and global excludes

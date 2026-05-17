@@ -42,6 +42,8 @@
   - `find_implementations(file, line, column, maxResults?)` tool을 추가했다.
   - LSP `textDocument/implementation`을 위치 기반으로 호출하며, `find_references`와 같은 bounded location metadata를 반환한다.
   - 전체 구현체 탐색은 interface/abstract/base contract 위치에서 호출해야 한다. 구체 구현 class/member 위치에서는 자기 자신만 반환될 수 있으므로, MCP tool description과 결과 `usageHint`에서 호출 위치를 명확히 안내한다.
+  - `peek_definition(file, line, column, contextLines?, maxDefinitions?)` tool을 추가했다.
+  - LSP `textDocument/definition` 결과를 원본 파일 snippet과 함께 반환하며, root 밖 또는 읽을 수 없는 파일은 건너뛰고 mappable definition 기준 metadata를 반환한다.
   - `find_symbols(query, maxResults?, kindFilter?)`의 `kindFilter` 옵션을 추가했다.
   - `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
   - 필터는 Roslyn LS `workspace/symbol` 응답을 받은 뒤 MCP 쪽에서 적용한다. Roslyn LS 검색 비용 절감을 보장하지 않고, 반환 noise 감소를 목적으로 한다.
@@ -56,6 +58,7 @@
 - `document_symbols`
 - `hover`
 - `go_to_definition`
+- `peek_definition`
 - `find_references`
 - `find_implementations`
 - `find_symbols`
