@@ -144,10 +144,19 @@ implementations as absent.
 
 `get_call_hierarchy` is position-based. Call it on a method, constructor, or
 property accessor position. It supports `direction: "incoming"`, `"outgoing"`,
-or `"both"`, and only returns direct depth-1 callers/callees. Use incoming for
-impact analysis and outgoing for dependencies. It is static Roslyn context, not
-a runtime-complete graph, and results can be partial or truncated while the
-workspace is warming or when limits apply.
+or `"both"`, and only returns direct depth-1 callers/callees. Its optional
+`kindFilter` accepts edge counterpart MCP symbol kind names: `method`,
+`constructor`, `property`, `event`, `operator`, and `field`, case-insensitively.
+For incoming results the filter applies to the caller (`from`) symbol; for
+outgoing results it applies to the callee/accessed (`to`) symbol; for `both`,
+each direction uses its own counterpart. The server still asks Roslyn LS for the
+same call hierarchy data and applies the filter to mappable edges before
+`maxResults`, so it reduces returned noise but does not reduce Roslyn LS request
+cost. `totalKnown`, `returned`, and `truncated` describe the filtered mappable
+edge set, while `totalUnfilteredKnown` reports mappable edges before kind
+filtering. Use incoming for impact analysis and outgoing for dependencies. It
+is static Roslyn context, not a runtime-complete graph, and results can be
+partial or truncated while the workspace is warming or when limits apply.
 
 `find_symbols` is a workspace symbol-name search. Its optional `kindFilter`
 accepts MCP symbol kind names such as `class`, `interface`, `method`,

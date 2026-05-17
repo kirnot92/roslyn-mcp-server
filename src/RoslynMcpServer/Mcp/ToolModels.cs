@@ -170,6 +170,7 @@ public sealed record CallHierarchyResult(
     IReadOnlyList<CallHierarchySymbol> Roots,
     IReadOnlyList<CallHierarchyEdge> Edges,
     int TotalKnown,
+    int TotalUnfilteredKnown,
     int Returned,
     string WorkspaceState,
     string Completeness,

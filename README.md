@@ -78,7 +78,9 @@ Read-only Roslyn tools:
   abstract member, or base contract position. Calling it on a concrete
   implementation may legitimately return only that implementation.
 - `get_call_hierarchy` - Return direct depth-1 incoming callers, outgoing
-  callees, or both for a method, constructor, or property accessor position.
+  callees, or both for a method, constructor, or property accessor position,
+  optionally filtering returned edge counterparts by kind: `method`,
+  `constructor`, `property`, `event`, `operator`, or `field`.
 - `find_symbols` - Search workspace symbols by name, optionally filtering
   returned results by kind such as `class`, `interface`, `method`, `property`,
   or `field`.

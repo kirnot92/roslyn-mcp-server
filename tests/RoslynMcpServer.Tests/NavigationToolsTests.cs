@@ -1235,6 +1235,7 @@ public sealed class NavigationToolsTests
                 Assert.Equal(13, site.Column);
             });
         Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.TotalUnfilteredKnown);
         Assert.Equal(1, hierarchy.Returned);
         Assert.False(hierarchy.Truncated);
         Assert.Equal(["textDocument/prepareCallHierarchy", "callHierarchy/incomingCalls"], client.Requests.Select(r => r.Method));
@@ -1308,6 +1309,126 @@ public sealed class NavigationToolsTests
             client.Requests.Select(r => r.Method));
         Assert.True(client.Requests[1].IsExpensive);
         Assert.True(client.Requests[2].IsExpensive);
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_MethodKindFilterExcludesFieldEdges()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var target = CreateCallHierarchyItem("M", CreateFileUri(root.Path, "Target.cs"));
+        var method = CreateCallHierarchyItem("Call", CreateFileUri(root.Path, "Method.cs"), SymbolKind.Method);
+        var field = CreateCallHierarchyItem("Value", CreateFileUri(root.Path, "Field.cs"), SymbolKind.Field);
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[]
+        {
+            CreateOutgoingCall(method, CreateRange(1, 0, 1, 1)),
+            CreateOutgoingCall(field, CreateRange(2, 0, 2, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy(
+            "Program.cs",
+            line: 1,
+            column: 21,
+            direction: "outgoing",
+            kindFilter: new[] { "method" });
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal("Call", edge.To.Name);
+        Assert.Equal(SymbolKind.Method, edge.To.Kind);
+        Assert.Equal(2, hierarchy.TotalUnfilteredKnown);
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+        Assert.False(hierarchy.Truncated);
+        Assert.False(client.Requests[0].Params.TryGetProperty("kindFilter", out _));
+        Assert.False(client.Requests[1].Params.TryGetProperty("kindFilter", out _));
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_FieldKindFilterReturnsOnlyFieldEdges()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var target = CreateCallHierarchyItem("M", CreateFileUri(root.Path, "Target.cs"));
+        var method = CreateCallHierarchyItem("Call", CreateFileUri(root.Path, "Method.cs"), SymbolKind.Method);
+        var field = CreateCallHierarchyItem("Value", CreateFileUri(root.Path, "Field.cs"), SymbolKind.Field);
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[]
+        {
+            CreateOutgoingCall(method, CreateRange(1, 0, 1, 1)),
+            CreateOutgoingCall(field, CreateRange(2, 0, 2, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy(
+            "Program.cs",
+            line: 1,
+            column: 21,
+            direction: "outgoing",
+            kindFilter: new[] { "field" });
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal("Value", edge.To.Name);
+        Assert.Equal(SymbolKind.Field, edge.To.Kind);
+        Assert.Equal(2, hierarchy.TotalUnfilteredKnown);
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+    }
+
+    [Fact]
+    public async Task GetCallHierarchy_BothKindFilterUsesDirectionCounterpartSymbols()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { int P => 1; }");
+        var target = CreateCallHierarchyItem("P", CreateFileUri(root.Path, "Target.cs"), SymbolKind.Property);
+        var incomingProperty = CreateCallHierarchyItem("CallerProperty", CreateFileUri(root.Path, "CallerProperty.cs"), SymbolKind.Property);
+        var incomingMethod = CreateCallHierarchyItem("CallerMethod", CreateFileUri(root.Path, "CallerMethod.cs"), SymbolKind.Method);
+        var outgoingProperty = CreateCallHierarchyItem("CalleeProperty", CreateFileUri(root.Path, "CalleeProperty.cs"), SymbolKind.Property);
+        var outgoingMethod = CreateCallHierarchyItem("CalleeMethod", CreateFileUri(root.Path, "CalleeMethod.cs"), SymbolKind.Method);
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[]
+        {
+            CreateIncomingCall(incomingProperty, CreateRange(1, 0, 1, 1)),
+            CreateIncomingCall(incomingMethod, CreateRange(2, 0, 2, 1))
+        });
+        client.EnqueueResponse(new[]
+        {
+            CreateOutgoingCall(outgoingProperty, CreateRange(3, 0, 3, 1)),
+            CreateOutgoingCall(outgoingMethod, CreateRange(4, 0, 4, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy(
+            "Program.cs",
+            line: 1,
+            column: 21,
+            direction: "both",
+            kindFilter: new[] { "property" });
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        Assert.Equal(4, hierarchy.TotalUnfilteredKnown);
+        Assert.Equal(2, hierarchy.TotalKnown);
+        Assert.Equal(2, hierarchy.Returned);
+        Assert.Equal(["incoming", "outgoing"], hierarchy.Edges.Select(edge => edge.Direction));
+        Assert.Equal("CallerProperty", hierarchy.Edges[0].From.Name);
+        Assert.Equal("P", hierarchy.Edges[0].To.Name);
+        Assert.Equal("P", hierarchy.Edges[1].From.Name);
+        Assert.Equal("CalleeProperty", hierarchy.Edges[1].To.Name);
     }
 
     [Fact]
@@ -1388,6 +1509,7 @@ public sealed class NavigationToolsTests
 
         var hierarchy = Assert.IsType<CallHierarchyResult>(result);
         Assert.Equal(2, hierarchy.TotalKnown);
+        Assert.Equal(2, hierarchy.TotalUnfilteredKnown);
         Assert.Equal(2, hierarchy.Returned);
         Assert.Equal(["ValidCaller", "M"], hierarchy.Edges.Select(edge => edge.From.Name));
         Assert.Equal(["M", "ValidCallee"], hierarchy.Edges.Select(edge => edge.To.Name));
@@ -1425,6 +1547,42 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task GetCallHierarchy_AppliesMaxResultsAndCountsAfterKindFiltering()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var target = CreateCallHierarchyItem("M", CreateFileUri(root.Path, "Target.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[]
+        {
+            CreateIncomingCall(CreateCallHierarchyItem("Field1", CreateFileUri(root.Path, "Field1.cs"), SymbolKind.Field), CreateRange(0, 0, 0, 1)),
+            CreateIncomingCall(CreateCallHierarchyItem("Method1", CreateFileUri(root.Path, "Method1.cs"), SymbolKind.Method), CreateRange(1, 0, 1, 1)),
+            CreateIncomingCall(CreateCallHierarchyItem("Field2", CreateFileUri(root.Path, "Field2.cs"), SymbolKind.Field), CreateRange(2, 0, 2, 1)),
+            CreateIncomingCall(CreateCallHierarchyItem("Method2", CreateFileUri(root.Path, "Method2.cs"), SymbolKind.Method), CreateRange(3, 0, 3, 1)),
+            CreateIncomingCall(CreateCallHierarchyItem("Method3", CreateFileUri(root.Path, "Method3.cs"), SymbolKind.Method), CreateRange(4, 0, 4, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy(
+            "Program.cs",
+            line: 1,
+            column: 21,
+            maxResults: 2,
+            kindFilter: new[] { "method" });
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        Assert.Equal(5, hierarchy.TotalUnfilteredKnown);
+        Assert.Equal(3, hierarchy.TotalKnown);
+        Assert.Equal(2, hierarchy.Returned);
+        Assert.True(hierarchy.Truncated);
+        Assert.Equal(["Method1", "Method2"], hierarchy.Edges.Select(edge => edge.From.Name));
+    }
+
+    [Fact]
     public async Task GetCallHierarchy_TruncatesCallSitesAndSetsMetadata()
     {
         using var root = TestRoot.Create();
@@ -1452,7 +1610,7 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
-    public async Task GetCallHierarchy_ReturnsValidationErrorsForInvalidDirectionAndMaxResults()
+    public async Task GetCallHierarchy_ReturnsValidationErrorsForInvalidDirectionMaxResultsAndKindFilter()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
@@ -1464,11 +1622,21 @@ public sealed class NavigationToolsTests
 
         var invalidDirectionResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, direction: "sideways");
         var invalidMaxResultsResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, maxResults: 0);
+        var invalidKindResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, kindFilter: new[] { "class" });
+        var emptyKindResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, kindFilter: Array.Empty<string>());
 
         var invalidDirection = Assert.IsType<ToolError>(invalidDirectionResult);
         Assert.Equal("invalid_direction", invalidDirection.Error);
         var invalidMaxResults = Assert.IsType<ToolError>(invalidMaxResultsResult);
         Assert.Equal("invalid_max_results", invalidMaxResults.Error);
+        var invalidKind = Assert.IsType<ToolError>(invalidKindResult);
+        Assert.Equal("invalid_kind_filter", invalidKind.Error);
+        Assert.Contains("class", invalidKind.Message);
+        Assert.Contains("method", invalidKind.Message);
+        Assert.Contains("field", invalidKind.Message);
+        var emptyKind = Assert.IsType<ToolError>(emptyKindResult);
+        Assert.Equal("invalid_kind_filter", emptyKind.Error);
+        Assert.Contains("at least one", emptyKind.Message);
         Assert.Empty(client.Requests);
     }
 

@@ -45,6 +45,20 @@ public sealed class NavigationTools(
     private static readonly string AllowedSymbolKindFilterValues = string.Join(
         ", ",
         SupportedSymbolKinds.Select(kind => kind.ToMcpName()));
+    private static readonly SymbolKind[] SupportedCallHierarchySymbolKinds =
+    [
+        SymbolKind.Method,
+        SymbolKind.Constructor,
+        SymbolKind.Property,
+        SymbolKind.Event,
+        SymbolKind.Operator,
+        SymbolKind.Field
+    ];
+    private static readonly IReadOnlyDictionary<string, SymbolKind> CallHierarchyKindFilterValues = SupportedCallHierarchySymbolKinds
+        .ToDictionary(kind => kind.ToMcpName(), kind => kind, StringComparer.OrdinalIgnoreCase);
+    private static readonly string AllowedCallHierarchyKindFilterValues = string.Join(
+        ", ",
+        SupportedCallHierarchySymbolKinds.Select(kind => kind.ToMcpName()));
 
     [McpServerTool(Name = "document_symbols")]
     [Description("Get a bounded outline of symbols in one C# file. Use before deeper navigation or edits.")]
@@ -349,7 +363,7 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "get_call_hierarchy")]
-    [Description("Get direct depth-1 incoming, outgoing, or both call relationships for a C# callable symbol.")]
+    [Description("Get direct depth-1 incoming, outgoing, or both call relationships for a C# callable symbol. Optional kindFilter filters returned edge counterpart symbols after Roslyn LS responds, reducing returned noise but not Roslyn LS request cost.")]
     public async Task<object> GetCallHierarchy(
         string file,
         int line,
@@ -357,12 +371,15 @@ public sealed class NavigationTools(
         [Description("One of {incoming|outgoing|both}. Defaults to incoming.")]
         string direction = "incoming",
         int? maxResults = null,
+        [Description("Optional edge counterpart MCP symbol kind names: method, constructor, property, event, operator, or field.")]
+        string[]? kindFilter = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var parsedDirection = ParseCallHierarchyDirection(direction);
             var effectiveMaxResults = NormalizeCallHierarchyMaxResults(maxResults);
+            var parsedKindFilter = ParseCallHierarchyKindFilter(kindFilter);
             var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
             var prepareResponse = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/prepareCallHierarchy",
@@ -382,6 +399,7 @@ public sealed class NavigationTools(
                     [],
                     [],
                     TotalKnown: 0,
+                    TotalUnfilteredKnown: 0,
                     Returned: 0,
                     emptyMetadata.WorkspaceState,
                     emptyMetadata.Completeness,
@@ -391,6 +409,7 @@ public sealed class NavigationTools(
             }
 
             var edges = new List<CallHierarchyEdge>();
+            var totalUnfilteredKnown = 0;
             var totalKnown = 0;
             var returned = 0;
             var callSitesTruncated = false;
@@ -408,8 +427,10 @@ public sealed class NavigationTools(
                         incomingResponse,
                         root.Symbol,
                         CallHierarchyDirection.Incoming,
+                        parsedKindFilter,
                         effectiveMaxResults,
                         edges,
+                        ref totalUnfilteredKnown,
                         ref totalKnown,
                         ref returned,
                         ref callSitesTruncated);
@@ -427,8 +448,10 @@ public sealed class NavigationTools(
                         outgoingResponse,
                         root.Symbol,
                         CallHierarchyDirection.Outgoing,
+                        parsedKindFilter,
                         effectiveMaxResults,
                         edges,
+                        ref totalUnfilteredKnown,
                         ref totalKnown,
                         ref returned,
                         ref callSitesTruncated);
@@ -441,6 +464,7 @@ public sealed class NavigationTools(
                 roots.Select(root => root.Symbol).ToArray(),
                 edges,
                 totalKnown,
+                totalUnfilteredKnown,
                 returned,
                 metadata.WorkspaceState,
                 metadata.Completeness,
@@ -735,8 +759,10 @@ public sealed class NavigationTools(
         JsonElement response,
         CallHierarchySymbol root,
         CallHierarchyDirection direction,
+        IReadOnlySet<SymbolKind>? kindFilter,
         int maxResults,
         List<CallHierarchyEdge> edges,
+        ref int totalUnfilteredKnown,
         ref int totalKnown,
         ref int returned,
         ref bool callSitesTruncated)
@@ -759,6 +785,12 @@ public sealed class NavigationTools(
                 continue;
             }
 
+            totalUnfilteredKnown++;
+            if (kindFilter is not null && !kindFilter.Contains(GetCallHierarchyCounterpartKind(edge, direction)))
+            {
+                continue;
+            }
+
             totalKnown++;
             if (edge.CallSitesTruncated)
             {
@@ -774,6 +806,9 @@ public sealed class NavigationTools(
             returned++;
         }
     }
+
+    private static SymbolKind GetCallHierarchyCounterpartKind(CallHierarchyEdge edge, CallHierarchyDirection direction) =>
+        direction == CallHierarchyDirection.Incoming ? edge.From.Kind : edge.To.Kind;
 
     private CallHierarchyEdge? TryMapCallHierarchyEdge(
         JsonElement item,
@@ -1258,7 +1293,16 @@ public sealed class NavigationTools(
         return Math.Min(maxResults.Value, MaxSymbolMaxResults);
     }
 
-    private static IReadOnlySet<SymbolKind>? ParseSymbolKindFilter(IReadOnlyList<string>? kindFilter)
+    private static IReadOnlySet<SymbolKind>? ParseSymbolKindFilter(IReadOnlyList<string>? kindFilter) =>
+        ParseKindFilter(kindFilter, SymbolKindFilterValues, AllowedSymbolKindFilterValues);
+
+    private static IReadOnlySet<SymbolKind>? ParseCallHierarchyKindFilter(IReadOnlyList<string>? kindFilter) =>
+        ParseKindFilter(kindFilter, CallHierarchyKindFilterValues, AllowedCallHierarchyKindFilterValues);
+
+    private static IReadOnlySet<SymbolKind>? ParseKindFilter(
+        IReadOnlyList<string>? kindFilter,
+        IReadOnlyDictionary<string, SymbolKind> allowedValues,
+        string allowedValueNames)
     {
         if (kindFilter is null)
         {
@@ -1269,7 +1313,7 @@ public sealed class NavigationTools(
         {
             throw new UserFacingException(
                 "invalid_kind_filter",
-                $"kindFilter must contain at least one symbol kind. Allowed values: {AllowedSymbolKindFilterValues}.");
+                $"kindFilter must contain at least one symbol kind. Allowed values: {allowedValueNames}.");
         }
 
         var parsedKinds = new HashSet<SymbolKind>();
@@ -1278,7 +1322,7 @@ public sealed class NavigationTools(
         {
             var kindName = rawKindName?.Trim();
             if (string.IsNullOrEmpty(kindName) ||
-                !SymbolKindFilterValues.TryGetValue(kindName, out var kind))
+                !allowedValues.TryGetValue(kindName, out var kind))
             {
                 invalidKindNames.Add(FormatInvalidKindName(rawKindName));
                 continue;
@@ -1291,7 +1335,7 @@ public sealed class NavigationTools(
         {
             throw new UserFacingException(
                 "invalid_kind_filter",
-                $"Unknown symbol kind(s): {string.Join(", ", invalidKindNames)}. Allowed values: {AllowedSymbolKindFilterValues}.");
+                $"Unknown symbol kind(s): {string.Join(", ", invalidKindNames)}. Allowed values: {allowedValueNames}.");
         }
 
         return parsedKinds;
