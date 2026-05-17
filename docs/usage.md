@@ -156,7 +156,10 @@ cost. `totalKnown`, `returned`, and `truncated` describe the filtered mappable
 edge set, while `totalUnfilteredKnown` reports mappable edges before kind
 filtering. Use incoming for impact analysis and outgoing for dependencies. It
 is static Roslyn context, not a runtime-complete graph, and results can be
-partial or truncated while the workspace is warming or when limits apply.
+partial or truncated while the workspace is warming or when limits apply. For
+most code review call graph checks, start with `kindFilter: ["method"]` to avoid
+property and field access noise. Add `constructor` or `property` only when object
+creation or accessor calls are part of the question.
 
 `find_symbols` is a workspace symbol-name search. Its optional `kindFilter`
 accepts MCP symbol kind names such as `class`, `interface`, `method`,
