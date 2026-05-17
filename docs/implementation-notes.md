@@ -21,6 +21,7 @@
 - M2d `diagnostics`, `DiagnosticStore` 완료
 - M2 large repo readiness 일부 완료
   - explicit workspace file 선택을 위한 `solution/open`/`project/open` notification
+  - Roslyn LS project load error를 `LoadedWithErrors` 상태와 workspace warnings로 노출
   - LSP read loop fault handling
   - git scanner pathspec
   - filesystem scanner candidate-limit 조기 중단
@@ -557,6 +558,10 @@ tool 응답에는 명시적 error code를 선호한다.
   - oversized/malformed response나 stream close로 read loop가 중단되면 `LspClient`가 fault 상태를 저장한다.
   - fault 이후 pending request는 실패하고, 새 request/notification은 timeout까지 기다리지 않고 즉시 실패한다.
   - `WorkspaceSession`은 `ILspClient.Faulted`를 받아 workspace 상태를 `Failed`로 전환하고 `FailureCode`/`FailureMessage`에 원인을 남긴다.
+- Roslyn LS project load error handling
+  - `window/logMessage`의 `LanguageServerProjectLoader` load error를 감지해 `WorkspaceStatus.Warnings`에 `workspace_project_load_failed`로 기록한다.
+  - load error가 기록된 상태에서 `workspace/projectInitializationComplete`가 도착하면 `Ready`가 아니라 `LoadedWithErrors`로 전환한다.
+  - read tool은 `LoadedWithErrors`에서도 best-effort로 실행하되 `completeness: partial`과 project load error reason을 포함한다.
 - Scanner hardening
   - git scanner는 `git ls-files -co --exclude-standard -z -- '*.sln' '*.slnx' '*.csproj'` 형태의 pathspec을 사용해 workspace 후보 파일만 요청한다.
   - filesystem fallback scanner는 solution/project candidate limit이 모두 찬 경우 조기 중단하고 `candidate_limit` truncation reason을 반환한다.

@@ -1,4 +1,4 @@
-# M2 PowerShell Smoke Test
+﻿# M2 PowerShell Smoke Test
 
 ## Environment
 - Date: 2026-05-17 (Asia/Seoul)
@@ -112,3 +112,33 @@ Retest tool summary:
 | find_symbols | OK | 0.020s | 0 | Ready | unknown | false | Query `ManagedPSEntry`; `totalKnown: 0`, `returned: 0` |
 | diagnostics(file) | OK | 0.020s | 0 | Ready | unknown | false | No publish diagnostics received for file yet |
 | diagnostics(workspace) | OK | 0.020s | 0 | Ready | unknown | false | Current known diagnostics only |
+
+## Project Load Error Surfacing Retest
+- Date: 2026-05-17 (Asia/Seoul)
+- roslyn-mcp-server commit: `Surface Roslyn project load errors` change
+- MCP client method: `.local/mcp_powershell_smoke.py`, default server options
+- Raw output: `.local/powershell-smoke-raw.json`
+
+Root cause confirmed:
+
+- PowerShell `global.json` requests SDK `11.0.100-preview.3.26207.106`.
+- This machine has SDKs `8.0.416`, `9.0.100`, and `10.0.203`; Roslyn LS reports `A compatible .NET SDK was not found`.
+- `get_workspace_status` now records `workspace_project_load_failed` warnings with related project paths and the requested SDK/global.json details.
+- After `workspace/projectInitializationComplete`, the workspace now reports `LoadedWithErrors` instead of `Ready`.
+
+Retest tool summary:
+
+| Tool | Result | Elapsed | Count | Workspace State | Completeness | Truncated | Notes |
+| --- | --- | ---: | ---: | --- | --- | --- | --- |
+| list_workspaces | OK | 0.102s | 45 |  |  | false | Default options; 3 solutions, 42 projects |
+| load_solution | OK | 0.445s | 0 | WorkspaceWarming |  |  | Loaded `PowerShell.sln` |
+| get_workspace_status | OK | 0.020s | 0 | WorkspaceWarming |  |  | immediate; 0 warnings |
+| get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  |  | +3s; 7 `workspace_project_load_failed` warnings |
+| get_workspace_status | OK | 0.021s | 0 | WorkspaceWarming |  |  | +10s; 11 `workspace_project_load_failed` warnings |
+| document_symbols | OK | 1.864s | 2 | WorkspaceWarming | partial | false | `totalKnown: 2`, `returned: 2` |
+| hover | OK | 1.997s | 0 | WorkspaceWarming | partial | false | Returned hover text for `ManagedPSEntry` |
+| go_to_definition | OK | 0.989s | 0 | LoadedWithErrors | partial | false | Project load errors surfaced in metadata |
+| find_references | OK | 1.997s | 1 | LoadedWithErrors | partial | false | `totalKnown: 1`, `returned: 1` |
+| find_symbols | OK | 1.013s | 0 | LoadedWithErrors | partial | false | Query `ManagedPSEntry`; reason points to `get_workspace_status` warnings |
+| diagnostics(file) | OK | 0.020s | 0 | LoadedWithErrors | unknown | false | No publish diagnostics received for file yet |
+| diagnostics(workspace) | OK | 0.021s | 0 | LoadedWithErrors | partial | false | Project load errors surfaced in metadata |

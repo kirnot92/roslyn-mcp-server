@@ -57,6 +57,43 @@ public sealed class WorkspaceSessionTests
     }
 
     [Fact]
+    public async Task LoadSolution_TransitionsToLoadedWithErrorsWhenProjectLoadErrorArrivesBeforeInitializationComplete()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        var projectDirectory = Path.Combine(root.Path, "src", "App");
+        Directory.CreateDirectory(projectDirectory);
+        var projectPath = Path.Combine(projectDirectory, "App.csproj");
+        File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new NotificationRecordingClient();
+        var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadSolutionAsync("App.sln");
+
+        client.RaiseNotification(
+            "window/logMessage",
+            new
+            {
+                type = 1,
+                message = $"""
+                    [solution/open] [LanguageServerProjectLoader] Error while loading {projectPath}: Exception: A compatible .NET SDK was not found.
+
+                    Requested SDK version: 11.0.100-preview.3.26207.106
+                    global.json file: {Path.Combine(root.Path, "global.json")}
+                    """
+            });
+        client.RaiseNotification("workspace/projectInitializationComplete");
+        var status = await session.GetStatusAsync();
+
+        Assert.Equal(WorkspaceLoadState.LoadedWithErrors, status.State);
+        var warning = Assert.Single(status.Warnings);
+        Assert.Equal("workspace_project_load_failed", warning.Code);
+        Assert.Equal(["src/App/App.csproj"], warning.RelatedPaths);
+        Assert.Contains("compatible .NET SDK", warning.Message);
+        Assert.Contains("11.0.100-preview.3.26207.106", warning.Message);
+        await session.DisposeAsync();
+    }
+
+    [Fact]
     public async Task LoadProject_RecordsFailureWhenLoaderFails()
     {
         using var root = TestRoot.Create();
@@ -206,10 +243,13 @@ public sealed class WorkspaceSessionTests
 
         public bool HasReceivedNotification(string method) => this.receivedNotifications.Contains(method);
 
-        public void RaiseNotification(string method)
+        public void RaiseNotification(string method, object? parameters = null)
         {
             this.receivedNotifications.Add(method);
-            this.NotificationReceived?.Invoke(method, null);
+            var element = parameters is null
+                ? (JsonElement?)null
+                : JsonSerializer.SerializeToElement(parameters, JsonOptions.Default);
+            this.NotificationReceived?.Invoke(method, element);
         }
 
         public Task<JsonElement> RequestAsync(

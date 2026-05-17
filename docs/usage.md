@@ -97,9 +97,11 @@ If the Roslyn language server is installed outside `PATH`, add the explicit path
    `go_to_definition`, `find_references`, `find_symbols`, or `diagnostics`.
 
 During startup, read tools may return `workspace_loading` instead of blocking.
-After LSP initialize, large workspaces may remain in `WorkspaceWarming`; read tools
-then return best-effort results with `workspaceState`, `completeness`, and
-truncation metadata when applicable.
+After LSP initialize, large workspaces may remain in `WorkspaceWarming`. If
+Roslyn LS reports project load errors, the state becomes `LoadedWithErrors` and
+`get_workspace_status.warnings` includes the affected project paths and a short
+cause. Read tools still return best-effort results with `workspaceState`,
+`completeness`, and truncation metadata when applicable.
 
 ## Notes For Large Repositories
 

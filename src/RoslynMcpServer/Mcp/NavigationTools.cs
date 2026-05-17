@@ -786,6 +786,20 @@ public sealed class NavigationTools(
                 },
                 2000,
                 truncated),
+            WorkspaceLoadState.LoadedWithErrors => new ReadToolMetadata(
+                state.ToString(),
+                "partial",
+                toolKind switch
+                {
+                    ToolKind.DocumentSymbols => "Workspace loaded with project errors; symbols from failed projects may be missing.",
+                    ToolKind.Hover => "Workspace loaded with project errors; hover may not include complete semantic information.",
+                    ToolKind.Definition => "Workspace loaded with project errors; definitions from failed projects may be missing.",
+                    ToolKind.References => "Workspace loaded with project errors; cross-project references may be missing.",
+                    ToolKind.Symbols => "Workspace loaded with project errors; workspace symbol results may be incomplete or empty. Call get_workspace_status for load warnings.",
+                    _ => "Workspace loaded with project errors; results may be incomplete."
+                },
+                null,
+                truncated),
             WorkspaceLoadState.LspReady => new ReadToolMetadata(
                 state.ToString(),
                 toolKind is ToolKind.References ? "partial" : "unknown",

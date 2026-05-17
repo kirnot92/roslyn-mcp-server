@@ -13,6 +13,7 @@ public enum WorkspaceLoadState
     StartingLanguageServer,
     LspReady,
     WorkspaceWarming,
+    LoadedWithErrors,
     Ready,
     Failed
 }

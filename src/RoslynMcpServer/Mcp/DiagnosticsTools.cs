@@ -191,7 +191,7 @@ public sealed class DiagnosticsTools(
                 state.ToString(),
                 "unknown",
                 "Diagnostics reflect the last textDocument/publishDiagnostics notification for this file; Roslyn LS does not report whether diagnostics have fully settled.",
-                state is WorkspaceLoadState.Ready ? null : 2000,
+                state is WorkspaceLoadState.Ready or WorkspaceLoadState.LoadedWithErrors ? null : 2000,
                 truncated);
         }
 
@@ -201,6 +201,12 @@ public sealed class DiagnosticsTools(
                 state.ToString(),
                 "unknown",
                 "Workspace diagnostics include only currently known textDocument/publishDiagnostics notifications; Roslyn LS does not report a complete workspace diagnostics signal.",
+                null,
+                truncated),
+            WorkspaceLoadState.LoadedWithErrors => new ReadToolMetadata(
+                state.ToString(),
+                "partial",
+                "Workspace loaded with project errors; diagnostics include only currently known textDocument/publishDiagnostics notifications. Call get_workspace_status for load warnings.",
                 null,
                 truncated),
             WorkspaceLoadState.WorkspaceWarming or WorkspaceLoadState.LspReady => new ReadToolMetadata(
