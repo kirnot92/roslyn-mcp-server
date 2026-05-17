@@ -403,6 +403,7 @@ tool별 warming 중 신뢰도는 다르게 본다.
 - `hover`: syntax와 이미 로드된 semantic 정보 범위에서는 동작하지만, 타입/참조 정보가 덜 로드됐으면 빈약할 수 있다.
 - `go_to_definition`: 같은 프로젝트나 이미 로드된 참조 범위에서는 동작할 수 있지만, 아직 로드되지 않은 project/metadata 참조는 누락될 수 있다.
 - `find_references`: cross-project 결과가 빠질 수 있어 warming 중에는 partial로 표시한다.
+- `find_implementations`: cross-project 구현 결과가 빠질 수 있어 warming 중에는 partial로 표시한다.
 - `find_symbols`: 실행은 허용하지만 solution 전체 symbol index가 완성되지 않았을 수 있어 partial 또는 unknown으로 표시한다.
 - `diagnostics`: notification이 도착한 파일 기준으로만 신뢰하고, workspace 전체 diagnostics는 `Ready` 전까지 partial로 본다.
 
@@ -583,6 +584,13 @@ MCP tool 클래스는 얇게 유지한다. 입력 검증과 출력 DTO 변환은
   - 입력: `file`, `line`, `column`, `includeDeclaration`
   - LSP: `textDocument/references`
 
+- `find_implementations`
+  - 입력: `file`, `line`, `column`, optional `maxResults`
+  - LSP: `textDocument/implementation`
+  - 위치 기반 read-only tool이다. symbol name 검색이 아니라 현재 문서 위치를 기준으로 interface, abstract member, type 구현 위치를 찾는다.
+  - 기본 결과 상한은 200개이며 서버 hard cap은 1000개다.
+  - `WorkspaceWarming`에서는 best-effort로 실행하고 cross-project 구현 누락 가능성을 metadata reason에 표시한다.
+
 - `find_symbols`
   - 입력: `query`, optional `maxResults`
   - LSP: `workspace/symbol`
@@ -743,7 +751,7 @@ M1 통합 테스트 검증 흐름:
 
 M2+ 통합 테스트 검증 흐름:
 
-1. `document_symbols`, `hover`, `go_to_definition`, `find_references`, `find_symbols`를 호출한다.
+1. `document_symbols`, `hover`, `go_to_definition`, `find_references`, `find_implementations`, `find_symbols`를 호출한다.
 2. 결과 경로와 line/column이 root 상대 및 1-based인지 확인한다.
 3. `diagnostics` publish smoke는 현재 Roslyn LS fixture에서 도착 시점이 환경 의존적이라 안정적인 settle 전략이 정해질 때까지 skip/deferred 테스트로 둔다.
 

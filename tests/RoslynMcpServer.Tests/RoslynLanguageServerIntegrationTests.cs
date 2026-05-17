@@ -26,14 +26,23 @@ public sealed class RoslynLanguageServerIntegrationTests
             """);
         File.WriteAllText(Path.Combine(root.Path, "Calculator.cs"), """
             namespace Sample;
-            public class Calculator
+            public interface ICalculator
+            {
+                int Add(int left, int right);
+            }
+
+            public class Calculator : ICalculator
             {
                 public int Add(int left, int right) => left + right;
             }
 
             public class Consumer
             {
-                public int Use() => new Calculator().Add(1, 2);
+                public int Use()
+                {
+                    ICalculator calculator = new Calculator();
+                    return calculator.Add(1, 2);
+                }
             }
             """);
         File.WriteAllText(Path.Combine(root.Path, "Broken.cs"), """
@@ -83,13 +92,21 @@ public sealed class RoslynLanguageServerIntegrationTests
         var hoverResult = await tools.Hover("Calculator.cs", line: 4, column: 16);
         Assert.IsNotType<ToolError>(hoverResult);
 
-        var definitionResult = await tools.GoToDefinition("Calculator.cs", line: 9, column: 43);
+        var definitionResult = await tools.GoToDefinition("Calculator.cs", line: 16, column: 39);
         var definition = Assert.IsType<DefinitionResult>(definitionResult);
-        Assert.Contains(definition.Items, item => item.File == "Calculator.cs" && item.Line == 4);
+        Assert.Contains(definition.Items, item => item.File == "Calculator.cs" && item.Line == 7);
 
-        var referencesResult = await tools.FindReferences("Calculator.cs", line: 4, column: 17);
+        var referencesResult = await tools.FindReferences("Calculator.cs", line: 9, column: 17);
         var references = Assert.IsType<ReferencesResult>(referencesResult);
         Assert.Contains(references.Items, item => item.File == "Calculator.cs");
+
+        var implementations = await WaitForImplementationAsync(
+            tools,
+            "Calculator.cs",
+            line: 4,
+            column: 9,
+            item => item.File == "Calculator.cs" && item.Line == 9);
+        Assert.Contains(implementations.Items, item => item.File == "Calculator.cs" && item.Line == 9);
 
         var workspaceSymbols = await WaitForWorkspaceSymbolAsync(
             tools,
@@ -140,5 +157,28 @@ public sealed class RoslynLanguageServerIntegrationTests
         }
 
         throw new XunitException($"Expected workspace symbol '{query}' before timeout. Last result: {lastResult}");
+    }
+
+    private static async Task<ImplementationsResult> WaitForImplementationAsync(
+        NavigationTools tools,
+        string file,
+        int line,
+        int column,
+        Func<NavigationLocation, bool> predicate)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
+        object? lastResult = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            lastResult = await tools.FindImplementations(file, line, column);
+            if (lastResult is ImplementationsResult implementations && implementations.Items.Any(predicate))
+            {
+                return implementations;
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new XunitException($"Expected implementation for {file}:{line}:{column} before timeout. Last result: {lastResult}");
     }
 }

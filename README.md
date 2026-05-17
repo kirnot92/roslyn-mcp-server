@@ -70,6 +70,7 @@ Read-only Roslyn tools:
 - `hover`
 - `go_to_definition`
 - `find_references`
+- `find_implementations`
 - `find_symbols`
 - `diagnostics`
 

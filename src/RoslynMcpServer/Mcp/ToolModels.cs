@@ -113,6 +113,16 @@ public sealed record ReferencesResult(
     int? RetryAfterMs,
     bool Truncated);
 
+public sealed record ImplementationsResult(
+    IReadOnlyList<NavigationLocation> Items,
+    int TotalKnown,
+    int Returned,
+    string WorkspaceState,
+    string Completeness,
+    string? Reason,
+    int? RetryAfterMs,
+    bool Truncated);
+
 public sealed record WorkspaceSymbolItem(
     string Name,
     SymbolKind Kind,

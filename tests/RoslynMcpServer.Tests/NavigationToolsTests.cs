@@ -545,6 +545,245 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task FindImplementations_UsesImplementationMethodAndConvertsPosition()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 12, column: 5);
+
+        Assert.IsType<ImplementationsResult>(result);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("textDocument/implementation", request.Method);
+        Assert.True(request.IsExpensive);
+        Assert.Equal(11, request.Params.GetProperty("position").GetProperty("line").GetInt32());
+        Assert.Equal(4, request.Params.GetProperty("position").GetProperty("character").GetInt32());
+    }
+
+    [Fact]
+    public async Task FindImplementations_MapsSingleLocationToRootRelativeOneBasedLocation()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new Lsp.Location(
+            new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri,
+            new Lsp.Range(new Position(2, 4), new Position(2, 9))));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 1, column: 11);
+
+        var implementations = Assert.IsType<ImplementationsResult>(result);
+        var item = Assert.Single(implementations.Items);
+        Assert.Equal("Program.cs", item.File);
+        Assert.Equal(3, item.Line);
+        Assert.Equal(5, item.Column);
+        Assert.Equal(3, item.Range.StartLine);
+        Assert.Equal(5, item.Range.StartColumn);
+    }
+
+    [Fact]
+    public async Task FindImplementations_MapsLocationLinkUsingTargetRange()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new
+        {
+            targetUri = new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri,
+            targetRange = new Lsp.Range(new Position(4, 8), new Position(4, 14)),
+            targetSelectionRange = new Lsp.Range(new Position(4, 20), new Position(4, 21))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 1, column: 11);
+
+        var implementations = Assert.IsType<ImplementationsResult>(result);
+        var item = Assert.Single(implementations.Items);
+        Assert.Equal(5, item.Line);
+        Assert.Equal(9, item.Column);
+    }
+
+    [Fact]
+    public async Task FindImplementations_ReturnsEmptyResultForNullOrEmptyResponse()
+    {
+        var nullResult = await ExecuteImplementationsWithResponse(null);
+        var emptyResult = await ExecuteImplementationsWithResponse(Array.Empty<Lsp.Location>());
+
+        var nullImplementations = Assert.IsType<ImplementationsResult>(nullResult);
+        Assert.Empty(nullImplementations.Items);
+        Assert.Equal(0, nullImplementations.TotalKnown);
+        Assert.Equal(0, nullImplementations.Returned);
+        Assert.False(nullImplementations.Truncated);
+
+        var emptyImplementations = Assert.IsType<ImplementationsResult>(emptyResult);
+        Assert.Empty(emptyImplementations.Items);
+        Assert.Equal(0, emptyImplementations.TotalKnown);
+        Assert.Equal(0, emptyImplementations.Returned);
+        Assert.False(emptyImplementations.Truncated);
+    }
+
+    [Fact]
+    public async Task FindImplementations_TruncatesLargeResponseAndReportsMetadata()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var uri = new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri;
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new Lsp.Location(uri, new Lsp.Range(new Position(0, 0), new Position(0, 1))),
+            new Lsp.Location(uri, new Lsp.Range(new Position(1, 0), new Position(1, 1))),
+            new Lsp.Location(uri, new Lsp.Range(new Position(2, 0), new Position(2, 1)))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 1, column: 11, maxResults: 2);
+
+        var implementations = Assert.IsType<ImplementationsResult>(result);
+        Assert.Equal(3, implementations.TotalKnown);
+        Assert.Equal(2, implementations.Returned);
+        Assert.True(implementations.Truncated);
+        Assert.Equal(2, implementations.Items.Count);
+    }
+
+    [Fact]
+    public async Task FindImplementations_DoesNotExposeOutsideRootOrInvalidUriResults()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        File.WriteAllText(Path.Combine(outside.Path, "Outside.cs"), "class Outside { }");
+        var insideUri = new Uri(Path.Combine(root.Path, "Program.cs")).AbsoluteUri;
+        var outsideUri = new Uri(Path.Combine(outside.Path, "Outside.cs")).AbsoluteUri;
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            new Lsp.Location(outsideUri, new Lsp.Range(new Position(0, 0), new Position(0, 1))),
+            new Lsp.Location("https://example.test/Remote.cs", new Lsp.Range(new Position(1, 0), new Position(1, 1))),
+            new
+            {
+                uri = "not a uri",
+                range = new Lsp.Range(new Position(2, 0), new Position(2, 1))
+            },
+            new Lsp.Location(insideUri, new Lsp.Range(new Position(3, 4), new Position(3, 9)))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 1, column: 11);
+
+        var implementations = Assert.IsType<ImplementationsResult>(result);
+        var item = Assert.Single(implementations.Items);
+        Assert.Equal("Program.cs", item.File);
+        Assert.Equal(4, item.Line);
+        Assert.Equal(5, item.Column);
+        Assert.Equal(1, implementations.TotalKnown);
+        Assert.Equal(1, implementations.Returned);
+        Assert.False(implementations.Truncated);
+        Assert.DoesNotContain(implementations.Items, implementation => implementation.File.Contains("Outside", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(implementations.Items, implementation => implementation.File.StartsWith("http", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task FindImplementations_TruncatesAtDefaultLimit()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(CreateImplementationLocations(root.Path, count: 201));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 1, column: 11);
+
+        var implementations = Assert.IsType<ImplementationsResult>(result);
+        Assert.Equal(201, implementations.TotalKnown);
+        Assert.Equal(200, implementations.Returned);
+        Assert.Equal(200, implementations.Items.Count);
+        Assert.True(implementations.Truncated);
+    }
+
+    [Fact]
+    public async Task FindImplementations_ClampsUserMaxResultsToHardCap()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(CreateImplementationLocations(root.Path, count: 1001));
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 1, column: 11, maxResults: 5000);
+
+        var implementations = Assert.IsType<ImplementationsResult>(result);
+        Assert.Equal(1001, implementations.TotalKnown);
+        Assert.Equal(1000, implementations.Returned);
+        Assert.Equal(1000, implementations.Items.Count);
+        Assert.True(implementations.Truncated);
+    }
+
+    [Fact]
+    public async Task FindImplementations_ReturnsValidationErrorForInvalidMaxResults()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 1, column: 11, maxResults: 0);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_max_results", error.Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task FindImplementations_IncludesPartialMetadataWhileWorkspaceIsWarming()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations("Program.cs", line: 1, column: 11);
+
+        var implementations = Assert.IsType<ImplementationsResult>(result);
+        Assert.Equal(WorkspaceLoadState.WorkspaceWarming.ToString(), implementations.WorkspaceState);
+        Assert.Equal("partial", implementations.Completeness);
+        Assert.Equal(ToolRetryHints.WorkspaceWarmingMs, implementations.RetryAfterMs);
+        Assert.Contains("implementations", implementations.Reason);
+    }
+
+    [Fact]
     public async Task FindSymbols_ReturnsValidationErrorForEmptyQuery()
     {
         using var root = TestRoot.Create();
@@ -1012,6 +1251,20 @@ public sealed class NavigationToolsTests
         return await tools.GoToDefinition("Program.cs", line: 1, column: 1);
     }
 
+    private static async Task<object> ExecuteImplementationsWithResponse(object? response)
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(response);
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        return await tools.FindImplementations("Program.cs", line: 1, column: 1);
+    }
+
     private static async Task<object> ExecuteFindSymbolsWithResponse(object? response)
     {
         using var root = TestRoot.Create();
@@ -1034,6 +1287,16 @@ public sealed class NavigationToolsTests
             })
             .Cast<object>()
             .ToArray();
+
+    private static Lsp.Location[] CreateImplementationLocations(string root, int count)
+    {
+        var uri = new Uri(Path.Combine(root, "Program.cs")).AbsoluteUri;
+        return Enumerable.Range(0, count)
+            .Select(index => new Lsp.Location(
+                uri,
+                new Lsp.Range(new Position(index, 0), new Position(index, 1))))
+            .ToArray();
+    }
 
     private static NavigationTools CreateTools(string root, WorkspaceSession session, long maxDocumentBytes = 2 * 1024 * 1024)
     {

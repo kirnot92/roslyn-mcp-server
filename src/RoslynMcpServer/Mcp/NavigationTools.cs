@@ -23,12 +23,15 @@ public sealed class NavigationTools(
     private const int MaxPeekSnippetCharacters = 20_000;
     private const int DefaultReferencesMaxResults = 200;
     private const int MaxReferencesMaxResults = 1000;
+    private const int DefaultImplementationsMaxResults = DefaultReferencesMaxResults;
+    private const int MaxImplementationsMaxResults = MaxReferencesMaxResults;
     private const int DefaultSymbolMaxResults = 300;
     private const int MaxSymbolMaxResults = 1000;
     private const int MinSymbolQueryLength = 2;
     private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DefinitionTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ReferencesTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ImplementationsTimeout = ReferencesTimeout;
     private static readonly TimeSpan WorkspaceSymbolTimeout = TimeSpan.FromSeconds(30);
 
     [McpServerTool(Name = "document_symbols")]
@@ -241,6 +244,50 @@ public sealed class NavigationTools(
         }
     }
 
+    [McpServerTool(Name = "find_implementations")]
+    [Description("Return implementation locations for a C# source location. line and column are 1-based.")]
+    public async Task<object> FindImplementations(
+        string file,
+        int line,
+        int column,
+        int? maxResults = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var effectiveMaxResults = NormalizeImplementationMaxResults(maxResults);
+            var position = PositionMapper.ToLspPosition(line, column);
+            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
+            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
+            var response = await context.Handle.Client.RequestAsync(
+                "textDocument/implementation",
+                new
+                {
+                    textDocument = new TextDocumentIdentifier(document.Uri),
+                    position
+                },
+                ImplementationsTimeout,
+                cancellationToken,
+                isExpensive: true).ConfigureAwait(false);
+
+            var locations = MapLocations(response, "textDocument/implementation", effectiveMaxResults);
+            var metadata = CreateMetadata(context.State, ToolKind.Implementations, locations.Truncated);
+            return new ImplementationsResult(
+                locations.Items,
+                locations.TotalKnown,
+                locations.Returned,
+                metadata.WorkspaceState,
+                metadata.Completeness,
+                metadata.Reason,
+                metadata.RetryAfterMs,
+                metadata.Truncated);
+        }
+        catch (UserFacingException ex)
+        {
+            return ToolError.FromException(ex);
+        }
+    }
+
     [McpServerTool(Name = "find_symbols")]
     [Description("Search workspace symbols by name.")]
     public async Task<object> FindSymbols(
@@ -388,6 +435,21 @@ public sealed class NavigationTools(
         }
 
         return Math.Min(maxResults.Value, MaxReferencesMaxResults);
+    }
+
+    private static int NormalizeImplementationMaxResults(int? maxResults)
+    {
+        if (maxResults is null)
+        {
+            return DefaultImplementationsMaxResults;
+        }
+
+        if (maxResults.Value < 1)
+        {
+            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
+        }
+
+        return Math.Min(maxResults.Value, MaxImplementationsMaxResults);
     }
 
     private static int NormalizePeekContextLines(int? contextLines)
@@ -997,6 +1059,7 @@ public sealed class NavigationTools(
                     ToolKind.Hover => "Workspace is still warming; hover may not include complete semantic information.",
                     ToolKind.Definition => "Workspace is still warming; definitions from projects not loaded yet may be missing.",
                     ToolKind.References => "Workspace is still warming; cross-project references may be missing.",
+                    ToolKind.Implementations => "Workspace is still warming; implementations from projects not loaded yet may be missing.",
                     ToolKind.Symbols => "Workspace is still warming; the workspace symbol index may be incomplete.",
                     _ => "Workspace is still warming; results may be incomplete."
                 },
@@ -1011,6 +1074,7 @@ public sealed class NavigationTools(
                     ToolKind.Hover => "Workspace loaded with project errors; hover may not include complete semantic information.",
                     ToolKind.Definition => "Workspace loaded with project errors; definitions from failed projects may be missing.",
                     ToolKind.References => "Workspace loaded with project errors; cross-project references may be missing.",
+                    ToolKind.Implementations => "Workspace loaded with project errors; implementations from failed projects may be missing.",
                     ToolKind.Symbols => "Workspace loaded with project errors; workspace symbol results may be incomplete or empty. Call get_workspace_status for load warnings.",
                     _ => "Workspace loaded with project errors; results may be incomplete."
                 },
@@ -1018,10 +1082,11 @@ public sealed class NavigationTools(
                 truncated),
             WorkspaceLoadState.LspReady => new ReadToolMetadata(
                 state.ToString(),
-                toolKind is ToolKind.References ? "partial" : "unknown",
+                toolKind is ToolKind.References or ToolKind.Implementations ? "partial" : "unknown",
                 toolKind switch
                 {
                     ToolKind.References => "The language server is ready, but cross-project references may be missing until workspace loading completes.",
+                    ToolKind.Implementations => "The language server is ready, but cross-project implementations may be missing until workspace loading completes.",
                     ToolKind.Symbols => "The language server is ready, but workspace symbol index completeness is not known yet.",
                     _ => "The language server is ready, but workspace completeness is not known yet."
                 },
@@ -1079,6 +1144,7 @@ public sealed class NavigationTools(
         Hover,
         Definition,
         References,
+        Implementations,
         Symbols
     }
 }

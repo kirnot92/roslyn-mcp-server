@@ -38,6 +38,9 @@
   - `textDocument/publishDiagnostics` notification은 bounded background queue를 통해 처리한다.
   - queue overflow는 `drop_newest_when_full` 정책으로 새 notification을 drop한다.
   - workspace reload generation을 캡처해 이전 workspace diagnostics가 새 store에 섞이지 않게 한다.
+- M5 read productivity tool 일부 완료
+  - `find_implementations(file, line, column, maxResults?)` tool을 추가했다.
+  - LSP `textDocument/implementation`을 위치 기반으로 호출하며, `find_references`와 같은 bounded location metadata를 반환한다.
 
 현재 MCP tool:
 
@@ -49,6 +52,7 @@
 - `hover`
 - `go_to_definition`
 - `find_references`
+- `find_implementations`
 - `find_symbols`
 - `diagnostics`
 
