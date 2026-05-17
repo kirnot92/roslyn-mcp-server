@@ -74,6 +74,8 @@
 - 대형 solution startup 성능 측정과 상태 관측성 강화
 - Roslyn LS crash/restart 처리
 - M5 read productivity 후속 후보
+  - `peek_references`: `find_references` 결과 위치마다 root 내부 source snippet을 함께 반환해, agent가 reference 사용 맥락을 보기 위해 다시 파일을 여는 왕복을 줄인다.
+  - `peek_references`는 `file`, `line`, `column`, `includeDeclaration`, `maxResults`, `contextLines`를 입력으로 받고, snippet은 `peek_definition`과 같은 path guard, document size, line/context, character cap 제한을 따른다.
   - `get_call_hierarchy`: LSP call hierarchy의 prepare/incoming/outgoing 흐름으로 특정 callable의 호출자/피호출자 관계를 반환한다.
   - `get_call_hierarchy`는 `get_type_hierarchy`와 역할이 다르다. call hierarchy는 호출 관계, type hierarchy는 base/derived type 관계를 다룬다.
   - `get_type_hierarchy`, `get_completions`는 계속 후속 후보로 둔다.
