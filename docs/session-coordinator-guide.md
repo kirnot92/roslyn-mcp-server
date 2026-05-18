@@ -63,6 +63,7 @@ rg --files docs
 - `peek_references`는 `find_references` 위치 목록에 bounded source snippet을 붙여 reference 사용 맥락을 바로 보게 하는 위치 기반 tool이다.
 - `get_call_hierarchy`는 완료된 위치 기반 tool이다. method/constructor/property accessor 같은 callable 위치에서 직접 depth-1 incoming, outgoing, both 호출 관계를 반환하며 recursive depth/maxDepth는 제공하지 않는다.
 - `get_type_hierarchy`는 완료된 위치 기반 tool이다. 타입 identifier 위치에서 `supertypes`, `subtypes`, `both` 방향의 base/derived/interface implementation 관계를 bounded BFS로 반환하며, 호출자/피호출자 관계는 `get_call_hierarchy`가 담당한다.
+- `find_symbols`는 symbol name 기반 workspace search다. `kindFilter`, `matchMode`, `includePathPrefixes`는 모두 Roslyn LS 응답 이후 MCP 쪽에서 적용하는 noise-reduction filter이며, `includePathPrefixes`는 현재 `find_symbols`에만 구현되어 있다.
 - `get_completions`는 IDE 자동완성처럼 코드 작성 후보를 제공하는 write-adjacent 성격이 강하므로 현재 read-only context provider 방향의 다음 후보에서 제외한다.
 - `diagnostics`는 bounded background queue를 통해 처리된 `textDocument/publishDiagnostics` 기준이다. `get_workspace_status`는 diagnostics queue capacity, pending, processed, dropped, stale count와 overflow policy를 노출한다.
 

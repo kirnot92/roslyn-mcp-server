@@ -176,12 +176,16 @@ follow-up traversal. Use `get_call_hierarchy` for caller/callee analysis;
 accepts MCP symbol kind names such as `class`, `interface`, `method`,
 `property`, `field`, `enumMember`, and `typeParameter`, case-insensitively.
 `matchMode` accepts `default`, `exact`, `prefix`, or `contains`; omit it to keep
-Roslyn LS default matching. The server still calls Roslyn LS `workspace/symbol`
-with the same query and applies `kindFilter` and `matchMode` to mappable results
-before `maxResults`, so these options reduce returned noise but do not reduce
-Roslyn LS search cost. `totalKnown`, `returned`, and `truncated` describe the
-filtered mappable result set, while `totalUnfilteredKnown` reports mappable
-symbols before `kindFilter` and `matchMode`.
+Roslyn LS default matching. `includePathPrefixes` accepts root-relative path
+prefixes such as `src/RoslynMcpServer/Mcp` and keeps only symbols with locations
+at or under one of those prefixes. Slash styles are normalized, matching uses
+path segment boundaries, and symbols without a mappable location are excluded
+when `includePathPrefixes` is provided. The server still calls Roslyn LS
+`workspace/symbol` with the same query and applies `kindFilter`, `matchMode`,
+and `includePathPrefixes` to mappable results before `maxResults`, so these
+options reduce returned noise but do not reduce Roslyn LS search cost.
+`totalKnown`, `returned`, and `truncated` describe the filtered mappable result
+set, while `totalUnfilteredKnown` reports mappable symbols before those filters.
 
 ## Code Review Preflight
 

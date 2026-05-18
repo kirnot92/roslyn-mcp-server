@@ -1,5 +1,15 @@
 # Path Prefixes Plan
 
+## Current Status
+
+2026-05-18 현재 첫 구현은 `find_symbols`에만 반영되어 있다.
+`includePathPrefixes`는 root-relative path prefix 목록을 받아 Roslyn LS
+`workspace/symbol` 응답을 MCP 쪽에서 후처리한다. 필터가 지정되면 location이
+없는 workspace symbol은 제외된다.
+
+`find_references`, `peek_references`, `find_implementations` 확장은 아직
+남은 후보이며, 아래 계획은 그 후속 구현의 기준으로 유지한다.
+
 ## Decision
 
 Add an optional `includePathPrefixes` parameter to multi-result read tools.
@@ -50,9 +60,10 @@ The include filter is OR-based:
 
 ## Initial Tool Scope
 
-Add `includePathPrefixes` first to tools that can return many locations:
+Planned broader scope is to add `includePathPrefixes` to tools that can return
+many locations:
 
-- `find_symbols`
+- `find_symbols` - implemented
 - `find_references`
 - `peek_references`
 - `find_implementations`

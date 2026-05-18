@@ -100,9 +100,11 @@ M5 read productivity 일부 포함:
 - `peek_definition`은 definition 위치와 함께 root 내부 source snippet을 반환하고, root 밖 또는 읽을 수 없는 파일은 건너뛴다.
 - `peek_references`
 - `peek_references`는 `find_references`와 같은 LSP references semantics로 reference 위치를 찾고, 각 root 내부 위치에 bounded source snippet을 붙여 반환한다.
-- `find_symbols` kind filtering
+- `find_symbols` kind/match/path prefix filtering
 - `find_symbols`의 `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
-- `kindFilter`는 Roslyn LS `workspace/symbol` 응답을 받은 뒤 MCP 쪽에서 적용한다. Roslyn LS 검색 비용 절감을 보장하지 않고, 반환 noise 감소를 목적으로 한다.
+- `matchMode`는 `default`, `exact`, `prefix`, `contains`를 지원하며 simple symbol name에만 적용한다.
+- `includePathPrefixes`는 root-relative path prefix 목록을 받아 해당 prefix 아래에 location이 있는 symbol만 유지한다. path 구분자는 normalize하고, prefix는 segment boundary 기준으로 비교한다.
+- `kindFilter`, `matchMode`, `includePathPrefixes`는 Roslyn LS `workspace/symbol` 응답을 받은 뒤 MCP 쪽에서 적용한다. Roslyn LS 검색 비용 절감을 보장하지 않고, 반환 noise 감소를 목적으로 한다.
 - `find_symbols` 결과 metadata에는 필터 후 mappable 결과 기준의 `totalKnown`, `returned`, `truncated`와 필터 전 mappable 결과 수인 `totalUnfilteredKnown`이 포함된다.
 - `get_call_hierarchy`
 - `get_call_hierarchy`는 LSP `textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `callHierarchy/outgoingCalls`를 사용해 특정 callable의 직접 depth-1 incoming/outgoing 호출 관계를 반환한다.
@@ -173,6 +175,6 @@ https://github.com/kirnot92/roslyn-mcp-server
 
 ## 현재 상태
 
-M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload, M5 read productivity tool 일부(`find_implementations`, `peek_definition`, `peek_references`, `find_symbols` kind filtering, `get_call_hierarchy`, `get_type_hierarchy`)가 완료되어 있다.
+M2d(`diagnostics`, `DiagnosticStore`), M2 large repo readiness 일부, M3 사용자/클라이언트 사용성 정리, M4 startup initial solution load와 diagnostics notification offload, M5 read productivity tool 일부(`find_implementations`, `peek_definition`, `peek_references`, `find_symbols` kind/match/path prefix filtering, `get_call_hierarchy`, `get_type_hierarchy`)가 완료되어 있다.
 
 다음 작업 후보는 `docs/implementation-notes.md`의 최신 상태 메모와 `docs/large-repo-test-plan.md`를 기준으로 정한다. 우선순위가 높은 남은 항목은 opt-in large repo 검증과 default tuning, 필요 시 추가 실제 MCP client smoke 반복, 대형 solution startup 성능과 관측성 강화다. `get_completions`는 IDE 자동완성 성격상 write-adjacent 도구에 가까우므로 현재 read-only context provider 방향의 후속 후보에서 제외한다.
