@@ -185,6 +185,189 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task DocumentSymbols_QueryFiltersByNameAndRetainsAncestors()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Parser { void ParseInput() { } void ReportError() { } }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new DocumentSymbol(
+                "Parser",
+                SymbolKind.Class,
+                new Lsp.Range(new Position(0, 0), new Position(0, 62)),
+                new Lsp.Range(new Position(0, 6), new Position(0, 12)),
+                Children:
+                [
+                    new DocumentSymbol(
+                        "ParseInput",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(0, 15), new Position(0, 35)),
+                        new Lsp.Range(new Position(0, 20), new Position(0, 30))),
+                    new DocumentSymbol(
+                        "ReportError",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(0, 36), new Position(0, 58)),
+                        new Lsp.Range(new Position(0, 41), new Position(0, 52)))
+                ])
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", query: "parse");
+
+        var symbols = Assert.IsType<DocumentSymbolsResult>(result);
+        Assert.False(symbols.Truncated);
+        Assert.Equal(2, symbols.TotalKnown);
+        Assert.Equal(3, symbols.TotalUnfilteredKnown);
+        Assert.Equal(2, symbols.Returned);
+        var rootSymbol = Assert.Single(symbols.Items);
+        Assert.Equal("Parser", rootSymbol.Name);
+        var child = Assert.Single(rootSymbol.Children);
+        Assert.Equal("ParseInput", child.Name);
+    }
+
+    [Fact]
+    public async Task DocumentSymbols_QueryCombinesWithKindFilter()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Parser { void ParseInput() { } string ParseState => \"\"; }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new DocumentSymbol(
+                "Parser",
+                SymbolKind.Class,
+                new Lsp.Range(new Position(0, 0), new Position(0, 64)),
+                new Lsp.Range(new Position(0, 6), new Position(0, 12)),
+                Children:
+                [
+                    new DocumentSymbol(
+                        "ParseInput",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(0, 15), new Position(0, 35)),
+                        new Lsp.Range(new Position(0, 20), new Position(0, 30))),
+                    new DocumentSymbol(
+                        "ParseState",
+                        SymbolKind.Property,
+                        new Lsp.Range(new Position(0, 36), new Position(0, 60)),
+                        new Lsp.Range(new Position(0, 43), new Position(0, 53)))
+                ])
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", kindFilter: ["method"], query: "parse");
+
+        var symbols = Assert.IsType<DocumentSymbolsResult>(result);
+        Assert.Equal(2, symbols.TotalKnown);
+        Assert.Equal(3, symbols.TotalUnfilteredKnown);
+        var rootSymbol = Assert.Single(symbols.Items);
+        var child = Assert.Single(rootSymbol.Children);
+        Assert.Equal("ParseInput", child.Name);
+        Assert.Equal(SymbolKind.Method, child.Kind);
+    }
+
+    [Fact]
+    public async Task DocumentSymbols_BlankQueryIsIgnored()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { void M() { } }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new DocumentSymbol(
+                "C",
+                SymbolKind.Class,
+                new Lsp.Range(new Position(0, 0), new Position(0, 24)),
+                new Lsp.Range(new Position(0, 6), new Position(0, 7)),
+                Children:
+                [
+                    new DocumentSymbol(
+                        "M",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(0, 10), new Position(0, 22)),
+                        new Lsp.Range(new Position(0, 15), new Position(0, 16)))
+                ])
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", query: "   ");
+
+        var symbols = Assert.IsType<DocumentSymbolsResult>(result);
+        Assert.Equal(2, symbols.TotalKnown);
+        Assert.Equal(2, symbols.TotalUnfilteredKnown);
+        Assert.Equal(2, symbols.Returned);
+        Assert.Single(symbols.Items);
+    }
+
+    [Fact]
+    public async Task DocumentSymbols_MaxResultsLimitsReturnedAndSetsTruncated()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { void M() { } void N() { } }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new DocumentSymbol(
+                "C",
+                SymbolKind.Class,
+                new Lsp.Range(new Position(0, 0), new Position(0, 39)),
+                new Lsp.Range(new Position(0, 6), new Position(0, 7)),
+                Children:
+                [
+                    new DocumentSymbol(
+                        "M",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(0, 10), new Position(0, 22)),
+                        new Lsp.Range(new Position(0, 15), new Position(0, 16))),
+                    new DocumentSymbol(
+                        "N",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(0, 23), new Position(0, 35)),
+                        new Lsp.Range(new Position(0, 28), new Position(0, 29)))
+                ])
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", maxResults: 2);
+
+        var symbols = Assert.IsType<DocumentSymbolsResult>(result);
+        Assert.True(symbols.Truncated);
+        Assert.Equal(3, symbols.TotalKnown);
+        Assert.Equal(3, symbols.TotalUnfilteredKnown);
+        Assert.Equal(2, symbols.Returned);
+        var rootSymbol = Assert.Single(symbols.Items);
+        Assert.Equal("C", rootSymbol.Name);
+        var child = Assert.Single(rootSymbol.Children);
+        Assert.Equal("M", child.Name);
+    }
+
+    [Fact]
+    public async Task DocumentSymbols_InvalidMaxResultsReturnsToolError()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        await using var session = CreateSession(root.Path, new ThrowingLoader());
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", maxResults: 0);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_max_results", error.Error);
+    }
+
+    [Fact]
     public async Task DocumentSymbols_InvalidKindFilterReturnsToolError()
     {
         using var root = TestRoot.Create();

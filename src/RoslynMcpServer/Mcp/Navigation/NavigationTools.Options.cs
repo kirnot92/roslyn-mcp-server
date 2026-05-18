@@ -5,6 +5,31 @@ namespace RoslynMcpServer.Mcp;
 
 public sealed partial class NavigationTools
 {
+    private static string? NormalizeDocumentSymbolQuery(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return null;
+        }
+
+        return query.Trim();
+    }
+
+    private static int NormalizeDocumentSymbolMaxResults(int? maxResults)
+    {
+        if (maxResults is null)
+        {
+            return DefaultDocumentSymbolMaxResults;
+        }
+
+        if (maxResults.Value < 1)
+        {
+            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
+        }
+
+        return Math.Min(maxResults.Value, MaxDocumentSymbolMaxResults);
+    }
+
     private static int NormalizeReferenceMaxResults(int? maxResults)
     {
         if (maxResults is null)

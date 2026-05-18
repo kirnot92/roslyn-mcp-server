@@ -6,7 +6,11 @@ namespace RoslynMcpServer.Mcp;
 
 public sealed partial class NavigationTools
 {
-    private static DocumentSymbolMapResult MapDocumentSymbols(JsonElement response, IReadOnlySet<SymbolKind>? kindFilter)
+    private static DocumentSymbolMapResult MapDocumentSymbols(
+        JsonElement response,
+        IReadOnlySet<SymbolKind>? kindFilter,
+        string? query,
+        int maxResults)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
@@ -23,7 +27,7 @@ public sealed partial class NavigationTools
         var totalKnown = 0;
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = TryMapDocumentSymbol(item, kindFilter, ref totalUnfilteredKnown, ref totalKnown);
+            var symbol = TryMapDocumentSymbol(item, kindFilter, query, ref totalUnfilteredKnown, ref totalKnown);
             if (symbol is not null)
             {
                 items.Add(symbol);
@@ -31,7 +35,7 @@ public sealed partial class NavigationTools
         }
 
         var returned = 0;
-        var limitedItems = LimitDocumentSymbols(items, ref returned);
+        var limitedItems = LimitDocumentSymbols(items, maxResults, ref returned);
 
         return new DocumentSymbolMapResult(limitedItems, totalKnown, totalUnfilteredKnown, returned, totalKnown > returned);
     }
@@ -39,6 +43,7 @@ public sealed partial class NavigationTools
     private static DocumentSymbolItem? TryMapDocumentSymbol(
         JsonElement item,
         IReadOnlySet<SymbolKind>? kindFilter,
+        string? query,
         ref int totalUnfilteredKnown,
         ref int totalKnown)
     {
@@ -60,6 +65,7 @@ public sealed partial class NavigationTools
 
         totalUnfilteredKnown++;
 
+        var name = nameElement.GetString() ?? string.Empty;
         var selectionRange = TryGetRange(item, "selectionRange") ?? range;
         var children = new List<DocumentSymbolItem>();
         if (item.TryGetProperty("children", out var childrenElement) &&
@@ -67,7 +73,7 @@ public sealed partial class NavigationTools
         {
             foreach (var child in childrenElement.EnumerateArray())
             {
-                var parsedChild = TryMapDocumentSymbol(child, kindFilter, ref totalUnfilteredKnown, ref totalKnown);
+                var parsedChild = TryMapDocumentSymbol(child, kindFilter, query, ref totalUnfilteredKnown, ref totalKnown);
                 if (parsedChild is not null)
                 {
                     children.Add(parsedChild);
@@ -75,7 +81,7 @@ public sealed partial class NavigationTools
             }
         }
 
-        if (kindFilter is not null && !kindFilter.Contains(kind) && children.Count == 0)
+        if (!MatchesDocumentSymbolFilters(name, kind, kindFilter, query) && children.Count == 0)
         {
             return null;
         }
@@ -83,7 +89,7 @@ public sealed partial class NavigationTools
         totalKnown++;
 
         return new DocumentSymbolItem(
-            nameElement.GetString() ?? string.Empty,
+            name,
             kind,
             kind.ToMcpName(),
             PositionMapper.ToMcpRange(range),
@@ -92,14 +98,29 @@ public sealed partial class NavigationTools
             children);
     }
 
+    private static bool MatchesDocumentSymbolFilters(
+        string name,
+        SymbolKind kind,
+        IReadOnlySet<SymbolKind>? kindFilter,
+        string? query)
+    {
+        if (kindFilter is not null && !kindFilter.Contains(kind))
+        {
+            return false;
+        }
+
+        return query is null || name.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static IReadOnlyList<DocumentSymbolItem> LimitDocumentSymbols(
         IReadOnlyList<DocumentSymbolItem> items,
+        int maxResults,
         ref int returned)
     {
         var limitedItems = new List<DocumentSymbolItem>();
         foreach (var item in items)
         {
-            var limitedItem = LimitDocumentSymbol(item, ref returned);
+            var limitedItem = LimitDocumentSymbol(item, maxResults, ref returned);
             if (limitedItem is null)
             {
                 break;
@@ -111,9 +132,9 @@ public sealed partial class NavigationTools
         return limitedItems;
     }
 
-    private static DocumentSymbolItem? LimitDocumentSymbol(DocumentSymbolItem item, ref int returned)
+    private static DocumentSymbolItem? LimitDocumentSymbol(DocumentSymbolItem item, int maxResults, ref int returned)
     {
-        if (returned >= MaxDocumentSymbolNodes)
+        if (returned >= maxResults)
         {
             return null;
         }
@@ -122,7 +143,7 @@ public sealed partial class NavigationTools
         var limitedChildren = new List<DocumentSymbolItem>();
         foreach (var child in item.Children)
         {
-            var limitedChild = LimitDocumentSymbol(child, ref returned);
+            var limitedChild = LimitDocumentSymbol(child, maxResults, ref returned);
             if (limitedChild is null)
             {
                 break;

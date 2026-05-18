@@ -14,6 +14,8 @@ public sealed class ServerResourcesTests
         Assert.Contains("list_workspaces", guide);
         Assert.Contains("get_workspace_status", guide);
         Assert.Contains("includePathPrefixes", guide);
+        Assert.Contains("query", guide);
+        Assert.Contains("maxResults", guide);
         Assert.Contains("""kindFilter: ["method"]""", guide);
     }
 

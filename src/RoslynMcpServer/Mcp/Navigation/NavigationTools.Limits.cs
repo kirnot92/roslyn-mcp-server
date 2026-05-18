@@ -7,7 +7,10 @@ public sealed partial class NavigationTools
     private const string FileParameterDescription = "Root-relative C# file path under the configured root; absolute paths inside root are also accepted.";
     private const string LineParameterDescription = "1-based source line.";
     private const string ColumnParameterDescription = "1-based source column.";
-    private const int MaxDocumentSymbolNodes = 1000;
+    private const string SymbolKindFilterParameterDescription = "Optional MCP symbol kind names to keep, such as class, interface, method, property, field, enum, enumMember, constructor, event, operator, struct, or typeParameter.";
+    private const string CallHierarchyKindFilterParameterDescription = "Optional edge counterpart MCP symbol kind names to keep, such as method, constructor, property, event, operator, or field.";
+    private const int DefaultDocumentSymbolMaxResults = 1000;
+    private const int MaxDocumentSymbolMaxResults = 1000;
     private const int MaxHoverCharacters = 20_000;
     private const int DefaultPeekContextLines = 3;
     private const int MaxPeekContextLines = 20;

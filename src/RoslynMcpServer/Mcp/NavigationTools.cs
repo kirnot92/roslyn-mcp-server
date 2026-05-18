@@ -13,17 +13,23 @@ public sealed partial class NavigationTools(
     DocumentPathMapper pathMapper)
 {
     [McpServerTool(Name = "document_symbols")]
-    [Description("Use when you know a C# file and need a bounded compiler-backed outline of its symbols, such as classes, methods, and properties. Optional kindFilter narrows returned symbols while preserving ancestor context for matching descendants. Use find_symbols when you do not know the file location.")]
+    [Description("Use when you know a C# file and need a bounded compiler-backed outline of its symbols, such as classes, methods, and properties. Optional kindFilter and query narrow returned symbols while preserving ancestor context for matching descendants. Use find_symbols when you do not know the file location.")]
     public async Task<object> DocumentSymbols(
         [Description(FileParameterDescription)]
         string file,
-        [Description("Optional MCP symbol kind names to keep, such as class, interface, method, property, field, enum, enumMember, constructor, event, operator, struct, or typeParameter. Ancestors of matching descendants are retained as context.")]
+        [Description(SymbolKindFilterParameterDescription + " Ancestors of matching descendants are retained as context.")]
         string[]? kindFilter = null,
+        [Description("Optional case-insensitive symbol name contains query. Ancestors of matching descendants are retained as context.")]
+        string? query = null,
+        [Description("Positive result node cap; defaults to 1000 and is capped by the server.")]
+        int? maxResults = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var parsedKindFilter = ParseSymbolKindFilter(kindFilter);
+            var normalizedQuery = NormalizeDocumentSymbolQuery(query);
+            var effectiveMaxResults = NormalizeDocumentSymbolMaxResults(maxResults);
             var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
             var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
             var response = await context.Handle.Client.RequestAsync(
@@ -35,7 +41,7 @@ public sealed partial class NavigationTools(
                 NavigationTimeout,
                 cancellationToken).ConfigureAwait(false);
 
-            var mappedSymbols = MapDocumentSymbols(response, parsedKindFilter);
+            var mappedSymbols = MapDocumentSymbols(response, parsedKindFilter, normalizedQuery, effectiveMaxResults);
             var metadata = CreateMetadata(context.State, ToolKind.DocumentSymbols, mappedSymbols.Truncated);
 
             return new DocumentSymbolsResult(
@@ -380,7 +386,7 @@ public sealed partial class NavigationTools(
         string direction = "incoming",
         [Description("Positive call hierarchy edge cap; defaults to 200 and is capped by the server.")]
         int? maxResults = null,
-        [Description("Optional edge counterpart MCP symbol kind names to keep, such as method, constructor, property, event, operator, or field.")]
+        [Description(CallHierarchyKindFilterParameterDescription)]
         string[]? kindFilter = null,
         [Description("Optional root-relative path prefixes used to keep only edges whose direction-specific counterpart is at or under those paths. This is MCP-side filtering after Roslyn LS responds.")]
         string[]? includePathPrefixes = null,
@@ -594,7 +600,7 @@ public sealed partial class NavigationTools(
         string query,
         [Description("Positive workspace symbol result cap; defaults to 300 and is capped by the server.")]
         int? maxResults = null,
-        [Description("Optional MCP symbol kind names to keep, such as class, interface, method, property, field, enumMember, or typeParameter.")]
+        [Description(SymbolKindFilterParameterDescription)]
         string[]? kindFilter = null,
         [Description("Optional symbol name match mode after Roslyn LS responds: default, exact, prefix, or contains. Omit for Roslyn LS default matching.")]
         string? matchMode = null,
