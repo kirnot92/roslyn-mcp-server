@@ -81,6 +81,9 @@ Read-only Roslyn tools:
   callees, or both for a method, constructor, or property accessor position,
   optionally filtering returned edge counterparts by kind: `method`,
   `constructor`, `property`, `event`, `operator`, or `field`.
+- `get_type_hierarchy` - Return base type, derived type, or interface
+  implementation hierarchy edges for a type position, with bounded breadth-first
+  traversal depth and result caps.
 - `find_symbols` - Search workspace symbols by name, optionally filtering
   returned results by kind such as `class`, `interface`, `method`, `property`,
   or `field`.

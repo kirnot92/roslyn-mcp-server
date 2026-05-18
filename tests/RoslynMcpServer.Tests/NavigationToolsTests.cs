@@ -1664,6 +1664,372 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task GetTypeHierarchy_PrepareRequestUsesZeroBasedPositionAndIsNotExpensive()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(
+            Path.Combine(root.Path, "Program.cs"),
+            string.Join(Environment.NewLine, Enumerable.Repeat("// padding", 11).Append("class Derived : Base { }")));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy("Program.cs", line: 12, column: 5);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        Assert.Empty(hierarchy.Roots);
+        Assert.Empty(hierarchy.Edges);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("textDocument/prepareTypeHierarchy", request.Method);
+        Assert.False(request.IsExpensive);
+        Assert.Equal(11, request.Params.GetProperty("position").GetProperty("line").GetInt32());
+        Assert.Equal(4, request.Params.GetProperty("position").GetProperty("character").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_ReturnsEmptyWhenPrepareIsNullOrEmptyAndDoesNotCallFollowUp()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(null);
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var nullResult = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7);
+        var emptyResult = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7);
+
+        Assert.Empty(Assert.IsType<TypeHierarchyResult>(nullResult).Edges);
+        Assert.Empty(Assert.IsType<TypeHierarchyResult>(emptyResult).Edges);
+        Assert.Equal(["textDocument/prepareTypeHierarchy", "textDocument/prepareTypeHierarchy"], client.Requests.Select(r => r.Method));
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_MapsSupertypesEdge()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var baseType = CreateTypeHierarchyItem("Base", CreateFileUri(root.Path, "Base.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { derived });
+        client.EnqueueResponse(new[] { baseType });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxDepth: 1);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        var rootSymbol = Assert.Single(hierarchy.Roots);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal(rootSymbol.Id, edge.RootId);
+        Assert.Equal("supertypes", edge.Direction);
+        Assert.Equal(1, edge.Depth);
+        Assert.Equal("Base", edge.From.Name);
+        Assert.Equal("Derived", edge.To.Name);
+        Assert.Equal("Base.cs", edge.From.Location.File);
+        Assert.Equal("Derived.cs", edge.To.Location.File);
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+        Assert.False(hierarchy.Truncated);
+        Assert.Equal(["textDocument/prepareTypeHierarchy", "typeHierarchy/supertypes"], client.Requests.Select(r => r.Method));
+        Assert.True(client.Requests[1].IsExpensive);
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_MapsSubtypesEdge()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Base { }");
+        var baseType = CreateTypeHierarchyItem("Base", CreateFileUri(root.Path, "Base.cs"));
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { baseType });
+        client.EnqueueResponse(new[] { derived });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, direction: "subtypes", maxDepth: 1);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal("subtypes", edge.Direction);
+        Assert.Equal("Base", edge.From.Name);
+        Assert.Equal("Derived", edge.To.Name);
+        Assert.Equal(["textDocument/prepareTypeHierarchy", "typeHierarchy/subtypes"], client.Requests.Select(r => r.Method));
+        Assert.True(client.Requests[1].IsExpensive);
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_BothRequestsSupertypesThenSubtypesDeterministically()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Current : Base { }");
+        var current = CreateTypeHierarchyItem("Current", CreateFileUri(root.Path, "Current.cs"));
+        var baseType = CreateTypeHierarchyItem("Base", CreateFileUri(root.Path, "Base.cs"));
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { current });
+        client.EnqueueResponse(new[] { baseType });
+        client.EnqueueResponse(new[] { derived });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, direction: "both", maxDepth: 1);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        Assert.Equal(["supertypes", "subtypes"], hierarchy.Edges.Select(edge => edge.Direction));
+        Assert.Equal("Base", hierarchy.Edges[0].From.Name);
+        Assert.Equal("Derived", hierarchy.Edges[1].To.Name);
+        Assert.Equal(
+            ["textDocument/prepareTypeHierarchy", "typeHierarchy/supertypes", "typeHierarchy/subtypes"],
+            client.Requests.Select(r => r.Method));
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_PreservesOriginalPreparedAndFollowUpItemsInFollowUpParams()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var range = CreateRange(1, 0, 1, 7);
+        var derived = new
+        {
+            name = "Derived",
+            kind = (int)SymbolKind.Class,
+            detail = "class Derived",
+            uri = CreateFileUri(root.Path, "Derived.cs"),
+            range,
+            selectionRange = range,
+            data = new { opaque = "root" }
+        };
+        var baseType = new
+        {
+            name = "Base",
+            kind = (int)SymbolKind.Class,
+            detail = "class Base",
+            uri = CreateFileUri(root.Path, "Base.cs"),
+            range,
+            selectionRange = range,
+            data = new { opaque = "base" }
+        };
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { derived });
+        client.EnqueueResponse(new[] { baseType });
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxDepth: 2);
+
+        Assert.IsType<TypeHierarchyResult>(result);
+        Assert.Equal("Derived", client.Requests[1].Params.GetProperty("item").GetProperty("name").GetString());
+        Assert.Equal("root", client.Requests[1].Params.GetProperty("item").GetProperty("data").GetProperty("opaque").GetString());
+        Assert.Equal("Base", client.Requests[2].Params.GetProperty("item").GetProperty("name").GetString());
+        Assert.Equal("base", client.Requests[2].Params.GetProperty("item").GetProperty("data").GetProperty("opaque").GetString());
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_RespectsMaxDepth()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var baseType = CreateTypeHierarchyItem("Base", CreateFileUri(root.Path, "Base.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { derived });
+        client.EnqueueResponse(new[] { baseType });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxDepth: 1);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        Assert.Single(hierarchy.Edges);
+        Assert.Equal(["textDocument/prepareTypeHierarchy", "typeHierarchy/supertypes"], client.Requests.Select(r => r.Method));
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_RespectsMaxResultsAndSetsTruncated()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { derived });
+        client.EnqueueResponse(new[]
+        {
+            CreateTypeHierarchyItem("Base1", CreateFileUri(root.Path, "Base1.cs")),
+            CreateTypeHierarchyItem("Base2", CreateFileUri(root.Path, "Base2.cs")),
+            CreateTypeHierarchyItem("Base3", CreateFileUri(root.Path, "Base3.cs"))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxDepth: 1, maxResults: 2);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        Assert.Equal(3, hierarchy.TotalKnown);
+        Assert.Equal(2, hierarchy.Returned);
+        Assert.Equal(2, hierarchy.Edges.Count);
+        Assert.True(hierarchy.Truncated);
+        Assert.Equal(["Base1", "Base2"], hierarchy.Edges.Select(edge => edge.From.Name));
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_MarksTruncatedWhenResultLimitSkipsSecondDirection()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Current : Base { }");
+        var current = CreateTypeHierarchyItem("Current", CreateFileUri(root.Path, "Current.cs"));
+        var baseType = CreateTypeHierarchyItem("Base", CreateFileUri(root.Path, "Base.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { current });
+        client.EnqueueResponse(new[] { baseType });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy(
+            "Program.cs",
+            line: 1,
+            column: 7,
+            direction: "both",
+            maxDepth: 1,
+            maxResults: 1);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+        Assert.True(hierarchy.Truncated);
+        Assert.Equal(["supertypes"], hierarchy.Edges.Select(edge => edge.Direction));
+        Assert.Equal(
+            ["textDocument/prepareTypeHierarchy", "typeHierarchy/supertypes"],
+            client.Requests.Select(r => r.Method));
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_MarksTruncatedWhenResultLimitSkipsDepthFollowUp()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var baseType = CreateTypeHierarchyItem("Base", CreateFileUri(root.Path, "Base.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { derived });
+        client.EnqueueResponse(new[] { baseType });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy(
+            "Program.cs",
+            line: 1,
+            column: 7,
+            maxDepth: 2,
+            maxResults: 1);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+        Assert.True(hierarchy.Truncated);
+        Assert.Equal(["textDocument/prepareTypeHierarchy", "typeHierarchy/supertypes"], client.Requests.Select(r => r.Method));
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_FiltersOutsideRootNonFileAndInvalidUriItems()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { derived });
+        client.EnqueueResponse(new[]
+        {
+            CreateTypeHierarchyItem("Outside", new Uri(Path.Combine(outside.Path, "Outside.cs")).AbsoluteUri),
+            CreateTypeHierarchyItem("Remote", "https://example.test/Remote.cs"),
+            CreateTypeHierarchyItem("Invalid", "not a uri"),
+            CreateTypeHierarchyItem("Base", CreateFileUri(root.Path, "Base.cs"))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxDepth: 1);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal("Base", edge.From.Name);
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_ReturnsValidationErrorsForInvalidDirectionMaxDepthAndMaxResults()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var invalidDirectionResult = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, direction: "sideways");
+        var invalidMaxDepthResult = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxDepth: 0);
+        var invalidMaxResultsResult = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxResults: 0);
+
+        Assert.Equal("invalid_direction", Assert.IsType<ToolError>(invalidDirectionResult).Error);
+        Assert.Equal("invalid_max_depth", Assert.IsType<ToolError>(invalidMaxDepthResult).Error);
+        Assert.Equal("invalid_max_results", Assert.IsType<ToolError>(invalidMaxResultsResult).Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_IncludesPartialMetadataWhileWorkspaceIsWarming()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { derived });
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxDepth: 1);
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        Assert.Equal(WorkspaceLoadState.WorkspaceWarming.ToString(), hierarchy.WorkspaceState);
+        Assert.Equal("partial", hierarchy.Completeness);
+        Assert.Equal(ToolRetryHints.WorkspaceWarmingMs, hierarchy.RetryAfterMs);
+        Assert.Contains("type hierarchy", hierarchy.Reason);
+    }
+
+    [Fact]
     public async Task FindSymbols_ReturnsValidationErrorForEmptyQuery()
     {
         using var root = TestRoot.Create();
@@ -2358,6 +2724,25 @@ public sealed class NavigationToolsTests
         string name,
         string uri,
         SymbolKind kind = SymbolKind.Method,
+        Lsp.Range? range = null,
+        string? detail = null)
+    {
+        var effectiveRange = range ?? CreateRange(0, 0, 0, 1);
+        return new
+        {
+            name,
+            kind = (int)kind,
+            detail,
+            uri,
+            range = effectiveRange,
+            selectionRange = effectiveRange
+        };
+    }
+
+    private static object CreateTypeHierarchyItem(
+        string name,
+        string uri,
+        SymbolKind kind = SymbolKind.Class,
         Lsp.Range? range = null,
         string? detail = null)
     {

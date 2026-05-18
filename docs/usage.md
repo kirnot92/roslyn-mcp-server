@@ -118,7 +118,7 @@ To preload a solution during server startup, add `--load-solution`:
 6. Call read-only Roslyn tools such as `document_symbols`, `hover`,
    `go_to_definition`, `peek_definition`, `find_references`,
    `peek_references`, `find_implementations`, `get_call_hierarchy`,
-   `find_symbols`, or `diagnostics`.
+   `get_type_hierarchy`, `find_symbols`, or `diagnostics`.
 
 During startup, read tools may return `workspace_loading` instead of blocking.
 After LSP initialize, large workspaces may remain in `WorkspaceWarming`. If
@@ -160,6 +160,17 @@ partial or truncated while the workspace is warming or when limits apply. For
 most code review call graph checks, start with `kindFilter: ["method"]` to avoid
 property and field access noise. Add `constructor` or `property` only when object
 creation or accessor calls are part of the question.
+
+`get_type_hierarchy` is position-based. Call it on a type identifier when you
+need base types, derived types, or interface implementation relationships. It
+supports `direction: "supertypes"`, `"subtypes"`, or `"both"`, with
+`supertypes` as the default. `maxDepth` controls bounded breadth-first
+traversal and is capped by the server; `maxResults` caps returned hierarchy
+edges. The server preserves the original LSP type hierarchy items for follow-up
+requests, filters non-file or outside-root items from returned edges, and marks
+results truncated when the edge cap prevents later directions or deeper
+follow-up traversal. Use `get_call_hierarchy` for caller/callee analysis;
+`get_type_hierarchy` is only for inheritance and implementation structure.
 
 `find_symbols` is a workspace symbol-name search. Its optional `kindFilter`
 accepts MCP symbol kind names such as `class`, `interface`, `method`,

@@ -31,6 +31,10 @@ public sealed class NavigationTools(
     private const int DefaultCallHierarchyMaxResults = DefaultReferencesMaxResults;
     private const int MaxCallHierarchyMaxResults = MaxReferencesMaxResults;
     private const int MaxCallHierarchyCallSites = 20;
+    private const int DefaultTypeHierarchyMaxDepth = 2;
+    private const int MaxTypeHierarchyMaxDepth = 5;
+    private const int DefaultTypeHierarchyMaxResults = DefaultReferencesMaxResults;
+    private const int MaxTypeHierarchyMaxResults = MaxReferencesMaxResults;
     private const int DefaultSymbolMaxResults = 300;
     private const int MaxSymbolMaxResults = 1000;
     private const int MinSymbolQueryLength = 2;
@@ -39,6 +43,7 @@ public sealed class NavigationTools(
     private static readonly TimeSpan ReferencesTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ImplementationsTimeout = ReferencesTimeout;
     private static readonly TimeSpan CallHierarchyTimeout = ReferencesTimeout;
+    private static readonly TimeSpan TypeHierarchyTimeout = ReferencesTimeout;
     private static readonly TimeSpan WorkspaceSymbolTimeout = TimeSpan.FromSeconds(30);
     private static readonly SymbolKind[] SupportedSymbolKinds = Enum.GetValues<SymbolKind>()
         .Where(kind => kind.ToMcpName() != "unknown")
@@ -522,6 +527,95 @@ public sealed class NavigationTools(
         }
     }
 
+    [McpServerTool(Name = "get_type_hierarchy")]
+    [Description("Use when you have an exact C# type position and need base type, derived type, or interface implementation hierarchy. Traverses direct LSP type hierarchy edges breadth-first up to maxDepth.")]
+    public async Task<object> GetTypeHierarchy(
+        [Description(FileParameterDescription)]
+        string file,
+        [Description(LineParameterDescription)]
+        int line,
+        [Description(ColumnParameterDescription)]
+        int column,
+        [Description("Type hierarchy direction: supertypes, subtypes, or both; defaults to supertypes.")]
+        string direction = "supertypes",
+        [Description("Positive BFS traversal depth; defaults to 2 and is capped at 5.")]
+        int? maxDepth = null,
+        [Description("Positive type hierarchy edge cap; defaults to 200 and is capped by the server.")]
+        int? maxResults = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var parsedDirection = ParseTypeHierarchyDirection(direction);
+            var effectiveMaxDepth = NormalizeTypeHierarchyMaxDepth(maxDepth);
+            var effectiveMaxResults = NormalizeTypeHierarchyMaxResults(maxResults);
+            var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
+            var prepareResponse = await request.Context.Handle.Client.RequestAsync(
+                "textDocument/prepareTypeHierarchy",
+                new
+                {
+                    textDocument = new TextDocumentIdentifier(request.Document.Uri),
+                    position = request.Position
+                },
+                TypeHierarchyTimeout,
+                cancellationToken).ConfigureAwait(false);
+
+            var roots = MapPreparedTypeHierarchyItems(prepareResponse);
+            if (roots.Count == 0)
+            {
+                var emptyMetadata = CreateMetadata(request.Context.State, ToolKind.TypeHierarchy, truncated: false);
+                return new TypeHierarchyResult(
+                    [],
+                    [],
+                    TotalKnown: 0,
+                    Returned: 0,
+                    emptyMetadata.WorkspaceState,
+                    emptyMetadata.Completeness,
+                    emptyMetadata.Reason,
+                    emptyMetadata.RetryAfterMs,
+                    emptyMetadata.Truncated);
+            }
+
+            var edges = new List<TypeHierarchyEdge>();
+            var traversalState = new TypeHierarchyTraversalState();
+            var visitedEdges = new HashSet<string>(StringComparer.Ordinal);
+            var followUpDirections = GetTypeHierarchyTraversalDirections(parsedDirection);
+            foreach (var traversalDirection in followUpDirections)
+            {
+                foreach (var root in roots)
+                {
+                    await TraverseTypeHierarchyAsync(
+                        request.Context.Handle.Client,
+                        root,
+                        traversalDirection,
+                        effectiveMaxDepth,
+                        effectiveMaxResults,
+                        edges,
+                        visitedEdges,
+                        traversalState,
+                        cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            var truncated = traversalState.TotalKnown > traversalState.Returned || traversalState.HitResultLimit;
+            var metadata = CreateMetadata(request.Context.State, ToolKind.TypeHierarchy, truncated);
+            return new TypeHierarchyResult(
+                roots.Select(root => root.Symbol).ToArray(),
+                edges,
+                traversalState.TotalKnown,
+                traversalState.Returned,
+                metadata.WorkspaceState,
+                metadata.Completeness,
+                metadata.Reason,
+                metadata.RetryAfterMs,
+                metadata.Truncated);
+        }
+        catch (UserFacingException ex)
+        {
+            return ToolError.FromException(ex);
+        }
+    }
+
     [McpServerTool(Name = "find_symbols")]
     [Description("Use when you know a C# symbol name but do not know its file location. This is compiler-backed workspace symbol search, not plain text search; query must be at least 2 non-whitespace characters and empty results can be inconclusive while warming.")]
     public async Task<object> FindSymbols(
@@ -721,6 +815,36 @@ public sealed class NavigationTools(
         return Math.Min(maxResults.Value, MaxCallHierarchyMaxResults);
     }
 
+    private static int NormalizeTypeHierarchyMaxDepth(int? maxDepth)
+    {
+        if (maxDepth is null)
+        {
+            return DefaultTypeHierarchyMaxDepth;
+        }
+
+        if (maxDepth.Value < 1)
+        {
+            throw new UserFacingException("invalid_max_depth", "maxDepth must be a positive integer.");
+        }
+
+        return Math.Min(maxDepth.Value, MaxTypeHierarchyMaxDepth);
+    }
+
+    private static int NormalizeTypeHierarchyMaxResults(int? maxResults)
+    {
+        if (maxResults is null)
+        {
+            return DefaultTypeHierarchyMaxResults;
+        }
+
+        if (maxResults.Value < 1)
+        {
+            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
+        }
+
+        return Math.Min(maxResults.Value, MaxTypeHierarchyMaxResults);
+    }
+
     private static CallHierarchyDirection ParseCallHierarchyDirection(string direction)
     {
         var normalized = direction?.Trim();
@@ -743,6 +867,38 @@ public sealed class NavigationTools(
             "invalid_direction",
             "direction must be one of: incoming, outgoing, both.");
     }
+
+    private static TypeHierarchyDirection ParseTypeHierarchyDirection(string direction)
+    {
+        var normalized = direction?.Trim();
+        if (string.Equals(normalized, "supertypes", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeHierarchyDirection.Supertypes;
+        }
+
+        if (string.Equals(normalized, "subtypes", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeHierarchyDirection.Subtypes;
+        }
+
+        if (string.Equals(normalized, "both", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeHierarchyDirection.Both;
+        }
+
+        throw new UserFacingException(
+            "invalid_direction",
+            "direction must be one of: supertypes, subtypes, both.");
+    }
+
+    private static IReadOnlyList<TypeHierarchyDirection> GetTypeHierarchyTraversalDirections(TypeHierarchyDirection direction) =>
+        direction switch
+        {
+            TypeHierarchyDirection.Supertypes => [TypeHierarchyDirection.Supertypes],
+            TypeHierarchyDirection.Subtypes => [TypeHierarchyDirection.Subtypes],
+            TypeHierarchyDirection.Both => [TypeHierarchyDirection.Supertypes, TypeHierarchyDirection.Subtypes],
+            _ => []
+        };
 
     private static int NormalizePeekContextLines(int? contextLines)
     {
@@ -1031,6 +1187,215 @@ public sealed class NavigationTools(
 
     private static string CallHierarchyDirectionName(CallHierarchyDirection direction) =>
         direction == CallHierarchyDirection.Incoming ? "incoming" : "outgoing";
+
+    private IReadOnlyList<PreparedTypeHierarchyItem> MapPreparedTypeHierarchyItems(JsonElement response)
+    {
+        if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return [];
+        }
+
+        if (response.ValueKind != JsonValueKind.Array)
+        {
+            throw new UserFacingException("invalid_lsp_response", "textDocument/prepareTypeHierarchy returned an unexpected response shape.");
+        }
+
+        var roots = new List<PreparedTypeHierarchyItem>();
+        foreach (var item in response.EnumerateArray())
+        {
+            var symbol = MapTypeHierarchySymbol(item, "textDocument/prepareTypeHierarchy");
+            if (symbol is null)
+            {
+                continue;
+            }
+
+            roots.Add(new PreparedTypeHierarchyItem(symbol, item.Clone()));
+        }
+
+        return roots;
+    }
+
+    private async Task TraverseTypeHierarchyAsync(
+        ILspClient client,
+        PreparedTypeHierarchyItem root,
+        TypeHierarchyDirection direction,
+        int maxDepth,
+        int maxResults,
+        List<TypeHierarchyEdge> edges,
+        HashSet<string> visitedEdges,
+        TypeHierarchyTraversalState state,
+        CancellationToken cancellationToken)
+    {
+        var visitedFollowUps = new HashSet<string>(StringComparer.Ordinal)
+        {
+            CreateTypeHierarchyFollowUpKey(root.Symbol.Id, direction)
+        };
+        var queue = new Queue<TypeHierarchyQueueItem>();
+        queue.Enqueue(new TypeHierarchyQueueItem(root.Symbol, root.OriginalItem, Depth: 0));
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (current.Depth >= maxDepth)
+            {
+                continue;
+            }
+
+            if (state.Returned >= maxResults)
+            {
+                state.HitResultLimit = true;
+                continue;
+            }
+
+            var response = await client.RequestAsync(
+                TypeHierarchyMethodName(direction),
+                new { item = current.OriginalItem },
+                TypeHierarchyTimeout,
+                cancellationToken,
+                isExpensive: true).ConfigureAwait(false);
+
+            var nextItems = MapTypeHierarchyFollowUpItems(response, direction);
+            foreach (var next in nextItems)
+            {
+                var edge = CreateTypeHierarchyEdge(root.Symbol, current.Symbol, next.Symbol, direction, current.Depth + 1);
+                if (!visitedEdges.Add(CreateTypeHierarchyEdgeKey(edge)))
+                {
+                    continue;
+                }
+
+                state.TotalKnown++;
+                if (state.Returned < maxResults)
+                {
+                    edges.Add(edge);
+                    state.Returned++;
+                }
+
+                if (state.Returned >= maxResults)
+                {
+                    if (current.Depth + 1 < maxDepth)
+                    {
+                        state.HitResultLimit = true;
+                    }
+
+                    continue;
+                }
+
+                var followUpKey = CreateTypeHierarchyFollowUpKey(next.Symbol.Id, direction);
+                if (visitedFollowUps.Add(followUpKey))
+                {
+                    queue.Enqueue(new TypeHierarchyQueueItem(next.Symbol, next.OriginalItem, current.Depth + 1));
+                }
+            }
+        }
+    }
+
+    private IReadOnlyList<PreparedTypeHierarchyItem> MapTypeHierarchyFollowUpItems(
+        JsonElement response,
+        TypeHierarchyDirection direction)
+    {
+        if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return [];
+        }
+
+        if (response.ValueKind != JsonValueKind.Array)
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{TypeHierarchyMethodName(direction)} returned an unexpected response shape.");
+        }
+
+        var items = new List<PreparedTypeHierarchyItem>();
+        foreach (var item in response.EnumerateArray())
+        {
+            var symbol = MapTypeHierarchySymbol(item, TypeHierarchyMethodName(direction));
+            if (symbol is null)
+            {
+                continue;
+            }
+
+            items.Add(new PreparedTypeHierarchyItem(symbol, item.Clone()));
+        }
+
+        return items;
+    }
+
+    private TypeHierarchySymbol? MapTypeHierarchySymbol(JsonElement item, string method)
+    {
+        if (item.ValueKind != JsonValueKind.Object ||
+            !item.TryGetProperty("name", out var nameElement) ||
+            !item.TryGetProperty("kind", out var kindElement) ||
+            !item.TryGetProperty("uri", out var uriElement) ||
+            nameElement.ValueKind != JsonValueKind.String ||
+            kindElement.ValueKind != JsonValueKind.Number ||
+            uriElement.ValueKind != JsonValueKind.String ||
+            !kindElement.TryGetInt32(out var kindValue))
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{method} returned a malformed type hierarchy item.");
+        }
+
+        var name = nameElement.GetString();
+        var uri = uriElement.GetString();
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(uri))
+        {
+            throw new UserFacingException("invalid_lsp_response", $"{method} returned a malformed type hierarchy item.");
+        }
+
+        string relativePath;
+        try
+        {
+            relativePath = pathMapper.UriToRelativePath(uri);
+        }
+        catch (UserFacingException ex) when (ex.Code is "path_outside_root" or "invalid_lsp_uri")
+        {
+            return null;
+        }
+
+        var range = TryGetRangeOrNull(item, "range")
+            ?? throw new UserFacingException("invalid_lsp_response", $"{method} returned a malformed type hierarchy item.");
+        var selectionRange = TryGetRangeOrNull(item, "selectionRange")
+            ?? throw new UserFacingException("invalid_lsp_response", $"{method} returned a malformed type hierarchy item.");
+        var mcpRange = PositionMapper.ToMcpRange(range);
+        var mcpSelectionRange = PositionMapper.ToMcpRange(selectionRange);
+        var location = new NavigationLocation(relativePath, mcpRange.StartLine, mcpRange.StartColumn, mcpRange);
+        var kind = (SymbolKind)kindValue;
+
+        return new TypeHierarchySymbol(
+            CreateTypeHierarchySymbolId(name, kind, location),
+            name,
+            kind,
+            kind.ToMcpName(),
+            TryGetOptionalString(item, "detail"),
+            location,
+            mcpSelectionRange);
+    }
+
+    private static TypeHierarchyEdge CreateTypeHierarchyEdge(
+        TypeHierarchySymbol root,
+        TypeHierarchySymbol current,
+        TypeHierarchySymbol next,
+        TypeHierarchyDirection direction,
+        int depth)
+    {
+        var from = direction == TypeHierarchyDirection.Supertypes ? next : current;
+        var to = direction == TypeHierarchyDirection.Supertypes ? current : next;
+        return new TypeHierarchyEdge(root.Id, TypeHierarchyDirectionName(direction), depth, from, to);
+    }
+
+    private static string CreateTypeHierarchySymbolId(string name, SymbolKind kind, NavigationLocation location) =>
+        $"{location.File}:{location.Range.StartLine}:{location.Range.StartColumn}-{location.Range.EndLine}:{location.Range.EndColumn}:{kind.ToMcpName()}:{name}";
+
+    private static string CreateTypeHierarchyEdgeKey(TypeHierarchyEdge edge) =>
+        $"{edge.RootId}:{edge.Direction}:{edge.From.Id}->{edge.To.Id}";
+
+    private static string CreateTypeHierarchyFollowUpKey(string symbolId, TypeHierarchyDirection direction) =>
+        $"{TypeHierarchyDirectionName(direction)}:{symbolId}";
+
+    private static string TypeHierarchyMethodName(TypeHierarchyDirection direction) =>
+        direction == TypeHierarchyDirection.Supertypes
+            ? "typeHierarchy/supertypes"
+            : "typeHierarchy/subtypes";
+
+    private static string TypeHierarchyDirectionName(TypeHierarchyDirection direction) =>
+        direction == TypeHierarchyDirection.Supertypes ? "supertypes" : "subtypes";
 
     private async Task<SourceSnippetReadResult> ReadSourceSnippetAsync(
         NavigationLocation location,
@@ -1673,6 +2038,7 @@ public sealed class NavigationTools(
                     ToolKind.References => "Workspace is still warming; cross-project references may be missing.",
                     ToolKind.Implementations => "Workspace is still warming; implementations from projects not loaded yet may be missing.",
                     ToolKind.CallHierarchy => "Workspace is still warming; call hierarchy may miss callers or callees from projects not loaded yet.",
+                    ToolKind.TypeHierarchy => "Workspace is still warming; type hierarchy may miss projects not loaded yet.",
                     ToolKind.Symbols => "Workspace is still warming; the workspace symbol index may be incomplete.",
                     _ => "Workspace is still warming; results may be incomplete."
                 },
@@ -1689,6 +2055,7 @@ public sealed class NavigationTools(
                     ToolKind.References => "Workspace loaded with project errors; cross-project references may be missing.",
                     ToolKind.Implementations => "Workspace loaded with project errors; implementations from failed projects may be missing.",
                     ToolKind.CallHierarchy => "Workspace loaded with project errors; call hierarchy may miss callers or callees from failed projects.",
+                    ToolKind.TypeHierarchy => "Workspace loaded with project errors; type hierarchy may miss failed projects.",
                     ToolKind.Symbols => "Workspace loaded with project errors; workspace symbol results may be incomplete or empty. Call get_workspace_status for load warnings.",
                     _ => "Workspace loaded with project errors; results may be incomplete."
                 },
@@ -1696,12 +2063,13 @@ public sealed class NavigationTools(
                 truncated),
             WorkspaceLoadState.LspReady => new ReadToolMetadata(
                 state.ToString(),
-                toolKind is ToolKind.References or ToolKind.Implementations or ToolKind.CallHierarchy ? "partial" : "unknown",
+                toolKind is ToolKind.References or ToolKind.Implementations or ToolKind.CallHierarchy or ToolKind.TypeHierarchy ? "partial" : "unknown",
                 toolKind switch
                 {
                     ToolKind.References => "The language server is ready, but cross-project references may be missing until workspace loading completes.",
                     ToolKind.Implementations => "The language server is ready, but cross-project implementations may be missing until workspace loading completes.",
                     ToolKind.CallHierarchy => "The language server is ready, but call hierarchy may be incomplete until workspace loading completes.",
+                    ToolKind.TypeHierarchy => "The language server is ready, but type hierarchy may be incomplete until workspace loading completes.",
                     ToolKind.Symbols => "The language server is ready, but workspace symbol index completeness is not known yet.",
                     _ => "The language server is ready, but workspace completeness is not known yet."
                 },
@@ -1763,6 +2131,22 @@ public sealed class NavigationTools(
         int TotalKnown,
         bool Truncated);
 
+    private sealed record PreparedTypeHierarchyItem(
+        TypeHierarchySymbol Symbol,
+        JsonElement OriginalItem);
+
+    private sealed record TypeHierarchyQueueItem(
+        TypeHierarchySymbol Symbol,
+        JsonElement OriginalItem,
+        int Depth);
+
+    private sealed class TypeHierarchyTraversalState
+    {
+        public int TotalKnown { get; set; }
+        public int Returned { get; set; }
+        public bool HitResultLimit { get; set; }
+    }
+
     private sealed record PositionRequestContext(
         ReadToolContext Context,
         OpenDocumentState Document,
@@ -1776,6 +2160,7 @@ public sealed class NavigationTools(
         References,
         Implementations,
         CallHierarchy,
+        TypeHierarchy,
         Symbols
     }
 
@@ -1783,6 +2168,13 @@ public sealed class NavigationTools(
     {
         Incoming,
         Outgoing,
+        Both
+    }
+
+    private enum TypeHierarchyDirection
+    {
+        Supertypes,
+        Subtypes,
         Both
     }
 }

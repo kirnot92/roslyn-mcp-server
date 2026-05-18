@@ -12,7 +12,7 @@
 
 ## 최신 상태 요약
 
-2026-05-17 현재 `main` 기준 구현 상태:
+2026-05-18 현재 `main` 기준 구현 상태:
 
 - M0/M1 workspace 기반 완료
 - M2a read-tool foundation, `document_symbols`, `hover` 완료
@@ -53,6 +53,10 @@
   - LSP call hierarchy의 prepare/incoming/outgoing 흐름을 사용하며 직접 depth-1 호출자/피호출자 관계만 반환한다.
   - `direction`은 `incoming`, `outgoing`, `both`를 지원하고 recursive depth/maxDepth는 제공하지 않는다.
   - 결과 metadata에는 edge 기준 `totalKnown`, `returned`, `truncated`와 warming/partial reason이 포함된다.
+  - `get_type_hierarchy(file, line, column, direction = "supertypes", maxDepth?, maxResults?)` tool을 추가했다.
+  - LSP type hierarchy의 `textDocument/prepareTypeHierarchy`, `typeHierarchy/supertypes`, `typeHierarchy/subtypes` 흐름을 사용하며 bounded BFS로 타입 상속/파생 관계를 반환한다.
+  - `direction`은 `supertypes`, `subtypes`, `both`를 지원하고 `maxDepth` 기본값은 2, hard cap은 5다.
+  - 결과 metadata에는 mappable edge 기준 `totalKnown`, `returned`, `truncated`가 포함되며, result cap 때문에 다른 방향이나 더 깊은 follow-up을 요청하지 못한 경우도 `truncated`로 표시한다.
 - 제품 포지션을 best-effort read-only Roslyn context provider로 고정했다.
   - warming 중에도 가능한 read tool은 `workspaceState`, `completeness`, `reason`, `retryAfterMs` metadata와 함께 best-effort로 반환한다.
   - write/refactoring tool은 후속 후보에서 제외한다. rename/code action/formatting/apply 계열은 이 서버가 아니라 agent의 일반 파일 편집 흐름이나 별도 도구가 맡는다.
@@ -71,6 +75,7 @@
 - `peek_references`
 - `find_implementations`
 - `get_call_hierarchy`
+- `get_type_hierarchy`
 - `find_symbols`
 - `diagnostics`
 
@@ -81,17 +86,17 @@
 - 대형 solution startup 성능 측정과 상태 관측성 강화
 - Roslyn LS crash/restart 처리
 - M5 read productivity 후속 후보
-  - `get_type_hierarchy`, `get_completions`는 계속 후속 후보로 둔다.
+  - `get_completions`는 계속 후속 후보로 둔다.
 - `solution_overview` M4 이후 구현 여부 판단
 - best-effort metadata와 상태 관측성 품질 강화
 
 최근 로컬 검증 결과:
 
 ```text
-dotnet test roslyn-mcp-server.sln
+dotnet test tests\RoslynMcpServer.Tests\RoslynMcpServer.Tests.csproj -p:UseAppHost=false -p:OutDir=D:\Workspace\roslyn-mcp-server\.local\test-out\
 ```
 
-- 144 passed / 0 failed / 1 skipped / 145 total
+- 193 passed / 0 failed / 1 skipped / 194 total
 
 아래 milestone별 완료 메모는 당시 구현 시점의 이력으로 남긴다.
 

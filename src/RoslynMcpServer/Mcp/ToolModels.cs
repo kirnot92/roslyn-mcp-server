@@ -178,6 +178,33 @@ public sealed record CallHierarchyResult(
     int? RetryAfterMs,
     bool Truncated);
 
+public sealed record TypeHierarchySymbol(
+    string Id,
+    string Name,
+    SymbolKind Kind,
+    string KindName,
+    string? Detail,
+    NavigationLocation Location,
+    McpRange SelectionRange);
+
+public sealed record TypeHierarchyEdge(
+    string RootId,
+    string Direction,
+    int Depth,
+    TypeHierarchySymbol From,
+    TypeHierarchySymbol To);
+
+public sealed record TypeHierarchyResult(
+    IReadOnlyList<TypeHierarchySymbol> Roots,
+    IReadOnlyList<TypeHierarchyEdge> Edges,
+    int TotalKnown,
+    int Returned,
+    string WorkspaceState,
+    string Completeness,
+    string? Reason,
+    int? RetryAfterMs,
+    bool Truncated);
+
 public sealed record WorkspaceSymbolItem(
     string Name,
     SymbolKind Kind,
