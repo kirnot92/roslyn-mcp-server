@@ -85,10 +85,9 @@
 - 추가 실제 MCP client smoke 반복
 - 대형 solution startup 성능 측정과 상태 관측성 강화
 - Roslyn LS crash/restart 처리
-- M5 read productivity 후속 후보
-  - `get_completions`는 계속 후속 후보로 둔다.
 - `solution_overview` M4 이후 구현 여부 판단
 - best-effort metadata와 상태 관측성 품질 강화
+- `get_completions`는 IDE 자동완성 성격상 주 용도가 코드 작성 보조인 write-adjacent 도구에 가까워 현재 read-only context provider 방향의 후속 후보에서 제외한다.
 
 최근 로컬 검증 결과:
 
