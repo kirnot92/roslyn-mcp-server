@@ -203,8 +203,9 @@ the diff while Roslyn LS warms in the background.
 
 ## MCP Client Setup
 
-Build the server first, then point your MCP client at the built executable. Use
-`cwd` or `--root <repo-root>` so the server knows which repository to inspect.
+Download or build the server first, then point your MCP client at the server
+executable. Use `cwd` or `--root <repo-root>` so the server knows which
+repository to inspect.
 Solution paths passed to `--load-solution` must be the exact root-relative path,
 such as `Sources/Server.sln`, or an absolute path inside the root. The server
 does not recursively search for a matching file name from this option.
