@@ -206,6 +206,12 @@ load and keeps the later navigation calls from paying the full cold-start cost.
 Workspace discovery is bounded by scan depth, scan timeout, and candidate limits.
 Large result tools include metadata such as `totalKnown`, `returned`, and
 `truncated`. A truncated result is expected behavior, not a transport failure.
+If workspace discovery times out, check `truncated`, `truncationReason`, and
+`elapsed` on `list_workspaces` or `get_workspace_status.workspaces`. The common
+causes are cold git state, slow or network-backed disks, antivirus scanning,
+many untracked files, git being unavailable, or using a root that is wider than
+the repository you meant to inspect. Increase `--scan-timeout` when discovery is
+legitimately slow.
 
 Diagnostics are currently based on diagnostics already published by Roslyn LS
 and processed by the bounded background diagnostics queue. The server does not

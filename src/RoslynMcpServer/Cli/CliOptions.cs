@@ -25,7 +25,7 @@ public sealed record CliOptions(
     public const int DefaultMaxOpenDocuments = 200;
     public const long DefaultMaxDocumentBytes = 2 * 1024 * 1024;
     public const int DefaultMaxExpensiveLspRequests = 4;
-    public static readonly TimeSpan DefaultScanTimeout = TimeSpan.FromSeconds(3);
+    public static readonly TimeSpan DefaultScanTimeout = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(60);
 
     public static CliOptions Parse(string[] args)
