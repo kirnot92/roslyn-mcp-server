@@ -21,14 +21,19 @@ public sealed partial class NavigationTools
         return new PositionRequestContext(context, document, position);
     }
 
-    private LocationMapResult MapLocations(JsonElement response, string method, int? maxResults)
+    private LocationMapResult MapLocations(
+        JsonElement response,
+        string method,
+        int? maxResults,
+        IReadOnlyList<string>? includePathPrefixes = null)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
-            return new LocationMapResult([], TotalKnown: 0, Returned: 0, Truncated: false);
+            return new LocationMapResult([], TotalKnown: 0, TotalUnfilteredKnown: 0, Returned: 0, Truncated: false);
         }
 
         var items = new List<NavigationLocation>();
+        var totalUnfilteredKnown = 0;
         var totalKnown = 0;
         var returned = 0;
 
@@ -36,16 +41,32 @@ public sealed partial class NavigationTools
         {
             foreach (var element in response.EnumerateArray())
             {
-                AddLocationIfMappable(element, method, maxResults, items, ref totalKnown, ref returned);
+                AddLocationIfMappable(
+                    element,
+                    method,
+                    maxResults,
+                    includePathPrefixes,
+                    items,
+                    ref totalUnfilteredKnown,
+                    ref totalKnown,
+                    ref returned);
             }
 
-            return new LocationMapResult(items, totalKnown, returned, maxResults.HasValue && totalKnown > returned);
+            return new LocationMapResult(items, totalKnown, totalUnfilteredKnown, returned, maxResults.HasValue && totalKnown > returned);
         }
 
         if (response.ValueKind == JsonValueKind.Object)
         {
-            AddLocationIfMappable(response, method, maxResults, items, ref totalKnown, ref returned);
-            return new LocationMapResult(items, totalKnown, returned, maxResults.HasValue && totalKnown > returned);
+            AddLocationIfMappable(
+                response,
+                method,
+                maxResults,
+                includePathPrefixes,
+                items,
+                ref totalUnfilteredKnown,
+                ref totalKnown,
+                ref returned);
+            return new LocationMapResult(items, totalKnown, totalUnfilteredKnown, returned, maxResults.HasValue && totalKnown > returned);
         }
 
         throw new UserFacingException("invalid_lsp_response", $"{method} returned an unexpected response shape.");
@@ -55,12 +76,20 @@ public sealed partial class NavigationTools
         JsonElement element,
         string method,
         int? maxResults,
+        IReadOnlyList<string>? includePathPrefixes,
         List<NavigationLocation> items,
+        ref int totalUnfilteredKnown,
         ref int totalKnown,
         ref int returned)
     {
         var location = TryMapLocation(element, method);
         if (location is null)
+        {
+            return;
+        }
+
+        totalUnfilteredKnown++;
+        if (!IsIncludedByPathPrefixes(location.File, includePathPrefixes))
         {
             return;
         }

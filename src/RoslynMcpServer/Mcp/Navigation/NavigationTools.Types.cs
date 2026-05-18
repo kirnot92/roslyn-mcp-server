@@ -26,6 +26,7 @@ public sealed partial class NavigationTools
     private sealed record LocationMapResult(
         IReadOnlyList<NavigationLocation> Items,
         int TotalKnown,
+        int TotalUnfilteredKnown,
         int Returned,
         bool Truncated);
 

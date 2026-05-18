@@ -593,6 +593,131 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task FindReferences_FiltersByIncludePathPrefixesBeforeMaxResults()
+    {
+        using var root = TestRoot.Create();
+        Directory.CreateDirectory(Path.Combine(root.Path, "src", "App", "Services"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "src", "App2"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "tests", "App.Tests"));
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new Lsp.Location(CreateFileUri(root.Path, "src/App/Calculator.cs"), CreateRange(0, 0, 0, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "src/App/Services/CalculatorService.cs"), CreateRange(1, 0, 1, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "src/App2/Calculator.cs"), CreateRange(2, 0, 2, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "tests/App.Tests/CalculatorTests.cs"), CreateRange(3, 0, 3, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindReferences(
+            "Program.cs",
+            line: 1,
+            column: 7,
+            maxResults: 1,
+            includePathPrefixes: new[] { "src/App" });
+
+        var references = Assert.IsType<ReferencesResult>(result);
+        var item = Assert.Single(references.Items);
+        Assert.Equal("src/App/Calculator.cs", item.File);
+        Assert.Equal(4, references.TotalUnfilteredKnown);
+        Assert.Equal(2, references.TotalKnown);
+        Assert.Equal(1, references.Returned);
+        Assert.True(references.Truncated);
+    }
+
+    [Fact]
+    public async Task FindReferences_IncludePathPrefixesNormalizesSlashStylesAndSupportsRootPrefix()
+    {
+        using var root = TestRoot.Create();
+        Directory.CreateDirectory(Path.Combine(root.Path, "src", "App"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "tests", "App.Tests"));
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        var locations = new[]
+        {
+            new Lsp.Location(CreateFileUri(root.Path, "src/App/Calculator.cs"), CreateRange(0, 0, 0, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "tests/App.Tests/CalculatorTests.cs"), CreateRange(1, 0, 1, 1))
+        };
+        client.EnqueueResponse(locations);
+        client.EnqueueResponse(locations);
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var slashResult = await tools.FindReferences(
+            "Program.cs",
+            line: 1,
+            column: 7,
+            includePathPrefixes: new[] { "src\\App\\" });
+        var rootResult = await tools.FindReferences(
+            "Program.cs",
+            line: 1,
+            column: 7,
+            includePathPrefixes: new[] { "." });
+
+        var slashReferences = Assert.IsType<ReferencesResult>(slashResult);
+        var slashItem = Assert.Single(slashReferences.Items);
+        Assert.Equal("src/App/Calculator.cs", slashItem.File);
+        Assert.Equal(2, slashReferences.TotalUnfilteredKnown);
+        Assert.Equal(1, slashReferences.TotalKnown);
+
+        var rootReferences = Assert.IsType<ReferencesResult>(rootResult);
+        Assert.Equal(["src/App/Calculator.cs", "tests/App.Tests/CalculatorTests.cs"], rootReferences.Items.Select(item => item.File));
+        Assert.Equal(2, rootReferences.TotalUnfilteredKnown);
+        Assert.Equal(2, rootReferences.TotalKnown);
+    }
+
+    [Fact]
+    public async Task FindReferences_ReturnsValidationErrorForInvalidIncludePathPrefixes()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var emptyArrayResult = await tools.FindReferences("Program.cs", line: 1, column: 7, includePathPrefixes: Array.Empty<string>());
+        var emptyEntryResult = await tools.FindReferences("Program.cs", line: 1, column: 7, includePathPrefixes: new[] { "src/App", " " });
+        var outsideResult = await tools.FindReferences("Program.cs", line: 1, column: 7, includePathPrefixes: new[] { outside.Path });
+
+        var emptyArrayError = Assert.IsType<ToolError>(emptyArrayResult);
+        var emptyEntryError = Assert.IsType<ToolError>(emptyEntryResult);
+        var outsideError = Assert.IsType<ToolError>(outsideResult);
+        Assert.Equal("invalid_path_prefix", emptyArrayError.Error);
+        Assert.Equal("invalid_path_prefix", emptyEntryError.Error);
+        Assert.Equal("invalid_path_prefix", outsideError.Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task FindReferences_DoesNotSendIncludePathPrefixesToRoslynLs()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindReferences("Program.cs", line: 1, column: 7, includePathPrefixes: new[] { "src" });
+
+        Assert.IsType<ReferencesResult>(result);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("textDocument/references", request.Method);
+        Assert.Equal(["textDocument", "position", "context"], request.Params.EnumerateObject().Select(property => property.Name));
+    }
+
+    [Fact]
     public async Task FindReferences_IncludesPartialMetadataWhileWorkspaceIsWarming()
     {
         using var root = TestRoot.Create();
@@ -761,6 +886,46 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task PeekReferences_FiltersByIncludePathPrefixesBeforeReadingSnippets()
+    {
+        using var root = TestRoot.Create();
+        Directory.CreateDirectory(Path.Combine(root.Path, "src", "App"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "src", "App2"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "tests", "App.Tests"));
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "c");
+        File.WriteAllText(Path.Combine(root.Path, "src", "App", "Calculator.cs"), "abc");
+        File.WriteAllText(Path.Combine(root.Path, "src", "App2", "Calculator.cs"), "123456");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new Lsp.Location(CreateFileUri(root.Path, "src/App/Calculator.cs"), CreateRange(0, 0, 0, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "src/App2/Calculator.cs"), CreateRange(0, 0, 0, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "tests/App.Tests/MissingCalculatorTests.cs"), CreateRange(0, 0, 0, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session, maxDocumentBytes: 5);
+
+        var result = await tools.PeekReferences(
+            "Program.cs",
+            line: 1,
+            column: 1,
+            contextLines: 0,
+            includePathPrefixes: new[] { "src/App" });
+
+        var peek = Assert.IsType<PeekReferencesResult>(result);
+        var item = Assert.Single(peek.Items);
+        Assert.Equal("src/App/Calculator.cs", item.File);
+        Assert.NotNull(item.Snippet);
+        Assert.Null(item.SnippetError);
+        Assert.Equal(3, peek.TotalUnfilteredKnown);
+        Assert.Equal(1, peek.TotalKnown);
+        Assert.Equal(1, peek.Returned);
+        Assert.False(peek.Truncated);
+    }
+
+    [Fact]
     public async Task PeekReferences_IncludesPartialMetadataWhileWorkspaceIsWarming()
     {
         using var root = TestRoot.Create();
@@ -814,6 +979,29 @@ public sealed class NavigationToolsTests
 
         var error = Assert.IsType<ToolError>(result);
         Assert.Equal("invalid_context_lines", error.Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task PeekReferences_ReturnsValidationErrorForInvalidIncludePathPrefixes()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { void M() { } }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.PeekReferences(
+            "Program.cs",
+            line: 1,
+            column: 16,
+            includePathPrefixes: new[] { outside.Path });
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_path_prefix", error.Error);
         Assert.Empty(client.Requests);
     }
 

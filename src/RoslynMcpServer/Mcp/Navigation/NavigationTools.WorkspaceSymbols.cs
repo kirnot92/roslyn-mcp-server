@@ -47,7 +47,7 @@ public sealed partial class NavigationTools
                 continue;
             }
 
-            if (!IsIncludedByPathPrefixes(symbol, includePathPrefixes))
+            if (!IsIncludedByPathPrefixes(symbol.Location?.File, includePathPrefixes))
             {
                 continue;
             }
@@ -75,19 +75,19 @@ public sealed partial class NavigationTools
             _ => false
         };
 
-    private static bool IsIncludedByPathPrefixes(WorkspaceSymbolItem symbol, IReadOnlyList<string>? includePathPrefixes)
+    private static bool IsIncludedByPathPrefixes(string? file, IReadOnlyList<string>? includePathPrefixes)
     {
         if (includePathPrefixes is null)
         {
             return true;
         }
 
-        if (symbol.Location is null)
+        if (file is null)
         {
             return false;
         }
 
-        return includePathPrefixes.Any(prefix => MatchesPathPrefix(symbol.Location.File, prefix));
+        return includePathPrefixes.Any(prefix => MatchesPathPrefix(file, prefix));
     }
 
     private static bool MatchesPathPrefix(string file, string prefix)

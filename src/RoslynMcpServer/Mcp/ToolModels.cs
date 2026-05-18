@@ -114,6 +114,7 @@ public sealed record PeekReferenceItem(
 public sealed record PeekReferencesResult(
     IReadOnlyList<PeekReferenceItem> Items,
     int TotalKnown,
+    int TotalUnfilteredKnown,
     int Returned,
     string WorkspaceState,
     string Completeness,
@@ -124,6 +125,7 @@ public sealed record PeekReferencesResult(
 public sealed record ReferencesResult(
     IReadOnlyList<NavigationLocation> Items,
     int TotalKnown,
+    int TotalUnfilteredKnown,
     int Returned,
     string WorkspaceState,
     string Completeness,

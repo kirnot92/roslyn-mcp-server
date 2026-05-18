@@ -207,11 +207,14 @@ public sealed partial class NavigationTools(
         bool includeDeclaration = true,
         [Description("Positive reference result cap; defaults to 200 and is capped by the server.")]
         int? maxResults = null,
+        [Description("Optional root-relative path prefixes used to keep only reference locations at or under those paths; use . for the repository root. This is MCP-side filtering after Roslyn LS responds.")]
+        string[]? includePathPrefixes = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var effectiveMaxResults = NormalizeReferenceMaxResults(maxResults);
+            var parsedIncludePathPrefixes = ParseIncludePathPrefixes(includePathPrefixes);
             var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/references",
@@ -223,11 +226,12 @@ public sealed partial class NavigationTools(
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
-            var locations = MapLocations(response, "textDocument/references", effectiveMaxResults);
+            var locations = MapLocations(response, "textDocument/references", effectiveMaxResults, parsedIncludePathPrefixes);
             var metadata = CreateMetadata(request.Context.State, ToolKind.References, locations.Truncated);
             return new ReferencesResult(
                 locations.Items,
                 locations.TotalKnown,
+                locations.TotalUnfilteredKnown,
                 locations.Returned,
                 metadata.WorkspaceState,
                 metadata.Completeness,
@@ -256,12 +260,15 @@ public sealed partial class NavigationTools(
         int? maxResults = null,
         [Description("Non-negative number of surrounding lines to include in each source snippet; defaults to 3 and is capped by the server.")]
         int? contextLines = null,
+        [Description("Optional root-relative path prefixes used to keep only reference locations at or under those paths; use . for the repository root. This is MCP-side filtering after Roslyn LS responds.")]
+        string[]? includePathPrefixes = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var effectiveMaxResults = NormalizeReferenceMaxResults(maxResults);
             var effectiveContextLines = NormalizePeekContextLines(contextLines);
+            var parsedIncludePathPrefixes = ParseIncludePathPrefixes(includePathPrefixes);
             var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/references",
@@ -273,7 +280,7 @@ public sealed partial class NavigationTools(
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
-            var locations = MapLocations(response, "textDocument/references", effectiveMaxResults);
+            var locations = MapLocations(response, "textDocument/references", effectiveMaxResults, parsedIncludePathPrefixes);
             var items = new List<PeekReferenceItem>(locations.Items.Count);
             foreach (var location in locations.Items)
             {
@@ -291,6 +298,7 @@ public sealed partial class NavigationTools(
             return new PeekReferencesResult(
                 items,
                 locations.TotalKnown,
+                locations.TotalUnfilteredKnown,
                 locations.Returned,
                 metadata.WorkspaceState,
                 metadata.Completeness,
