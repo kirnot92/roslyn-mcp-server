@@ -13,14 +13,17 @@ public sealed partial class NavigationTools(
     DocumentPathMapper pathMapper)
 {
     [McpServerTool(Name = "document_symbols")]
-    [Description("Use when you know a C# file and need a bounded compiler-backed outline of its symbols, such as classes, methods, and properties. Use find_symbols when you do not know the file location.")]
+    [Description("Use when you know a C# file and need a bounded compiler-backed outline of its symbols, such as classes, methods, and properties. Optional kindFilter narrows returned symbols while preserving ancestor context for matching descendants. Use find_symbols when you do not know the file location.")]
     public async Task<object> DocumentSymbols(
         [Description(FileParameterDescription)]
         string file,
+        [Description("Optional MCP symbol kind names to keep, such as class, interface, method, property, field, enum, enumMember, constructor, event, operator, struct, or typeParameter. Ancestors of matching descendants are retained as context.")]
+        string[]? kindFilter = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            var parsedKindFilter = ParseSymbolKindFilter(kindFilter);
             var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
             var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
             var response = await context.Handle.Client.RequestAsync(
@@ -32,12 +35,13 @@ public sealed partial class NavigationTools(
                 NavigationTimeout,
                 cancellationToken).ConfigureAwait(false);
 
-            var mappedSymbols = MapDocumentSymbols(response);
+            var mappedSymbols = MapDocumentSymbols(response, parsedKindFilter);
             var metadata = CreateMetadata(context.State, ToolKind.DocumentSymbols, mappedSymbols.Truncated);
 
             return new DocumentSymbolsResult(
                 mappedSymbols.Items,
                 mappedSymbols.TotalKnown,
+                mappedSymbols.TotalUnfilteredKnown,
                 mappedSymbols.Returned,
                 metadata.WorkspaceState,
                 metadata.Completeness,

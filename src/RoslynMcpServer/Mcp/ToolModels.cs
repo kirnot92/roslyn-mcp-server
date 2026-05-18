@@ -44,6 +44,7 @@ public sealed record DocumentSymbolItem(
 public sealed record DocumentSymbolsResult(
     IReadOnlyList<DocumentSymbolItem> Items,
     int TotalKnown,
+    int TotalUnfilteredKnown,
     int Returned,
     string WorkspaceState,
     string Completeness,

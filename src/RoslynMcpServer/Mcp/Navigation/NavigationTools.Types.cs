@@ -9,6 +9,7 @@ public sealed partial class NavigationTools
     private sealed record DocumentSymbolMapResult(
         IReadOnlyList<DocumentSymbolItem> Items,
         int TotalKnown,
+        int TotalUnfilteredKnown,
         int Returned,
         bool Truncated);
 

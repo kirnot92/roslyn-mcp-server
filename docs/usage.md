@@ -129,6 +129,15 @@ cause. Read tools still return best-effort results with `workspaceState`,
 warming, retry hints use `retryAfterMs: 30000` so clients avoid tight polling on
 large repositories.
 
+`document_symbols` returns a bounded file-level symbol tree. Its optional
+`kindFilter` accepts the same MCP symbol kind names as `find_symbols`, such as
+`class`, `interface`, `method`, `property`, `field`, `enum`, `enumMember`,
+`constructor`, `event`, `operator`, `struct`, or `typeParameter`. When a
+filtered descendant matches, ancestor symbols are retained as context, but
+non-matching child branches are pruned. `totalUnfilteredKnown` reports mappable
+document symbols before filtering; `totalKnown`, `returned`, and `truncated`
+describe the filtered response tree including retained context ancestors.
+
 `find_implementations` is position-based, not a symbol-name search. To discover
 all implementations, call it on the interface, abstract member, or base contract
 position, for example the `ICalculator` identifier in `interface ICalculator`,

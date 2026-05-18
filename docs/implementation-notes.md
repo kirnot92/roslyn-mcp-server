@@ -31,7 +31,7 @@ Workspace:
 
 Read-only Roslyn:
 
-- `document_symbols`: 파일 단위 symbol tree
+- `document_symbols`: 파일 단위 symbol tree, optional kind filtering
 - `hover`: source position hover text
 - `go_to_definition`: definition location
 - `peek_definition`: definition location과 bounded source snippet

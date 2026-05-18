@@ -106,7 +106,7 @@ Result limiting:
 
 - `find_references`, `find_symbols`, `document_symbols`, `diagnostics`, hierarchy tool은 result cap을 지킨다.
 - `truncated`와 `returned`가 실제 반환량과 일치한다.
-- `find_symbols`의 `kindFilter`, `matchMode`, `includePathPrefixes` 적용 뒤 metadata가 filter 전/후 수를 구분한다.
+- `document_symbols`와 `find_symbols`의 `kindFilter`, `find_symbols`의 `matchMode`, `includePathPrefixes` 적용 뒤 metadata가 filter 전/후 수를 구분한다.
 - `get_call_hierarchy`와 `get_type_hierarchy`는 recursive unbounded traversal을 하지 않는다.
 
 Document state:

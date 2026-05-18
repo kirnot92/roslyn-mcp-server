@@ -228,9 +228,17 @@ returned
 
 `completeness`는 일반적으로 `complete`, `partial`, `unknown` 중 하나다. Warming 중이거나 result cap에 걸리거나 root 밖 위치를 제외한 경우 metadata로 드러낸다.
 
-`find_references`, `peek_references`, `find_implementations`, `find_symbols`, `get_call_hierarchy`, `get_type_hierarchy`처럼 MCP 쪽 필터가 있는 tool은 필터 전 mappable 결과 수를 `totalUnfilteredKnown`으로 함께 제공한다.
+`document_symbols`, `find_references`, `peek_references`, `find_implementations`, `find_symbols`, `get_call_hierarchy`, `get_type_hierarchy`처럼 MCP 쪽 필터가 있는 tool은 필터 전 mappable 결과 수를 `totalUnfilteredKnown`으로 함께 제공한다.
 
 ## Tool별 계약
+
+`document_symbols`:
+
+- 파일 단위 symbol tree를 반환한다.
+- `kindFilter`는 `find_symbols`와 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
+- matching descendant가 있으면 ancestor symbol을 context로 유지한다.
+- filter는 Roslyn LS 응답 뒤 MCP 쪽에서 적용하므로 Roslyn LS 요청 비용 절감을 보장하지 않는다.
+- `totalKnown`, `returned`, `truncated`는 retained context ancestor를 포함한 filtered response tree 기준이다.
 
 `find_symbols`:
 

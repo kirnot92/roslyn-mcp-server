@@ -68,7 +68,9 @@ Workspace tools:
 
 Read-only Roslyn tools:
 
-- `document_symbols` - Return file-level types, members, and symbol ranges.
+- `document_symbols` - Return file-level types, members, and symbol ranges,
+  optionally filtering returned symbols by kind while preserving ancestor
+  context for matching descendants.
 - `hover` - Return Roslyn hover text for a source position.
 - `go_to_definition` - Return definition locations for a source position.
 - `peek_definition` - Return definition locations plus bounded source snippets.

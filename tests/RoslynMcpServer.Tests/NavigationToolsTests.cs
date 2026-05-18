@@ -112,12 +112,90 @@ public sealed class NavigationToolsTests
         Assert.Equal(ToolRetryHints.WorkspaceWarmingMs, symbols.RetryAfterMs);
         Assert.False(symbols.Truncated);
         Assert.Equal(2, symbols.TotalKnown);
+        Assert.Equal(2, symbols.TotalUnfilteredKnown);
         Assert.Single(symbols.Items);
         Assert.Equal(1, symbols.Items[0].Range.StartLine);
         Assert.Equal(1, symbols.Items[0].Range.StartColumn);
         Assert.Equal(7, symbols.Items[0].SelectionRange.StartColumn);
         Assert.Equal(["textDocument/didOpen"], client.Notifications.Select(n => n.Method));
         Assert.Equal("textDocument/documentSymbol", Assert.Single(client.Requests).Method);
+    }
+
+    [Fact]
+    public async Task DocumentSymbols_KindFilterRetainsAncestorsAndPrunesNonMatchingChildren()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { void M() { } string P => \"\"; class Nested { void N() { } } }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new DocumentSymbol(
+                "C",
+                SymbolKind.Class,
+                new Lsp.Range(new Position(0, 0), new Position(0, 72)),
+                new Lsp.Range(new Position(0, 6), new Position(0, 7)),
+                Children:
+                [
+                    new DocumentSymbol(
+                        "M",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(0, 10), new Position(0, 24)),
+                        new Lsp.Range(new Position(0, 15), new Position(0, 16))),
+                    new DocumentSymbol(
+                        "P",
+                        SymbolKind.Property,
+                        new Lsp.Range(new Position(0, 25), new Position(0, 39)),
+                        new Lsp.Range(new Position(0, 32), new Position(0, 33))),
+                    new DocumentSymbol(
+                        "Nested",
+                        SymbolKind.Class,
+                        new Lsp.Range(new Position(0, 41), new Position(0, 70)),
+                        new Lsp.Range(new Position(0, 47), new Position(0, 53)),
+                        Children:
+                        [
+                            new DocumentSymbol(
+                                "N",
+                                SymbolKind.Method,
+                                new Lsp.Range(new Position(0, 56), new Position(0, 68)),
+                                new Lsp.Range(new Position(0, 61), new Position(0, 62)))
+                        ])
+                ])
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", kindFilter: ["method"]);
+
+        var symbols = Assert.IsType<DocumentSymbolsResult>(result);
+        Assert.False(symbols.Truncated);
+        Assert.Equal(4, symbols.TotalKnown);
+        Assert.Equal(5, symbols.TotalUnfilteredKnown);
+        Assert.Equal(4, symbols.Returned);
+        var rootSymbol = Assert.Single(symbols.Items);
+        Assert.Equal("C", rootSymbol.Name);
+        Assert.Equal(SymbolKind.Class, rootSymbol.Kind);
+        Assert.Equal(["M", "Nested"], rootSymbol.Children.Select(child => child.Name));
+        Assert.Equal(SymbolKind.Method, rootSymbol.Children[0].Kind);
+        Assert.Equal(SymbolKind.Class, rootSymbol.Children[1].Kind);
+        var nestedMethod = Assert.Single(rootSymbol.Children[1].Children);
+        Assert.Equal("N", nestedMethod.Name);
+        Assert.Equal(SymbolKind.Method, nestedMethod.Kind);
+    }
+
+    [Fact]
+    public async Task DocumentSymbols_InvalidKindFilterReturnsToolError()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        await using var session = CreateSession(root.Path, new ThrowingLoader());
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", kindFilter: ["nope"]);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_kind_filter", error.Error);
     }
 
     [Fact]
@@ -135,6 +213,7 @@ public sealed class NavigationToolsTests
 
         var symbols = Assert.IsType<DocumentSymbolsResult>(result);
         Assert.Equal(WorkspaceLoadState.WorkspaceWarming.ToString(), symbols.WorkspaceState);
+        Assert.Equal(0, symbols.TotalUnfilteredKnown);
         Assert.Equal(WorkspaceLoadState.WorkspaceWarming, session.State);
     }
 
