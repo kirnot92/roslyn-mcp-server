@@ -14,6 +14,9 @@ public sealed class NavigationTools(
     DocumentStateManager documents,
     DocumentPathMapper pathMapper)
 {
+    private const string FileParameterDescription = "Root-relative C# file path under the configured root; absolute paths inside root are also accepted.";
+    private const string LineParameterDescription = "1-based source line.";
+    private const string ColumnParameterDescription = "1-based source column.";
     private const int MaxDocumentSymbolNodes = 1000;
     private const int MaxHoverCharacters = 20_000;
     private const int DefaultPeekContextLines = 3;
@@ -61,8 +64,11 @@ public sealed class NavigationTools(
         SupportedCallHierarchySymbolKinds.Select(kind => kind.ToMcpName()));
 
     [McpServerTool(Name = "document_symbols")]
-    [Description("Get a bounded outline of symbols in one C# file. Use before deeper navigation or edits.")]
-    public async Task<object> DocumentSymbols(string file, CancellationToken cancellationToken = default)
+    [Description("Use when you know a C# file and need a bounded compiler-backed outline of its symbols, such as classes, methods, and properties. Use find_symbols when you do not know the file location.")]
+    public async Task<object> DocumentSymbols(
+        [Description(FileParameterDescription)]
+        string file,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -97,8 +103,15 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "hover")]
-    [Description("Get compiler-backed type, signature, or documentation info at a C# source location.")]
-    public async Task<object> Hover(string file, int line, int column, CancellationToken cancellationToken = default)
+    [Description("Use when you have an exact C# source position and need compiler-backed type, signature, or documentation info.")]
+    public async Task<object> Hover(
+        [Description(FileParameterDescription)]
+        string file,
+        [Description(LineParameterDescription)]
+        int line,
+        [Description(ColumnParameterDescription)]
+        int column,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -132,8 +145,15 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "go_to_definition")]
-    [Description("Find definition locations for a C# symbol. Use peek_definition when source context is needed.")]
-    public async Task<object> GoToDefinition(string file, int line, int column, CancellationToken cancellationToken = default)
+    [Description("Use when you have an exact C# source position and need compiler-backed definition locations only. Prefer peek_definition when you also need source snippets.")]
+    public async Task<object> GoToDefinition(
+        [Description(FileParameterDescription)]
+        string file,
+        [Description(LineParameterDescription)]
+        int line,
+        [Description(ColumnParameterDescription)]
+        int column,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -165,12 +185,17 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "peek_definition")]
-    [Description("Find definition locations plus bounded source snippets, avoiding a separate file-read call.")]
+    [Description("Use when you have an exact C# source position and need definition locations with bounded source snippets. Prefer go_to_definition when locations alone are enough.")]
     public async Task<object> PeekDefinition(
+        [Description(FileParameterDescription)]
         string file,
+        [Description(LineParameterDescription)]
         int line,
+        [Description(ColumnParameterDescription)]
         int column,
+        [Description("Non-negative number of surrounding lines to include in each source snippet; defaults to 3 and is capped by the server.")]
         int? contextLines = null,
+        [Description("Positive definition result cap; defaults to 20 and is capped by the server.")]
         int? maxDefinitions = null,
         CancellationToken cancellationToken = default)
     {
@@ -221,12 +246,17 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "find_references")]
-    [Description("Find usages of a C# symbol. This can be expensive; check completeness and truncated before treating results as final.")]
+    [Description("Use when you have an exact C# source position and need compiler-backed reference locations for that symbol. This can be expensive; check completeness and truncated before treating results as final.")]
     public async Task<object> FindReferences(
+        [Description(FileParameterDescription)]
         string file,
+        [Description(LineParameterDescription)]
         int line,
+        [Description(ColumnParameterDescription)]
         int column,
+        [Description("Whether to include the symbol declaration in the returned reference locations; defaults to true.")]
         bool includeDeclaration = true,
+        [Description("Positive reference result cap; defaults to 200 and is capped by the server.")]
         int? maxResults = null,
         CancellationToken cancellationToken = default)
     {
@@ -263,13 +293,19 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "peek_references")]
-    [Description("Find reference locations plus bounded source snippets for each returned location.")]
+    [Description("Use when you have an exact C# source position and need reference locations with bounded source snippets for surrounding context. Prefer find_references when locations alone are enough.")]
     public async Task<object> PeekReferences(
+        [Description(FileParameterDescription)]
         string file,
+        [Description(LineParameterDescription)]
         int line,
+        [Description(ColumnParameterDescription)]
         int column,
+        [Description("Whether to include the symbol declaration in the returned reference locations; defaults to true.")]
         bool includeDeclaration = true,
+        [Description("Positive reference result cap; defaults to 200 and is capped by the server.")]
         int? maxResults = null,
+        [Description("Non-negative number of surrounding lines to include in each source snippet; defaults to 3 and is capped by the server.")]
         int? contextLines = null,
         CancellationToken cancellationToken = default)
     {
@@ -320,11 +356,15 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "find_implementations")]
-    [Description("Find implementations from an interface, abstract, virtual/base member, or base type position. Concrete implementation positions may return only themselves.")]
+    [Description("Use when you have an exact C# source position on an interface, abstract member, virtual/base member, or base type and need implementation locations. Concrete implementation positions may return only themselves.")]
     public async Task<object> FindImplementations(
+        [Description(FileParameterDescription)]
         string file,
+        [Description(LineParameterDescription)]
         int line,
+        [Description(ColumnParameterDescription)]
         int column,
+        [Description("Positive implementation result cap; defaults to 200 and is capped by the server.")]
         int? maxResults = null,
         CancellationToken cancellationToken = default)
     {
@@ -363,15 +403,19 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "get_call_hierarchy")]
-    [Description("Get direct depth-1 incoming, outgoing, or both call relationships for a C# callable symbol. Optional kindFilter filters returned edge counterpart symbols after Roslyn LS responds, reducing returned noise but not Roslyn LS request cost.")]
+    [Description("Use when you have an exact C# callable position, such as a method, constructor, property accessor, event, or operator, and need direct depth-1 incoming callers, outgoing callees, or both. This is not recursive; kindFilter reduces returned edges after Roslyn LS responds, not request cost.")]
     public async Task<object> GetCallHierarchy(
+        [Description(FileParameterDescription)]
         string file,
+        [Description(LineParameterDescription)]
         int line,
+        [Description(ColumnParameterDescription)]
         int column,
-        [Description("One of {incoming|outgoing|both}. Defaults to incoming.")]
+        [Description("Call hierarchy direction: incoming callers, outgoing callees, or both; defaults to incoming.")]
         string direction = "incoming",
+        [Description("Positive call hierarchy edge cap; defaults to 200 and is capped by the server.")]
         int? maxResults = null,
-        [Description("Optional edge counterpart MCP symbol kind names: method, constructor, property, event, operator, or field.")]
+        [Description("Optional edge counterpart MCP symbol kind names to keep, such as method, constructor, property, event, operator, or field.")]
         string[]? kindFilter = null,
         CancellationToken cancellationToken = default)
     {
@@ -479,11 +523,13 @@ public sealed class NavigationTools(
     }
 
     [McpServerTool(Name = "find_symbols")]
-    [Description("Search workspace symbols by name when you do not already have a file location. Empty results can be inconclusive while warming.")]
+    [Description("Use when you know a C# symbol name but do not know its file location. This is compiler-backed workspace symbol search, not plain text search; query must be at least 2 non-whitespace characters and empty results can be inconclusive while warming.")]
     public async Task<object> FindSymbols(
+        [Description("C# symbol name query with at least 2 non-whitespace characters.")]
         string query,
+        [Description("Positive workspace symbol result cap; defaults to 300 and is capped by the server.")]
         int? maxResults = null,
-        [Description("Optional MCP symbol kind names such as class, interface, method, property, or field.")]
+        [Description("Optional MCP symbol kind names to keep, such as class, interface, method, property, field, enumMember, or typeParameter.")]
         string[]? kindFilter = null,
         CancellationToken cancellationToken = default)
     {

@@ -13,15 +13,18 @@ public sealed class DiagnosticsTools(
     DocumentPathMapper pathMapper,
     DiagnosticStore diagnostics)
 {
+    private const string FileParameterDescription = "Root-relative C# file path under the configured root; absolute paths inside root are also accepted.";
     private const int DefaultDiagnosticsMaxResults = 200;
     private const int MaxDiagnosticsMaxResults = 1000;
 
     [McpServerTool(Name = "diagnostics")]
-    [Description("Return diagnostics already published by Roslyn LS for one file or scope=workspace. This is not a full build.")]
+    [Description("Use when you need Roslyn diagnostics already published by the language server for one C# file or for scope=workspace. This is not a full build; results reflect currently processed publishDiagnostics notifications.")]
     public async Task<object> Diagnostics(
+        [Description("Optional file-specific diagnostics target. " + FileParameterDescription)]
         string? file = null,
-        [Description("Optional severity filter: error, warning, information, info, or hint.")]
+        [Description("Optional severity filter to keep only error, warning, information, info, or hint diagnostics.")]
         string? severity = null,
+        [Description("Positive diagnostics result cap; defaults to 200 and is capped by the server.")]
         int? maxResults = null,
         [Description("Set to workspace for bounded workspace diagnostics; do not combine with file.")]
         string? scope = null,
