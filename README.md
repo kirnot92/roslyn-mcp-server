@@ -109,8 +109,7 @@ understand the code.
 
 Prerequisites:
 
-- Git
-- .NET 10 SDK
+- .NET 10 SDK for installing `roslyn-language-server` as a global tool
 - `roslyn-language-server`
 
 Install `roslyn-language-server` separately:
@@ -120,7 +119,30 @@ dotnet tool install --global roslyn-language-server --prerelease
 ```
 
 `roslyn-mcp-server` does not bundle Roslyn LS and is not currently published as a
-NuGet/.NET global tool. Clone and build this repository from source:
+NuGet/.NET global tool.
+
+### Windows Release Zip
+
+Download `roslyn-mcp-server-v0.1.0-win-x64.zip` from the
+[v0.1.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.1.0)
+or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest),
+then extract the whole zip to a folder.
+
+The Windows artifact is self-contained and single-file. The server executable
+does not require a separate .NET runtime installation, though `roslyn-language-server`
+and the target C# repository still need a compatible .NET SDK/runtime environment.
+
+Point your MCP client at the extracted executable:
+
+```text
+C:\Tools\roslyn-mcp-server\roslyn-mcp-server.exe
+```
+
+### Build From Source
+
+Use source builds for non-Windows platforms, local development, or if you want to
+run the server directly from this repository. Source builds require Git and the
+.NET 10 SDK.
 
 ```powershell
 git clone https://github.com/kirnot92/roslyn-mcp-server.git
@@ -146,8 +168,17 @@ On macOS or Linux, the executable is typically:
 src/RoslynMcpServer/bin/Release/net10.0/roslyn-mcp-server
 ```
 
-After building, configure your MCP client to run this executable from the
-repository root you want to inspect.
+After downloading or building the server, configure your MCP client to run the
+server executable from the repository root you want to inspect.
+
+If you prefer a self-built Windows release-style layout, publish instead of
+building:
+
+```powershell
+git clone https://github.com/kirnot92/roslyn-mcp-server.git
+cd roslyn-mcp-server
+dotnet publish .\src\RoslynMcpServer\RoslynMcpServer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o .\publish\roslyn-mcp-server
+```
 
 With the default configuration, the current working directory becomes the
 workspace root. Use `--root <path>` only when your MCP client cannot set the

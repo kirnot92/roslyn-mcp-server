@@ -10,7 +10,7 @@ release 자동화는 아직 하지 않는다.
 - 태그 형식: `v0.x.y`
 - 첫 릴리즈 버전: `v0.1.0`
 - 릴리즈 위치: GitHub Releases
-- 릴리즈 산출물: Windows x64 framework-dependent `dotnet publish` 결과 zip
+- 릴리즈 산출물: Windows x64 self-contained single-file `dotnet publish` 결과 zip
 - 필수 검증: format, build, test, 실제 MCP client/repo smoke test
 
 `roslyn-language-server`는 릴리즈 zip에 번들하지 않는다. 사용자는 계속 별도로
@@ -58,9 +58,10 @@ dotnet tool install --global roslyn-language-server --prerelease
 
 ## Artifact 정책
 
-릴리즈 zip은 Windows x64 framework-dependent publish 결과로 만든다. 사용자는
-대상 환경에 .NET runtime 또는 SDK를 설치해야 한다. self-contained artifact는
-아직 만들지 않는다.
+릴리즈 zip은 Windows x64 self-contained single-file publish 결과로 만든다. MCP
+서버 실행 파일 자체는 대상 환경의 별도 .NET runtime 설치를 요구하지 않는다.
+단, `roslyn-language-server`는 릴리즈 zip에 포함하지 않으며 사용자가 별도로
+설치해야 한다.
 
 현재 maintainer의 개발 및 검증 환경이 Windows x64이므로, 공식 릴리즈 artifact도
 검증 가능한 Windows x64만 배포한다. Linux, macOS, Windows ARM64 artifact는 아직
@@ -72,8 +73,9 @@ dotnet tool install --global roslyn-language-server --prerelease
 roslyn-mcp-server-v0.x.y-win-x64.zip
 ```
 
-zip에는 MCP 서버 실행 파일과 .NET publish 출력만 포함한다. 다음 항목은 포함하지
-않는다.
+zip에는 MCP 서버 실행 파일, `LICENSE`, 그리고 .NET publish 출력에 필요한 파일만
+포함한다. single-file publish에서는 일반적으로 `roslyn-mcp-server.exe`와
+`LICENSE`만 포함된다. 다음 항목은 포함하지 않는다.
 
 - `roslyn-language-server`
 - repository clone
@@ -193,7 +195,11 @@ foreach ($Rid in $Rids) {
     dotnet publish $Project `
         -c Release `
         -r $Rid `
-        --self-contained false `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:DebugType=None `
+        -p:DebugSymbols=false `
         -o $PublishDir
 
     Compress-Archive -Path "$PublishDir\*" -DestinationPath $ZipPath -Force
@@ -202,8 +208,7 @@ foreach ($Rid in $Rids) {
 Get-ChildItem $ReleaseRoot -Filter *.zip | Select-Object Name, Length
 ```
 
-생성된 zip을 하나 이상 풀어서 실행 파일과 `.runtimeconfig.json`, `.deps.json`,
-필요한 `.dll` 파일이 포함되어 있는지 확인한다.
+생성된 zip을 하나 이상 풀어서 실행 파일과 `LICENSE`가 포함되어 있는지 확인한다.
 
 ```powershell
 $CheckDir = Join-Path $ReleaseRoot "check-win-x64"
