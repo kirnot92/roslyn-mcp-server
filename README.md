@@ -284,3 +284,8 @@ Known constraints:
 
 Implementation notes for maintainers are in [AGENTS.md](AGENTS.md) and
 [docs/implementation-notes.md](docs/implementation-notes.md).
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for
+details.
