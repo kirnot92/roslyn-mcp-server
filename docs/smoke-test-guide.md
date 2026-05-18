@@ -1,6 +1,6 @@
 # Smoke Test Guide
 
-이 문서는 실제 repository 대상 MCP stdio smoke test를 짧게 실행하고 기록하기 위한 가이드다. 상세 결과 기록은 `docs/smoke-tests/`를 본다.
+이 문서는 실제 repository 대상 MCP stdio smoke test를 짧게 실행하고 기록하기 위한 가이드다. 오래된 상세 결과 기록은 `docs/archive/smoke-tests/`에 보관한다.
 
 ## 목적
 
@@ -101,12 +101,14 @@ $env:POWERSHELL_GOTODEF_CHECKPOINTS = "0,5,10,15,20,30,45,60,90,120,180,240"
 
 ## 기록 방식
 
-결과를 정리할 때는 `docs/smoke-tests/*.md`의 기존 형식을 유지한다.
+새 smoke 결과를 문서로 남길 때는 raw output을 커밋하지 말고, 요약 결과만 남긴다. 장기 보존용 상세 기록은 필요할 때 `docs/archive/smoke-tests/`에 추가한다.
+
+권장 형식:
 
 - Environment
 - Server Validation
 - Workspace Discovery
-- Tool Results 또는 Retest summary
+- Tool Results 또는 Retest Summary
 - Findings: blockers, issues, observations
 - Recommendation
 
@@ -116,6 +118,6 @@ $env:POWERSHELL_GOTODEF_CHECKPOINTS = "0,5,10,15,20,30,45,60,90,120,180,240"
 
 ```powershell
 dotnet format roslyn-mcp-server.sln --verify-no-changes
-dotnet build roslyn-mcp-server.sln
-dotnet test roslyn-mcp-server.sln
+dotnet build roslyn-mcp-server.sln -p:UseAppHost=false -p:OutDir=.local\build-out\
+dotnet test tests\RoslynMcpServer.Tests\RoslynMcpServer.Tests.csproj -p:UseAppHost=false -p:OutDir=.local\test-out\
 ```

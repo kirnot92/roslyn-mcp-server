@@ -4,16 +4,16 @@
 
 `roslyn-mcp-server`는 Roslyn API를 직접 감싸는 서버가 아니라, `roslyn-language-server`를 자식 프로세스로 실행하고 MCP tool 호출을 LSP 요청으로 변환하는 얇은 브리지다.
 
-초기 구현의 핵심 원칙은 다음과 같다.
+핵심 원칙:
 
-- MCP 서버는 C#/.NET으로 작성한다.
-- MCP 구현은 `modelcontextprotocol/csharp-sdk`를 사용한다.
-- `roslyn-language-server`는 사용자가 별도로 설치한 실행 파일을 PATH 또는 명시 경로에서 찾는다.
-- 기본적으로 서버 시작 시 솔루션을 자동으로 강제 로드하지 않는다. 단,
-  `--load-solution <path>`가 지정되면 해당 `.sln`/`.slnx`를 background startup load로 로드한다.
-- 현재 작업 디렉터리 또는 `--root` 아래의 `.sln`, `.slnx`, `.csproj` 후보를 탐색하고, 기본적으로 `load_solution`/`load_project` tool 호출로 workspace를 선택한다. `--load-solution`이 있으면 startup background task가 같은 solution load 경로를 사용한다.
-- 제품 방향은 best-effort read-only Roslyn context provider로 고정한다. 파일을 수정하는 refactoring/code action/formatting/apply 계열은 이 서버에서 제공하지 않는다.
-- 대규모 repo를 기본 대상으로 보고, 모든 탐색/진단/검색 tool은 timeout, result limit, cancellation, pagination을 갖는다.
+- MCP 서버는 C#/.NET `net10.0` app이다.
+- MCP 구현은 공식 C# MCP SDK를 사용한다.
+- `roslyn-language-server`는 사용자가 별도로 설치한다.
+- 서버는 MCP client와 stdio로 통신하고, Roslyn LS와도 stdio LSP로 통신한다.
+- 기본 root는 current working directory이며 `--root <path>`로 바꿀 수 있다.
+- 기본 startup에서는 solution을 강제로 load하지 않는다.
+- `--load-solution <path>`가 있으면 MCP server startup 뒤 background task가 지정 solution을 로드한다.
+- 제품 방향은 best-effort read-only Roslyn context provider다.
 
 ## 프로세스 모델
 
@@ -26,835 +26,311 @@ roslyn-language-server
   <-> selected .sln/.slnx/.csproj and source files
 ```
 
-`roslyn-mcp-server`는 MCP 클라이언트와 stdio로 통신한다. Roslyn 기능이 필요한 시점에 `roslyn-language-server --stdio`를 자식 프로세스로 실행하고, LSP initialize 뒤 선택된 `.sln`/`.slnx`에는 `solution/open`, 선택된 `.csproj`에는 `project/open` notification을 보낸다. 별도의 LSP read loop/write queue를 통해 LSP 메시지를 중계하지만, MCP tool surface는 읽기 전용으로 유지한다.
+Roslyn 기능이 필요한 시점에 `roslyn-language-server --stdio`를 시작한다. Solution load는 LSP initialize 뒤 `.sln`/`.slnx`에는 `solution/open`, `.csproj`에는 `project/open` notification을 보내는 방식이다.
 
-중요한 선택은 기본 동작에서 Roslyn LS를 서버 시작 직후 띄우지 않는 것이다. 먼저 workspace 후보를 탐색하고, 실제로 어떤 솔루션 또는 프로젝트를 사용할지 정해진 뒤 Roslyn LS를 시작한다. 이렇게 해야 여러 `.sln`이 있는 repo에서 모호한 자동 로드를 피할 수 있다. startup preload가 필요한 클라이언트는 `--load-solution <path>`로 명시적인 `.sln`/`.slnx`만 선택할 수 있다.
+여러 solution이 있는 repository에서 모호한 자동 로드를 피하기 위해, 기본 동작은 agent가 `load_solution` 또는 `load_project`로 workspace를 고르는 것이다. 단일 후보만 있으면 첫 read tool 호출에서 auto-load할 수 있다.
 
-## .NET 프로젝트 구성
+## Project Layout
 
-현재 solution 구조는 다음처럼 둔다.
+현재 주요 구성:
 
 ```text
-roslyn-mcp-server.sln
-src/
-  RoslynMcpServer/
-    RoslynMcpServer.csproj
-    Program.cs
-    Cli/
-      CliOptions.cs
-    Mcp/
-      WorkspaceTools.cs
-      NavigationTools.cs
-      DiagnosticsTools.cs
-      ToolModels.cs
-    Workspace/
-      WorkspaceScanner.cs
-      WorkspaceSession.cs
-      WorkspaceModels.cs
-      PathGuard.cs
-      DocumentStateManager.cs
-      DocumentPathMapper.cs
-      IGitWorkspaceScanner.cs
-      GitWorkspaceScanner.cs
-    Lsp/
-      RoslynLanguageServerLocator.cs
-      RoslynLanguageServerProcess.cs
-      IRoslynWorkspaceLoader.cs
-      LspClient.cs
-      LspModels.cs
-      LspFraming.cs
-      JsonOptions.cs
-      DiagnosticStore.cs
-      DiagnosticNotificationProcessor.cs
-    Infrastructure/
-      IClock.cs
-      FileLoggerProvider.cs
-      UserFacingException.cs
-tests/
-  RoslynMcpServer.Tests/
+src/RoslynMcpServer/
+  Program.cs
+  Cli/
+    CliOptions.cs
+  Infrastructure/
+    FileLoggerProvider.cs
+    IClock.cs
+    ServerResourceUris.cs
+    UserFacingException.cs
+  Lsp/
+    DiagnosticNotificationProcessor.cs
+    DiagnosticStore.cs
+    ILspClient.cs
+    IRoslynWorkspaceLoader.cs
+    JsonOptions.cs
+    LspClient.cs
+    LspFraming.cs
+    LspModels.cs
+    RoslynLanguageServerLocator.cs
+    RoslynLanguageServerProcess.cs
+    RoslynWorkspaceLoader.cs
+  Mcp/
+    DiagnosticsTools.cs
+    NavigationTools.cs
+    ServerResources.cs
+    ToolModels.cs
+    WorkspaceTools.cs
+    Navigation/
+      NavigationTools.*.cs
+  Workspace/
+    DocumentPathMapper.cs
+    DocumentStateManager.cs
+    GitWorkspaceScanner.cs
+    IGitWorkspaceScanner.cs
+    PathGuard.cs
+    StartupSolutionLoader.cs
+    WorkspaceModels.cs
+    WorkspaceScanner.cs
+    WorkspaceSession.cs
+tests/RoslynMcpServer.Tests/
+scripts/smoke-tests/
 ```
 
-`RoslynMcpServer.csproj`는 app 프로젝트 하나로 시작한다. target framework는 `net10.0`으로 둔다. 이유는 `roslyn-language-server`가 .NET 10 런타임을 요구하므로, MCP 서버와 Roslyn LS의 실행 환경을 맞추는 편이 설치 오류를 줄이기 때문이다.
+`Program.cs`는 CLI parsing, DI 구성, MCP stdio transport 시작만 담당한다. 실제 동작은 `WorkspaceSession`, `RoslynWorkspaceLoader`, `LspClient`, MCP tool class로 나뉜다.
 
-## 시작 흐름
+## CLI Options
 
-`Program.cs`는 최대한 얇게 유지한다.
+현재 공개 옵션:
 
-1. `CliOptions.Parse(args)`로 옵션을 읽는다.
-2. `--root`가 있으면 해당 경로, 없으면 `Directory.GetCurrentDirectory()`를 root로 정규화한다.
-3. `PathGuard`가 root 존재 여부와 디렉터리 여부를 검증한다.
-4. DI container에 singleton 서비스들을 등록한다.
-5. MCP stdio transport를 시작한다.
-
-`CliOptions`는 기능 옵션뿐 아니라 대규모 repo 보호용 기본 제한도 가진다.
-
-```csharp
-public sealed record CliOptions(
-    string Root,
-    string? RoslynLanguageServerPath,
-    string? LoadSolutionPath,
-    LogLevel LogLevel,
-    string? LogFile,
-    string? LanguageServerLogDirectory,
-    TimeSpan StartupTimeout,
-    int ScanMaxDepth,
-    TimeSpan ScanTimeout,
-    int MaxSolutionCandidates,
-    int MaxProjectCandidates,
-    int MaxOpenDocuments,
-    long MaxDocumentBytes,
-    int MaxInFlightLspRequests,
-    int MaxExpensiveLspRequests);
+```text
+--root <path>
+--roslyn-language-server <path>
+--load-solution <path>
+--log-level <trace|debug|info|warn|error>
+--log-file <path>
+--ls-log-dir <path>
+--startup-timeout <seconds>
+--scan-max-depth <depth>
+--scan-timeout <seconds>
+--max-solution-candidates <count>
+--max-project-candidates <count>
+--max-open-documents <count>
+--max-document-bytes <bytes>
+--max-in-flight-lsp-requests <count>
+--max-expensive-lsp-requests <count>
 ```
 
-M2 large repo readiness 이후 다음 대형 repo tuning option도 CLI parser에 공개되어 있다.
+`--load-solution`은 정확한 root-relative path 또는 root 내부 absolute path만 허용한다. 이 옵션은 파일명만 받아 하위 디렉터리를 재귀 검색하지 않는다.
+
+## Workspace State
+
+Workspace load state:
+
+```text
+NotLoaded
+StartingLanguageServer
+LspReady
+WorkspaceWarming
+LoadedWithErrors
+Ready
+Failed
+```
+
+주요 계약:
+
+- `NotLoaded`: 아직 Roslyn LS를 시작하지 않은 상태다.
+- `StartingLanguageServer`: process start 또는 initialize 중이다. read tool은 오래 대기하지 않고 `workspace_loading`을 반환한다.
+- `LspReady`: LSP initialize는 끝났지만 workspace open 완료 신호 전이다.
+- `WorkspaceWarming`: Roslyn LS가 workspace를 열었고 indexing/loading이 진행 중이다. read tool은 best-effort로 실행한다.
+- `LoadedWithErrors`: load 경고나 오류가 있지만 read tool 호출은 가능하다.
+- `Ready`: workspace initialization complete 신호를 받았고 알려진 fatal failure가 없다.
+- `Failed`: process start, initialize, workspace open, path validation이 실패했다.
+
+`get_workspace_status`는 state, current target, language server running 여부, pending LSP request, workspace scan result, warnings, diagnostics cache/queue 상태를 함께 반환한다.
+
+## Workspace Discovery
+
+`WorkspaceScanner`는 root 아래 `.sln`, `.slnx`, `.csproj` 후보를 찾는다.
+
+탐색 보호 장치:
 
 - `--scan-max-depth`
 - `--scan-timeout`
 - `--max-solution-candidates`
 - `--max-project-candidates`
-- `--max-open-documents`
-- `--max-document-bytes`
-- `--max-in-flight-lsp-requests`
-- `--max-expensive-lsp-requests`
-
-예상 형태는 다음과 같다.
-
-```csharp
-var options = CliOptions.Parse(args);
-
-var builder = Host.CreateApplicationBuilder(args);
-builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
-
-builder.Services.AddSingleton(options);
-builder.Services.AddSingleton<WorkspaceScanner>();
-builder.Services.AddSingleton<WorkspaceSession>();
-builder.Services.AddSingleton<RoslynLanguageServerLocator>();
-builder.Services.AddSingleton<RoslynLanguageServerProcess>();
-builder.Services.AddSingleton<LspClient>();
-builder.Services.AddSingleton<DocumentPathMapper>();
-builder.Services.AddSingleton<DocumentStateManager>();
-builder.Services.AddSingleton<DiagnosticStore>();
-
-builder.Services
-    .AddMcpServer()
-    .WithStdioServerTransport()
-    .WithToolsFromAssembly();
-
-await builder.Build().RunAsync();
-```
-
-정확한 MCP SDK API 이름은 구현 시 SDK 버전에 맞춘다. 중요한 점은 MCP tool 메서드가 직접 프로세스를 다루지 않고 `WorkspaceSession`을 통해서만 Roslyn 상태에 접근하게 하는 것이다.
-
-## Workspace 상태 모델
-
-`WorkspaceSession`은 서버 전체의 핵심 상태를 가진다.
-
-```csharp
-public sealed record WorkspaceTarget(
-    WorkspaceKind Kind,
-    string FullPath,
-    string RelativePath,
-    string RepositoryRoot,
-    string WorkspaceDirectory);
-
-public enum WorkspaceKind
-{
-    Solution,
-    SolutionX,
-    Project
-}
-
-public enum WorkspaceLoadState
-{
-    NotLoaded,
-    StartingLanguageServer,
-    LspReady,
-    WorkspaceWarming,
-    LoadedWithErrors,
-    Ready,
-    Failed
-}
-```
-
-`WorkspaceSession` 책임:
-
-- root 기준 `.sln`, `.slnx`, `.csproj` 후보 캐시
-- 현재 선택된 `WorkspaceTarget` 관리
-- 현재 `WorkspaceLoadState` 관리
-- Roslyn LS 시작/중지 요청 조율
-- 여러 후보가 있을 때 명시적 선택 요구
-- M2+에서 첫 Roslyn tool 호출 시 후보가 하나뿐이면 자동 로드
-- 이미 로드된 workspace와 다른 workspace를 로드하면 Roslyn LS를 shutdown 후 재시작
-
-용어를 명확히 구분한다.
-
-- `RepositoryRoot`: MCP 서버가 기준으로 삼는 root. 기본값은 process cwd이고, `--root`로 바꿀 수 있다. 경로 검증과 상대 경로 반환의 기준이다.
-- `WorkspaceDirectory`: 선택한 `.sln`, `.slnx`, `.csproj` 파일이 있는 디렉터리. Roslyn LS process working directory 후보로 사용한다.
-- `WorkspaceTarget.FullPath`: 선택한 workspace 파일의 절대 경로.
-- `WorkspaceTarget.RelativePath`: `RepositoryRoot` 기준 상대 경로.
-
-자동 선택 규칙:
-
-- `.sln` 또는 `.slnx`가 하나만 있으면 우선 선택한다.
-- 솔루션 후보가 여러 개면 자동 선택하지 않는다.
-- 솔루션이 없고 `.csproj`가 하나만 있으면 선택한다.
-- 후보가 없으면 tool 오류에 root와 탐색 패턴을 포함한다.
-
-## Workspace 탐색
-
-`WorkspaceScanner`는 root 아래를 재귀 탐색하되 대규모 mono-repo에서 전체 파일 트리를 매번 훑지 않는다.
+- git repository에서는 가능한 경우 git pathspec 기반 scan
+- `.git`, build output, package cache 같은 불필요한 디렉터리 제외
 
-M1 이후 구현은 git worktree 안에서는 `GitWorkspaceScanner`를 먼저 사용한다. `GitWorkspaceScanner`는 `git -C <root> ls-files -co --exclude-standard -z -- '*.sln' '*.slnx' '*.csproj'` 결과에서 `.sln`, `.slnx`, `.csproj` 후보만 골라낸다. 이 방식을 우선하는 이유는 `.gitignore` 파일을 MCP 서버가 직접 재구현하는 것보다 git이 이미 알고 있는 ignore 규칙을 쓰는 편이 정확하기 때문이다. `--exclude-standard`는 repository의 `.gitignore`, 하위 `.gitignore`, `.git/info/exclude`, global exclude 규칙을 모두 반영한다. pathspec은 대형 repo에서 workspace 파일이 아닌 전체 git file list를 불필요하게 materialize하지 않기 위한 것이다.
+결과가 제한에 걸리면 `WorkspaceScanResult.Truncated`와 `TruncationReason`으로 표시한다.
 
-git 기반 탐색이 실패하거나 root가 git worktree 밖이면 기존 bounded recursive scanner로 fallback한다. fallback은 non-git 디렉터리에서도 동작해야 하므로 유지한다. git 기반 결과도 최종적으로 `PathGuard`를 통과시켜 root 밖 경로, reparse point, 존재하지 않는 파일을 방어한다.
+`PathGuard`는 모든 입력 경로가 root 내부인지 검증한다. Root 밖 path는 tool 입력으로 받지 않고, LSP 결과에서도 root 밖 URI는 제외한다.
 
-filesystem fallback은 solution/project candidate limit이 모두 찬 경우 조기 중단하고 `candidate_limit` truncation reason을 반환할 수 있다.
+## LSP Client
 
-초기 제외 디렉터리:
+`RoslynLanguageServerProcess`는 Roslyn LS process start/stop을 담당한다. Locator는 `--roslyn-language-server`가 있으면 그 경로를 우선하고, 없으면 PATH에서 `roslyn-language-server`를 찾는다.
 
-- `.git`
-- `.vs`
-- `bin`
-- `obj`
-- `node_modules`
-- `packages`
-- `.idea`
-- `.vscode`
-- `.cache`
-- `.nuke`
-- `artifacts`
-- `dist`
-- `out`
-- `target`
+`LspClient` 책임:
 
-이 제외 목록은 git 기반 탐색이 아니라 fallback recursive scanner의 안전망이다. git repository에서는 `.gitignore`와 git exclude 규칙이 더 정확한 후보 필터 역할을 한다.
+- `Content-Length` framing
+- request id 관리
+- bounded in-flight request 관리
+- expensive request 동시성 제한
+- read loop와 response/notification dispatch
+- initialize/shutdown
+- request timeout/cancellation
 
-탐색 결과는 상대 경로와 절대 경로를 모두 가진다. tool 결과에는 상대 경로를 우선 반환하고, 디버깅용으로만 절대 경로를 포함할 수 있다.
+주요 notification:
 
-대규모 repo 대응 규칙:
+- `workspace/projectInitializationComplete`: workspace warming 종료 신호로 사용
+- `window/logMessage`: workspace load warning/error로 축적
+- `textDocument/publishDiagnostics`: diagnostics queue에 enqueue
 
-- `Directory.EnumerateFileSystemEntries` 기반 streaming 탐색을 사용하고 전체 결과를 먼저 메모리에 올리지 않는다.
-- symlink, junction, reparse point 디렉터리는 기본적으로 따라가지 않는다.
-- 기본 최대 탐색 깊이를 둔다. 예: root 기준 6단계. `--scan-max-depth`로 조정할 수 있게 한다.
-- 기본 시간 예산을 둔다. 예: 3초. 시간 예산을 넘기면 지금까지 찾은 후보와 `truncated: true`를 반환한다.
-- 후보 개수 상한을 둔다. 예: solution 100개, project 1000개. 상한을 넘기면 더 깊은 탐색을 멈추고 명시적 경로 입력을 유도한다.
-- root 바로 아래와 1단계 하위 디렉터리의 `.sln`/`.slnx`를 먼저 찾는다. 대규모 repo에서는 top-level solution이 가장 유용할 가능성이 높다.
-- 탐색 결과는 `WorkspaceSession`에 캐시한다.
-- `list_workspaces`는 기본적으로 캐시된 결과를 반환하고, 필요할 때만 `refresh: true` 입력으로 재탐색한다.
-- `.csproj` 후보가 매우 많으면 `load_project` 자동 선택은 하지 않는다. 자동 선택은 후보가 작고 명확한 경우에만 적용한다.
+stdout은 MCP protocol 채널이므로 application log를 쓰지 않는다. 파일 로그는 `--log-file`, Roslyn LS log directory는 `--ls-log-dir`로 분리한다.
 
-경로 입력은 모두 `PathGuard`를 통과해야 한다.
+## Document State
 
-- 상대 경로는 root와 결합 후 `Path.GetFullPath`로 정규화한다.
-- 절대 경로도 정규화 후 root 내부인지 확인한다.
-- Windows에서는 대소문자 무시 비교를 사용한다.
-- root 밖 경로는 거부한다.
-- symlink/junction/reparse point를 통해 root 밖으로 나가는 경로는 거부한다.
-- 최종 target을 안정적으로 확인할 수 없는 reparse point는 M1에서는 보수적으로 거부한다.
+Navigation tool은 file path를 LSP document URI로 변환하고, 필요하면 `textDocument/didOpen`으로 문서를 연다.
 
-## Roslyn LS 실행 관리
+관련 component:
 
-`RoslynLanguageServerLocator`는 실행 파일을 찾는다.
+- `DocumentPathMapper`: root 내부 path와 LSP URI 변환
+- `DocumentStateManager`: open document LRU, 큰 파일 제한, didOpen/didClose 관리
+- `PositionMapper`: MCP 1-based line/column과 LSP 0-based position 변환
 
-우선순위:
+큰 파일은 `--max-document-bytes`보다 크면 열지 않는다. 열려 있는 문서 수는 `--max-open-documents`로 제한한다.
 
-1. `--roslyn-language-server <path>`
-2. PATH의 `roslyn-language-server`
+## MCP Tools
 
-찾지 못하면 다음 메시지를 포함한 사용자 오류를 만든다.
+Workspace tools:
 
-```text
-roslyn-language-server was not found.
-Install it with:
-dotnet tool install --global roslyn-language-server --prerelease
-```
+- `list_workspaces`: workspace 후보 탐색
+- `load_solution`: `.sln` 또는 `.slnx` load
+- `load_project`: `.csproj` load
+- `get_workspace_status`: state와 queue/cache 통계 조회
 
-`RoslynLanguageServerProcess`는 자식 프로세스의 수명만 책임진다.
-
-- `ProcessStartInfo.UseShellExecute = false`
-- stdin/stdout/stderr redirect
-- working directory는 기본적으로 선택된 workspace의 `WorkspaceDirectory`
-- stderr는 로그로 수집하되 MCP stdout에 섞지 않는다.
-- shutdown 요청 시 LSP `shutdown`/`exit` 순서로 종료
-- 정상 종료가 안 되면 timeout 후 kill
-
-`load_solution` 또는 `load_project`가 호출되면 다음 순서로 처리한다.
-
-1. 입력 경로를 root 내부 경로로 검증한다.
-2. `WorkspaceTarget`을 만든다.
-3. 기존 Roslyn LS가 있으면 graceful shutdown한다.
-4. 새 프로세스를 시작한다.
-5. LSP `initialize`를 보낸다.
-6. `initialized` notification을 보낸다.
-7. readiness 확인을 위해 가벼운 요청을 수행한다.
-
-대규모 solution에서는 `initialize` 완료와 전체 semantic analysis 완료가 같은 의미가 아니다. 따라서 `load_solution`은 "프로세스와 LSP 세션이 준비됨"까지만 보장하고, 전체 프로젝트 로드/진단 완료를 기다리지 않는다.
-
-Roslyn language server는 프로젝트 로딩 중에도 LSP queue가 계속 응답 가능하도록 설계되어 있다. Roslyn의 `LanguageServerProjectLoader`는 design-time build 중 LSP queue를 막지 않아야 한다고 명시하고, 첫 design-time build가 끝나기 전에는 workspace에 primordial project를 추가해 요청을 처리할 수 있게 한다. 이후 프로젝트 로딩이 완료되면 `ProjectInitializationHandler`가 `workspace/projectInitializationComplete` notification을 보낸다.
-
-이 구조 때문에 MCP 서버는 initialize 이후의 요청을 전부 막지 않는다. 대신 project loading 중인 결과를 best-effort로 반환하고, 결과 metadata에 완전성 상태를 표시한다.
-
-로드 상태는 다음 단계로 나눈다.
-
-- `StartingLanguageServer`: 프로세스를 시작하고 initialize 중
-- `WorkspaceWarming`: LSP initialize와 선택 workspace open notification이 끝나 요청을 받을 수 있지만, Roslyn LS가 프로젝트 로드, restore 상태 반영, diagnostics publish를 진행 중일 수 있음
-- `LoadedWithErrors`: Roslyn LS가 project load error를 보고했고 `workspace/projectInitializationComplete`도 도착해 더 기다려도 완전한 workspace가 되지 않을 가능성이 높음
-- `Ready`: `workspace/projectInitializationComplete`를 받았고 알려진 project load error가 없는 상태
-
-`WorkspaceLoadState` enum에는 이전 설계의 `LspReady` 값이 남아 있지만, 현재 `WorkspaceSession` 구현은 load가 성공하면 외부 상태를 `WorkspaceWarming`으로 전환한다. 따라서 클라이언트가 관찰하는 정상 load 흐름은 `StartingLanguageServer` -> `WorkspaceWarming` -> `Ready` 또는 `LoadedWithErrors`다.
-
-`get_workspace_status`는 repository root, 후보 목록, 현재 target, load state, Roslyn LS process 상태, pending request 수, 열린 문서 수, 알려진 diagnostics file count, 마지막 diagnostics update 시각, diagnostics notification queue 통계, project load warning을 반환한다. `diagnostics` 같은 tool은 필요한 범위만 기다리고, workspace 전체가 안정될 때까지 무기한 대기하지 않는다.
-
-Roslyn LS가 특정 solution/project를 명시적으로 선택하는 정확한 방법은 M1 구현 초기에 실제 실행 spike로 확인한다. 아키텍처는 이를 `IRoslynWorkspaceLoader` 인터페이스 뒤로 숨긴다.
-
-Spike에서 확인할 항목:
-
-- `roslyn-language-server --stdio --autoLoadProjects` 실행 가능 여부
-- `initialize`의 `rootUri`와 `workspaceFolders`만으로 `.sln`, `.slnx`, `.csproj`가 로드되는지
-- working directory를 선택된 workspace 파일의 directory로 두는 것이 필요한지
-- solution file path를 전달하는 Roslyn 전용 initialization option 또는 command가 있는지
-- `workspace/projectInitializationComplete` notification이 실제로 오는지
-- initialize 이후 `document_symbols` 또는 `workspace/symbol`이 동작하는지
-
-Spike 결과는 `docs/architecture.md`에 짧게 기록한 뒤 `IRoslynWorkspaceLoader` 구현에 반영한다.
-
-초기 구현 후보:
-
-- workspace root를 선택한 `.sln`/`.csproj`의 directory로 두고 `--autoLoadProjects` 사용
-- `initialize`의 `rootUri`, `workspaceFolders`에 선택된 root 전달
-- Roslyn LS가 별도 initialization option이나 command를 요구하면 `IRoslynWorkspaceLoader` 구현만 교체
-
-### 2026-05-16 Roslyn LS spike 결과
-
-Windows 환경의 `roslyn-language-server` global tool에서 다음을 확인했다.
-
-- `roslyn-language-server --stdio --autoLoadProjects`는 정상 실행된다.
-- `initialize`에 `rootUri`와 `workspaceFolders`를 workspace directory URI로 넘기면 initialize가 성공한다.
-- initialize 직후 `initialized` notification을 보내야 이후 요청을 안정적으로 처리한다.
-- Roslyn LS가 client 쪽으로 `workspace/configuration` request를 보낸다. MCP 서버의 LSP client는 알 수 없는 server-to-client request를 방치하지 말고 최소한 `null` 또는 빈 설정 결과로 응답해야 한다.
-- `.slnx`와 `.csproj`가 있는 작은 sample에서 root directory를 workspace folder로 둔 경우 `textDocument/didOpen` 뒤 `textDocument/documentSymbol`이 정상 응답했고, `workspace/projectInitializationComplete` notification도 관찰됐다.
-- 같은 sample에서 project directory를 workspace folder로 둔 경우 `documentSymbol`은 정상 응답했지만 짧은 관찰 구간에는 `workspace/projectInitializationComplete`가 오지 않았다.
-- `workspace/symbol`은 initialize 직후와 warming 중 모두 오류 없이 응답했지만 trivial query에서는 빈 배열을 반환했다. 따라서 M1 loader는 `workspace/symbol` 결과를 readiness 판단으로 사용하지 않는다.
-- solution/project 파일 경로를 직접 지정하는 표준 LSP parameter는 확인되지 않았다. M1 구현은 선택된 `.sln`, `.slnx`, `.csproj` 파일을 검증한 뒤 해당 파일의 directory를 Roslyn LS working directory, `rootUri`, `workspaceFolders`로 사용한다. 명시 파일 선택의 더 정밀한 방식이 확인되면 `IRoslynWorkspaceLoader` 내부만 교체한다.
-
-### 2026-05-17 explicit workspace selection 재확인
-
-M2 large repo readiness 단계에서 설치된 `roslyn-language-server 5.8.0-1.26262.10+036e7a58b9d4348a62b6854544274551ae17ae8c`를 다시 확인했다.
-
-- `roslyn-language-server --help`에는 `.sln`, `.slnx`, `.csproj` 파일 경로를 직접 받는 안정적인 CLI option이 없다.
-- workspace load에 관련된 공개 옵션은 `--autoLoadProjects`뿐이다.
-- 그러나 실제 LSP client들은 initialize/initialized 이후 nonstandard `solution/open` 또는 `project/open` notification으로 선택 파일을 전달한다.
-- 작은 `.csproj`만 있는 fixture에서 `--autoLoadProjects`와 workspace folder만으로는 `workspace/symbol("Calculator")`가 계속 0건이었지만, `project/open` 후에는 `workspace/projectInitializationComplete`가 오고 같은 query가 1건을 반환했다.
-- `.sln`과 `.slnx` fixture도 `solution/open` 후 3초 안에 `workspace/symbol("Calculator")`가 1건을 반환했다.
-- 따라서 MCP 서버는 Roslyn LS를 `--stdio`로 실행하고, `WorkspaceTarget.WorkspaceDirectory`를 working directory/rootUri/workspaceFolders로 전달한 뒤 `WorkspaceTarget.FullPath`를 `solution/open` 또는 `project/open` notification으로 명시 전달한다.
-
-## Agent CLI 사용 계약
-
-이 MCP 서버는 사람이 직접 순서대로 호출하는 API가 아니라 Agent CLI가 계획 중간에 호출하는 도구다. 따라서 "기다리면 언젠가 된다"보다 "현재 무엇을 해야 하는지 명확히 알려주는" 동작이 중요하다.
-
-권장 호출 흐름은 다음과 같다.
-
-1. Agent CLI가 repo root에서 MCP 서버를 실행한다.
-2. 필요할 때 `get_workspace_status` 또는 `list_workspaces`를 호출한다.
-3. 후보가 하나면 `load_solution`/`load_project`를 호출한다. M2+에서는 첫 navigation tool 호출이 자동 로드를 시도할 수도 있다.
-4. 후보가 여러 개면 Agent CLI는 사용자 또는 자체 판단으로 하나를 골라 `load_solution`을 호출한다.
-5. `load_solution`이 반환된 뒤 M2+ navigation/diagnostics tool을 호출한다.
-
-`load_solution`/`load_project`는 오래 걸릴 수 있지만, 호출 자체는 LSP initialize 완료까지만 기다린다. 전체 solution 분석, restore 반영, diagnostics 수집이 끝날 때까지 blocking하지 않는다. Agent CLI는 `get_workspace_status`로 warming 상태를 확인할 수 있다.
-
-상태별 tool 동작은 다음과 같다.
-
-| 상태 | 허용 tool | Roslyn navigation/diagnostics tool 동작 |
-| --- | --- | --- |
-| `NotLoaded` | `list_workspaces`, `load_solution`, `load_project`, `get_workspace_status` | 후보가 하나면 자동 로드 시도, 여러 개면 `workspace_not_loaded` 오류 |
-| `StartingLanguageServer` | `get_workspace_status` | 즉시 `workspace_loading` 오류 반환 |
-| `WorkspaceWarming` | 전체 읽기 tool | best-effort 실행 허용, 결과에 불완전 가능성 표시 |
-| `LoadedWithErrors` | 전체 읽기 tool | best-effort 실행 허용, 결과에 project load error로 인한 불완전 가능성 표시 |
-| `Ready` | 전체 읽기 tool | 정상 실행 |
-| `Failed` | `list_workspaces`, `load_solution`, `load_project`, `get_workspace_status` | 실패 원인과 재시도 안내 반환 |
-
-`StartingLanguageServer`에서 navigation tool을 내부 queue에 넣고 기다리게 하지 않는다. Agent CLI 입장에서는 tool 호출이 길게 매달리는 것보다, `workspace_loading`을 받고 잠시 후 재시도하거나 `get_workspace_status`를 호출하는 편이 예측 가능하다.
-
-반대로 `WorkspaceWarming`에서는 실패를 최소화한다. 이 상태에서는 Roslyn LS가 요청을 받을 수 있으므로, 결과가 완전하지 않을 수 있더라도 가능한 tool은 best-effort로 실행한다. Agent CLI가 이 MCP 서버를 계속 쓰게 하려면 "아직 완전히 준비되지 않았으니 실패"보다 "현재 가능한 결과와 불완전성 표시"가 낫다.
-
-Best-effort 결과는 공통 metadata를 포함한다.
-
-```json
-{
-  "workspaceState": "WorkspaceWarming",
-  "completeness": "partial",
-  "reason": "Workspace is still warming; symbols from projects not loaded yet may be missing.",
-  "retryAfterMs": 30000
-}
-```
-
-`completeness` 값은 다음 중 하나다.
-
-- `complete`: 현재 서버 상태에서 완전한 결과로 판단됨
-- `partial`: 일부 프로젝트/진단/심볼이 아직 반영되지 않았을 수 있음
-- `unknown`: LSP가 결과 완전성을 판단할 신호를 제공하지 않음
-
-`retryAfterMs`는 완료 시간 추정이 아니라 재시도 간격 힌트다. Agent CLI는 partial 결과를 먼저 사용하고, 작업상 더 높은 확신이 필요할 때만 `get_workspace_status` 또는 같은 tool을 재시도한다.
-
-이 best-effort 계약은 read-only tool에만 적용한다. 이 프로젝트는 write/refactoring tool을 제공하지 않으므로 partial 상태에서 파일 변경을 적용해야 하는지 판단하는 문제를 서버 surface에 올리지 않는다. Agent가 변경이 필요하다고 판단하면 일반 파일 편집 도구로 수정하고, 이 MCP 서버는 수정 전후의 Roslyn context 확인에만 사용한다.
-
-tool별 warming 중 신뢰도는 다르게 본다.
-
-- `document_symbols`: 파일 단위 구조라 상대적으로 안정적이다.
-- `hover`: syntax와 이미 로드된 semantic 정보 범위에서는 동작하지만, 타입/참조 정보가 덜 로드됐으면 빈약할 수 있다.
-- `go_to_definition`: 같은 프로젝트나 이미 로드된 참조 범위에서는 동작할 수 있지만, 아직 로드되지 않은 project/metadata 참조는 누락될 수 있다.
-- `find_references`: cross-project 결과가 빠질 수 있어 warming 중에는 partial로 표시한다.
-- `find_implementations`: cross-project 구현 결과가 빠질 수 있어 warming 중에는 partial로 표시한다.
-- `find_symbols`: 실행은 허용하지만 solution 전체 symbol index가 완성되지 않았을 수 있어 partial 또는 unknown으로 표시한다.
-- `diagnostics`: notification이 도착한 파일 기준으로만 신뢰하고, workspace 전체 diagnostics는 `Ready` 전까지 partial로 본다.
-
-자동 로드는 `NotLoaded` 상태에서만 허용한다. 자동 로드 중 다른 tool 호출이 들어오면 다음 정책을 따른다.
-
-- 첫 호출이 자동 로드를 시작한 경우, 그 호출은 initialize 완료 후 원래 요청을 한 번 실행한다.
-- 동시에 들어온 다른 Roslyn tool 호출은 queue에 쌓지 않고 `workspace_loading`을 반환한다.
-- Agent CLI는 이 오류를 retry 가능한 상태로 취급한다.
-
-오류 예시는 다음과 같다.
-
-```json
-{
-  "error": "workspace_loading",
-  "message": "Workspace is starting. Call get_workspace_status and retry when state is LspReady, WorkspaceWarming, LoadedWithErrors, or Ready.",
-  "workspaceState": "StartingLanguageServer",
-  "retryAfterMs": 1000
-}
-```
-
-현재 코드의 오류 메시지는 enum 호환성을 위해 `LspReady`를 함께 언급하지만, 실제 정상 load 전이는 `WorkspaceWarming`부터 관찰된다.
-
-warming 상태에서의 결과 예시는 다음과 같다.
-
-```json
-{
-  "workspaceState": "WorkspaceWarming",
-  "completeness": "partial",
-  "items": [
-    {
-      "file": "src/App/Program.cs",
-      "line": 12,
-      "column": 5
-    }
-  ],
-  "truncated": false
-}
-```
-
-이 계약의 의도는 Agent CLI가 다음 행동을 쉽게 결정하게 하는 것이다. `workspace_loading`은 재시도 가능한 일시 상태이고, `workspace_not_loaded`는 먼저 `load_solution`/`load_project`가 필요한 상태이며, `workspace_failed`는 사용자에게 설치/경로/프로젝트 로드 문제를 보여줘야 하는 상태다.
-
-## LSP 클라이언트
-
-`LspClient`는 JSON-RPC transport와 request correlation을 담당한다.
-
-주요 내부 구조:
-
-```csharp
-private long nextId;
-private readonly ConcurrentDictionary<long, PendingRequest> pendingRequests = new();
-private readonly SemaphoreSlim inFlightLimit;
-private readonly SemaphoreSlim expensiveLimit;
-private readonly SemaphoreSlim writeLock = new(1, 1);
-```
-
-기능:
-
-- `Content-Length` 기반 LSP framing 읽기/쓰기
-- request id 생성
-- response id와 `TaskCompletionSource` 연결
-- notification dispatch
-- `workspace/projectInitializationComplete` 수신 처리
-- timeout/cancellation 처리
-- 프로세스 종료 시 pending request 전체 실패 처리
-- pending request 개수 상한
-- method별 동시성 제한
-- result size 제한과 truncation 표시
-
-LSP 메시지는 `System.Text.Json`을 사용한다. 요청/응답 전체를 거대한 클래스 계층으로 만들지 않고, 많이 쓰는 요청/응답만 typed record로 둔다. 나머지는 `JsonElement`로 받은 뒤 tool별 mapper에서 필요한 필드만 읽는다.
-
-대규모 repo에서 `workspace/symbol`, `textDocument/references`, diagnostics 관련 응답은 커질 수 있다. 현재 `LspClient.RequestAsync`는 timeout, cancellation token, expensive request 여부를 받는다.
-
-```csharp
-Task<JsonElement> RequestAsync(
-    string method,
-    object? parameters,
-    TimeSpan timeout,
-    CancellationToken cancellationToken,
-    bool isExpensive = false);
-```
-
-LSP 자체가 `MaxResults`를 지원하지 않는 method도 있으므로, 응답 mapper에서 결과를 잘라내고 `truncated: true`를 tool 결과에 포함한다. LSP message body에는 `LspFraming.DefaultMaxContentLength` 기반 전역 상한을 적용해 과대 payload를 read loop fault로 정리한다.
-
-초기 typed model:
-
-- `InitializeParams`
-- `InitializeResult`
-- `TextDocumentIdentifier`
-- `TextDocumentPositionParams`
-- `Location`
-- `Range`
-- `Position`
-- `Hover`
-- `Diagnostic`
-- `DocumentSymbol`
-- `SymbolInformation`
-
-Roslyn 확장 notification:
-
-- `workspace/projectInitializationComplete`
-  - 수신 시 `WorkspaceSession`의 상태를 `Ready`로 전환한다.
-  - notification이 오지 않더라도 LSP 요청은 계속 best-effort로 처리한다.
-  - notification 이름은 Roslyn source의 `ProjectInitializationHandler.ProjectInitializationCompleteName`에 맞춘다.
-
-## 문서 동기화 M2+
-
-Agent CLI는 MCP 서버 밖에서 파일을 수정할 수 있다. LSP 서버는 편집기가 보내는 `didOpen`/`didChange` 이벤트를 기대하므로, tool 호출 전에 파일 상태를 맞춰야 한다.
-
-`DocumentStateManager`는 파일별로 다음 정보를 저장한다.
-
-```csharp
-public sealed record OpenDocumentState(
-    string Uri,
-    string FullPath,
-    int Version,
-    DateTimeOffset LastWriteTime,
-    long Length,
-    DateTimeOffset LastAccessedAt);
-```
-
-동작:
-
-- 위치 기반 tool 호출 전 `EnsureOpenAsync(path)` 실행
-- 처음 보는 파일이면 disk에서 읽고 `textDocument/didOpen` 전송
-- 이미 열린 파일이면 last write time/length를 확인
-- 변경됐으면 disk에서 다시 읽고 full document `textDocument/didChange` 전송
-- tool 입력의 line/column은 1-based로 받고 LSP에는 0-based로 변환
-
-초기 구현은 incremental edit 추적을 하지 않는다. Agent가 외부에서 파일을 바꾸는 환경이므로 full document sync가 단순하고 안전하다.
-
-대규모 repo 대응 규칙:
-
-- 열린 문서는 LRU로 관리하고 기본 상한을 둔다. 예: 200개.
-- 상한을 넘으면 오래 쓰지 않은 문서에 `textDocument/didClose`를 보낸다.
-- 매우 큰 파일은 기본적으로 열지 않는다. 예: 2MB 초과 파일은 사용자 오류로 처리하고 `--max-document-bytes`로 조정할 수 있게 한다.
-- 파일 변경 확인은 last write time/length를 먼저 보고, 필요한 경우에만 내용을 읽는다.
-- full document sync는 단순하지만 큰 파일에서 비싸므로, 위치 기반 read tool에 필요한 파일만 연다.
-
-## MCP Tool 설계
-
-MCP tool 클래스는 얇게 유지한다. 입력 검증과 출력 DTO 변환은 tool layer에서 하되, Roslyn/LSP 상태 변경은 `WorkspaceSession`에 위임한다.
-
-### WorkspaceTools
-
-- `list_workspaces`
-  - 입력: optional `refresh`
-  - root, solution 후보, project 후보 반환
-  - `refresh: false`이면 캐시된 후보를 반환하고, `refresh: true`이면 scan 제한 안에서 다시 탐색
-
-- `load_solution`
-  - 입력: `path`
-  - `.sln` 또는 `.slnx`만 허용
-  - 성공 시 로드된 target과 Roslyn LS 상태 반환
-
-- `load_project`
-  - 입력: `path`
-  - `.csproj`만 허용
-  - 성공 시 로드된 target과 Roslyn LS 상태 반환
-
-- `get_workspace_status`
-  - root, 후보 목록, 현재 target, load state, Roslyn LS process 상태 반환
-
-### NavigationTools M2+
+Navigation tools:
 
 - `document_symbols`
-  - 입력: `file`
-  - LSP: `textDocument/documentSymbol`
-
 - `hover`
-  - 입력: `file`, `line`, `column`
-  - LSP: `textDocument/hover`
-
 - `go_to_definition`
-  - 입력: `file`, `line`, `column`
-  - LSP: `textDocument/definition`
-
+- `peek_definition`
 - `find_references`
-  - 입력: `file`, `line`, `column`, `includeDeclaration`
-  - LSP: `textDocument/references`
-
 - `peek_references`
-  - 입력: `file`, `line`, `column`, optional `includeDeclaration`, optional `maxResults`, optional `contextLines`
-  - LSP: `textDocument/references`
-  - `find_references`의 bounded location list에 root 내부 source snippet을 함께 반환한다.
-
 - `find_implementations`
-  - 입력: `file`, `line`, `column`, optional `maxResults`
-  - LSP: `textDocument/implementation`
-  - 위치 기반 read-only tool이다. symbol name 검색이 아니라 현재 문서 위치를 기준으로 interface, abstract member, type 구현 위치를 찾는다.
-  - 전체 구현체 탐색은 interface/abstract/base contract의 선언 위치나 그 contract로 정적으로 타입 지정된 사용 위치에서 호출해야 한다. 구체 class/member 구현 위치에서 호출하면 Roslyn LS가 자기 자신만 반환할 수 있다.
-  - MCP tool description과 결과의 `usageHint`에 이 호출 위치 제약을 노출해 client가 문서를 따로 읽지 않아도 오해하지 않게 한다.
-  - 기본 결과 상한은 200개이며 서버 hard cap은 1000개다.
-  - `WorkspaceWarming`에서는 best-effort로 실행하고 cross-project 구현 누락 가능성을 metadata reason에 표시한다.
-
-- `find_symbols`
-  - 입력: `query`, optional `maxResults`, optional `kindFilter`, optional `matchMode`, optional `includePathPrefixes`
-  - LSP: `workspace/symbol`
-  - 기본 결과 상한은 300개이며 서버 hard cap은 1000개다.
-  - `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 `SymbolKindExtensions.ToMcpName()` 출력 이름을 대소문자 무시로 받는다.
-  - 빈 filter list나 알 수 없는 kind 이름은 `invalid_kind_filter`로 거부한다.
-  - `matchMode`는 `default`, `exact`, `prefix`, `contains`를 받는다. 생략 또는 `null`이면 `default`이고, 빈 문자열이나 알 수 없는 값은 `invalid_match_mode`로 거부한다.
-  - `includePathPrefixes`는 root-relative path prefix 목록을 받는다. `/`와 `\`는 normalize되고, prefix와 정확히 일치하거나 `/` segment boundary 아래에 있는 symbol location만 유지한다. 빈 배열, 빈 entry, root 밖 prefix는 `invalid_path_prefix`로 거부한다.
-  - `kindFilter`, `matchMode`, `includePathPrefixes`는 LSP 요청 이후 MCP 쪽에서 mappable workspace symbol 결과에 적용한다. Roslyn LS `workspace/symbol` 요청은 같은 query로 호출되며 검색 비용 절감을 보장하지 않는다.
-  - `matchMode`는 simple symbol `Name`에만 적용하며 `ContainerName`, qualified name, file path, source text는 보지 않는다.
-  - `includePathPrefixes`가 지정되면 location이 없는 workspace symbol은 path match를 할 수 없으므로 반환하지 않는다.
-  - `maxResults`는 kind/match/path prefix filtering 이후 적용한다.
-  - `totalKnown`, `returned`, `truncated`는 모든 필터 후 mappable 결과 기준이며, `totalUnfilteredKnown`은 필터 전 mappable 결과 수다. 필터가 없으면 두 total 값은 같다.
-  - `WorkspaceWarming`에서도 best-effort로 실행한다.
-  - warming 중이면 결과에 `completeness: "partial"` 또는 `unknown`을 포함한다.
-  - 결과가 비어 있어도 이것만으로 "심볼이 없다"고 단정하지 않도록 `reason`을 함께 반환한다.
-
 - `get_call_hierarchy`
-  - 입력: `file`, `line`, `column`, `direction`, optional `maxResults`
-  - LSP: `textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `callHierarchy/outgoingCalls`
-  - incoming은 특정 callable을 호출하는 위치를, outgoing은 특정 callable 내부에서 호출하는 대상을 반환한다.
-  - 직접 depth-1 호출 관계만 반환하고 recursive depth/maxDepth는 제공하지 않는다.
-  - follow-up 요청에는 prepare 응답의 원본 `CallHierarchyItem`을 보존해 전달한다.
-  - 대형 solution에서 호출 그래프 폭주를 막기 위해 expensive request limit, edge result cap, per-edge call-site cap을 적용한다.
-  - `WorkspaceWarming`에서도 best-effort로 실행하고 partial/truncated metadata를 반환한다.
-
 - `get_type_hierarchy`
-  - 입력: `file`, `line`, `column`, `direction`, optional `maxDepth`, optional `maxResults`
-  - LSP: `textDocument/prepareTypeHierarchy`, `typeHierarchy/supertypes`, `typeHierarchy/subtypes`
-  - `direction`은 `supertypes`, `subtypes`, `both`를 지원한다.
-  - `maxDepth` 기본값은 2이고 서버 hard cap은 5다. `maxResults`는 반환 edge 수를 제한한다.
-  - follow-up 요청에는 prepare/follow-up 응답의 원본 `TypeHierarchyItem`을 보존해 전달한다.
-  - root 밖, non-file, invalid URI item은 반환 edge에서 제외한다.
-  - result cap 때문에 다른 방향이나 더 깊은 follow-up을 요청하지 못한 경우도 `truncated`로 표시한다.
-  - base type, derived type, interface implementation 같은 타입 구조 탐색에 집중한다.
-  - 호출자/피호출자 분석은 `get_call_hierarchy`가 담당하므로 역할이 겹치지 않는다.
+- `find_symbols`
 
-### DiagnosticsTools M2+
+Diagnostics tools:
 
 - `diagnostics`
-  - 입력: optional `file`, optional `severity`, optional `maxResults`
-  - file이 있으면 해당 문서를 open/sync하고 마지막 diagnostics 반환
-  - file이 없으면 `DiagnosticStore`의 요약과 제한된 결과만 반환
 
-진단은 LSP `textDocument/publishDiagnostics` notification을 bounded background queue에 넣은 뒤 worker가 `DiagnosticStore`에 저장한다. notification handler는 queue enqueue 후 즉시 반환해서 LSP read loop가 hover, definition 같은 request response 처리를 늦추지 않게 한다. Queue overflow 정책은 `drop_newest_when_full`이다. Queue가 가득 차면 새 publishDiagnostics notification을 버리고 기존 pending notification을 유지한다. `get_workspace_status`의 dropped count는 queue overflow 때문에 enqueue되지 못한 incoming notification 수를 의미한다. `get_workspace_status`는 diagnostics queue capacity, pending, processed, dropped, stale count와 overflow policy를 반환한다. Workspace reload 시 generation을 증가시키고 queue를 비우며 store를 clear해서 이전 workspace diagnostics가 새 workspace store에 섞이지 않게 한다. stale generation incoming notification과 workspace reset으로 clear된 notification은 dropped가 아니라 stale로 집계한다. LSP notification handler는 구독 시점의 generation을 캡처하고 enqueue 시 함께 전달하므로, unsubscribe 직후 이전 read loop가 이미 잡아 둔 delegate를 호출해도 stale generation으로 discard된다. 따라서 `diagnostics` tool 결과는 마지막으로 처리 완료된 publishDiagnostics 기준이다. 현재 `diagnostics` tool은 별도 settle 대기 없이 현재 처리된 notification만 반환하며, 안정적인 settle 전략은 후속 tuning 후보로 둔다.
+Resources:
 
-대규모 solution에서 workspace 전체 diagnostics를 무제한 반환하지 않는다.
+- `roslyn://server/guide`
+- `roslyn://server/capabilities`
 
-- 기본은 현재 열린 문서와 최근 diagnostics가 들어온 파일 중심으로 반환한다.
-- workspace 전체 요청은 `scope: "workspace"`처럼 명시적으로 구분한다.
-- `scope: "workspace"`도 기본 `maxResults`를 둔다. 예: 200개.
-- 결과에는 `totalKnown`, `returned`, `truncated`, `lastUpdatedAt`을 포함한다.
-- `DiagnosticStore`는 파일별 diagnostics를 bounded cache로 저장한다. 오래된 항목은 요약 카운트만 남기고 상세 목록은 버릴 수 있다.
+## Result Metadata
 
-## Tool 결과 포맷
-
-Agent가 쓰기 쉽게 모든 경로는 기본적으로 root 상대 경로로 반환한다.
-
-위치는 다음 형태를 사용한다.
-
-```json
-{
-  "file": "src/App/Program.cs",
-  "line": 12,
-  "column": 5
-}
-```
-
-line/column은 tool 입출력 모두 1-based로 통일한다. LSP와의 0-based 변환은 내부에서만 한다.
-
-여러 결과를 반환하는 tool은 불필요한 원문 LSP payload를 그대로 노출하지 않고, 필요한 필드만 정리한다.
-
-```json
-{
-  "symbol": "MyService.DoWork",
-  "kind": "method",
-  "location": {
-    "file": "src/App/MyService.cs",
-    "line": 34,
-    "column": 17
-  }
-}
-```
-
-대량 결과 tool은 공통 metadata를 붙인다.
-
-```json
-{
-  "items": [],
-  "totalKnown": 1532,
-  "returned": 100,
-  "truncated": true,
-  "nextCursor": "optional"
-}
-```
-
-초기 구현은 실제 cursor 기반 pagination이 어려운 LSP method에서는 `nextCursor`를 생략한다. 대신 `maxResults`와 더 좁은 query를 유도하는 메시지를 포함한다.
-
-## 오류 처리
-
-사용자가 바로 고칠 수 있는 문제는 `UserFacingException`으로 표현한다.
-
-예시:
-
-- Roslyn LS 미설치
-- workspace 후보가 여러 개라 명시적 선택 필요
-- 파일이 root 밖에 있음
-- 파일이 존재하지 않음
-- Roslyn LS initialize timeout
-- 요청 결과가 너무 큼
-- workspace scan이 시간 또는 개수 상한에 걸림
-
-내부 버그나 예상하지 못한 LSP 응답은 로그에는 상세히 남기고, MCP tool 결과에는 짧은 오류와 correlation id만 반환한다.
-
-오류 메시지는 가능하면 다음 행동을 포함한다.
+Read tool 결과는 가능한 한 다음 metadata를 포함한다.
 
 ```text
-Multiple solutions were found. Call load_solution with one of:
-- App.sln
-- Samples/Samples.sln
+workspaceState
+completeness
+reason
+retryAfterMs
+truncated
+totalKnown
+returned
 ```
 
-## 동시성
+`completeness`는 일반적으로 `complete`, `partial`, `unknown` 중 하나다. Warming 중이거나 result cap에 걸리거나 root 밖 위치를 제외한 경우 metadata로 드러낸다.
 
-MCP 클라이언트가 tool을 병렬 호출할 수 있으므로 상태 변경은 직렬화한다.
+`find_symbols`와 `get_call_hierarchy`처럼 MCP 쪽 필터가 있는 tool은 필터 전 mappable 결과 수를 `totalUnfilteredKnown`으로 함께 제공한다.
 
-- `WorkspaceSession`은 `SemaphoreSlim stateLock`으로 load/restart를 보호한다.
-- `LspClient` write는 `writeLock`으로 한 번에 하나만 쓴다.
-- read loop는 단일 background task로 유지한다.
-- 여러 읽기 tool은 같은 LSP process에 병렬 request를 보낼 수 있다.
-- `load_solution`/`load_project` 실행 중에는 다른 Roslyn tool을 queue에 넣지 않고 즉시 `workspace_loading`을 반환한다.
+## Tool별 계약
 
-대규모 repo에서는 병렬 요청이 Roslyn LS를 쉽게 포화시킬 수 있으므로 기본 제한을 둔다.
+`find_symbols`:
 
-- 전체 LSP in-flight request 상한. 예: 16개.
-- 비싼 method 상한. 예: `workspace/symbol`, `textDocument/references`, diagnostics 관련 요청은 2개.
-- load/restart 중에는 새 navigation request를 받지 않는다.
-- timeout은 method별 기본값을 둔다.
-  - hover/document symbols: 10초
-  - definition/references: 30초
-  - workspace symbol: 30초
-  - load initialize: 60초 이상
-- MCP tool cancellation이 들어오면 LSP `$/cancelRequest`를 보낸다.
+- query는 최소 2자 이상이다.
+- `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
+- `matchMode`는 `default`, `exact`, `prefix`, `contains`를 지원한다.
+- `includePathPrefixes`는 root-relative path prefix 목록으로 결과 위치를 좁힌다.
+- kind, match, path-prefix filter는 Roslyn LS 응답 뒤 MCP 쪽에서 적용하므로 Roslyn LS 검색 비용 절감을 보장하지 않는다.
 
-## 로깅
+`get_call_hierarchy`:
 
-MCP stdio는 프로토콜 채널이므로 일반 로그를 stdout에 쓰면 안 된다.
+- `textDocument/prepareCallHierarchy` 뒤 `callHierarchy/incomingCalls`, `callHierarchy/outgoingCalls`를 호출한다.
+- `direction`은 `incoming`, `outgoing`, `both`다.
+- recursive depth는 제공하지 않는다. 직접 depth-1 edge만 반환한다.
+- `kindFilter`는 edge counterpart kind에 MCP 쪽에서 적용한다.
 
-- 기본 로그는 stderr로 보낸다.
-- `--log-file`이 있으면 파일에도 쓴다.
-- Roslyn LS stderr는 별도 logger category로 남긴다.
-- LSP request/response body 전체 로깅은 기본 비활성화한다.
-- trace 모드에서만 method, id, duration, payload size를 남긴다.
-- 로그 파일을 사용할 경우 크기 제한과 rolling 정책을 둔다.
+`get_type_hierarchy`:
+
+- `textDocument/prepareTypeHierarchy` 뒤 `typeHierarchy/supertypes`, `typeHierarchy/subtypes`를 호출한다.
+- `direction`은 `supertypes`, `subtypes`, `both`다.
+- `maxDepth`, `maxResults`로 bounded BFS를 제한한다.
+
+`peek_definition`과 `peek_references`:
+
+- location과 함께 root 내부 source snippet을 붙인다.
+- root 밖 또는 읽을 수 없는 파일은 snippet을 생략하거나 snippet error로 표시한다.
+- snippet line 수는 option으로 제한한다.
+
+`diagnostics`:
+
+- 현재까지 처리된 publish diagnostics cache만 조회한다.
+- workspace-wide full diagnostic computation을 시작하지 않는다.
+- severity filter와 max result cap을 적용한다.
+
+## Diagnostics Queue
+
+`textDocument/publishDiagnostics` notification은 LSP read loop에서 직접 무거운 작업을 하지 않고 `DiagnosticNotificationProcessor`의 bounded queue로 넘긴다.
+
+계약:
+
+- overflow policy는 `drop_newest_when_full`이다.
+- pending, processed, dropped, stale count와 capacity를 `get_workspace_status`에 노출한다.
+- workspace reload 시 generation이 증가한다.
+- 이전 generation notification은 stale로 집계하고 새 `DiagnosticStore`에 섞지 않는다.
+
+## Error Handling
+
+사용자가 바로 이해할 수 있는 오류는 `UserFacingException`과 code/message로 반환한다.
+
+대표 code:
+
+- `workspace_loading`
+- `workspace_not_loaded`
+- `workspace_ambiguous`
+- `workspace_not_found`
+- `invalid_path`
+- `invalid_position`
+- `invalid_option`
+- `language_server_not_found`
+- `language_server_failed`
+
+Tool 구현은 예외 stack trace를 MCP stdout에 흘리지 않는다. Debugging 정보는 log channel에 남긴다.
 
 ## 테스트 전략
 
-### 단위 테스트
+Fast tests:
 
-M1 단위 테스트:
+- CLI parsing
+- path guard
+- workspace scanner
+- git scanner
+- LSP framing
+- LSP client request/notification 흐름
+- document state/path mapping
+- diagnostics store/queue
+- MCP tool result mapping and metadata
 
-- `PathGuard` root escape 방지
-- `WorkspaceScanner` 후보 탐색과 제외 디렉터리 처리
-- `WorkspaceScanner` 시간/개수 상한과 `truncated` 처리
-- LSP `Content-Length` framing parser
-- JSON-RPC request/response correlation
-- `WorkspaceSession` 기본 상태 전이
+Integration tests:
 
-M2+ 단위 테스트:
+- `roslyn-language-server` 설치 환경에서만 실행
+- 미설치 시 명확한 skip reason을 남긴다.
 
-- line/column 1-based/0-based 변환
-- `DocumentStateManager` didOpen/didChange 판단
-- `DocumentStateManager` LRU didClose 처리
-- `DiagnosticStore` maxResults/truncation 처리
+Smoke tests:
 
-### 통합 테스트
+- `scripts/smoke-tests/`의 실제 repo driver를 사용한다.
+- raw output은 `.local/` 아래에 두고 commit하지 않는다.
+- 과거 결과 원문은 `docs/archive/smoke-tests/`에 보관한다.
 
-현재 Roslyn LS integration smoke는 `tests/RoslynMcpServer.Tests` 안에 작은 temporary sample solution을 구성해서 실행한다. 별도 integration test project는 아직 없다.
+기본 검증:
 
-M1 통합 테스트 검증 흐름:
+```powershell
+dotnet format roslyn-mcp-server.sln --verify-no-changes
+dotnet build roslyn-mcp-server.sln -p:UseAppHost=false -p:OutDir=.local\build-out\
+dotnet test tests\RoslynMcpServer.Tests\RoslynMcpServer.Tests.csproj -p:UseAppHost=false -p:OutDir=.local\test-out\
+```
 
-1. fixture root에서 서버 서비스를 직접 구성한다.
-2. `list_workspaces`가 sample solution을 찾는지 확인한다.
-3. `load_solution`이 Roslyn LS를 시작하고 initialize하는지 확인한다.
-4. `get_workspace_status`가 target과 load state를 반환하는지 확인한다.
-5. Roslyn LS가 설치되지 않은 환경에서는 통합 테스트를 skip하고, skip 이유에 설치 명령을 출력한다.
+## 열린 결정
 
-M2+ 통합 테스트 검증 흐름:
-
-1. `document_symbols`, `hover`, `go_to_definition`, `find_references`, `peek_references`, `find_implementations`, `find_symbols`를 호출한다.
-2. 결과 경로와 line/column이 root 상대 및 1-based인지 확인한다.
-3. `diagnostics` publish smoke는 현재 Roslyn LS fixture에서 도착 시점이 환경 의존적이라 안정적인 settle 전략이 정해질 때까지 skip/deferred 테스트로 둔다.
-
-대규모 repo 회귀 테스트는 실제 거대 solution을 fixture로 넣지 않는다. 대신 많은 디렉터리와 project 파일을 생성하는 synthetic fixture로 scanner 상한, 캐시, truncation, 명시적 load 요구를 검증한다. Roslyn LS 통합 테스트는 작은 sample solution으로 유지한다.
-
-## 구현 순서
-
-M0/M1, M2 read-only tool, M3 사용자/클라이언트 사용성 정리는 완료된 상태다. 아래 목록은 구현 이력과 현재 후속 작업 기준을 함께 나타낸다.
-
-1. solution/project 골격 생성
-2. `net10.0` app project 설정
-3. CLI 옵션, root 검증, logging 구성
-4. MCP hello/status tool
-5. workspace scanner와 `list_workspaces`
-6. scanner cache, timeout, truncation
-7. Roslyn LS locator와 미설치 오류
-8. Roslyn LS 실제 동작 spike 수행 및 결과 기록
-9. process start/stop과 LSP initialize/shutdown
-10. `IRoslynWorkspaceLoader` 구현
-11. `load_solution`, `load_project`, `get_workspace_status`
-12. LSP framing과 request/response 테스트
-13. request concurrency limit와 cancellation
-14. `README.md`는 짧은 영어 소개로 유지
-15. M1 범위 사용성 오류 메시지 정리
-16. M2a read-tool foundation, document sync, `document_symbols`, `hover`
-17. M2b `go_to_definition`, `find_references`
-18. M2c `find_symbols`
-19. M2d `diagnostics`, `DiagnosticStore`
-20. M2 large repo readiness 일부: explicit workspace warning, LSP fault handling, scanner hardening, CLI tuning
-21. M3 사용자 설치/설정 문서와 README 시작 흐름 정리
-22. M3 `solution_overview` 평가와 M4 이후 후보 보류
-23. M3 PowerShell, Semantic Kernel, ASP.NET Core stdio smoke 기록
-24. M4 startup initial solution load
-25. M4 diagnostics notification offload
-26. M5 `peek_references`
-27. M5 `get_call_hierarchy`
-28. M5 `get_type_hierarchy`
-29. M5 `find_symbols` `includePathPrefixes` filter
-
-후속 구현 후보:
-
-- opt-in large repo 검증과 default tuning
-- 필요 시 추가 실제 MCP client smoke 반복
-- 대형 solution startup 성능 측정과 상태 관측성 강화
-- Roslyn LS crash/restart 처리
-- `solution_overview` M4 이후 구현 여부 판단
-- best-effort metadata와 상태 관측성 품질 강화
-- `includePathPrefixes`를 references/implementations 계열 location-list tool로 확장할지 판단
-
-`get_completions`는 LSP `textDocument/completion`을 읽기 전용으로 호출할 수는 있지만, IDE 자동완성처럼 코드 작성 후보를 제공하는 write-adjacent 도구에 가깝다. 따라서 현재 architecture 방향인 best-effort read-only context provider의 후속 구현 후보에는 넣지 않는다.
-
-## 열어둘 결정
-
-- MCP 서버 자체의 사용자 배포 채널
-- 대형 solution에서 diagnostics settle timeout 기본값
-- workspace scan depth/time/result 상한의 실제 대형 repo 기준 재조정 여부
-- method별 timeout과 in-flight request 상한의 실제 대형 repo 기준 재조정 여부
-
-## 참고 코드
-
-- Roslyn `LanguageServerProjectLoader`: https://github.com/dotnet/roslyn/blob/main/src/LanguageServer/Microsoft.CodeAnalysis.LanguageServer/HostWorkspace/LanguageServerProjectLoader.cs
-  - design-time build 중 LSP queue responsive 유지
-  - first design-time build 전 primordial project로 요청 처리
-  - background project reload queue
-
-- Roslyn `ProjectInitializationHandler`: https://github.com/dotnet/roslyn/blob/main/src/LanguageServer/Microsoft.CodeAnalysis.LanguageServer/HostWorkspace/ProjectInitializationHandler.cs
-  - `workspace/projectInitializationComplete` notification 전송
-  - project initialization 완료 관찰
+- opt-in large repo 검증 결과에 따른 기본 timeout/result cap tuning
+- 대형 solution startup 성능 관측 지표
+- Roslyn LS crash/restart 처리 정책
+- `solution_overview`를 read-only context provider 범위 안에서 제공할 가치가 있는지
+- path narrowing option을 `find_symbols` 외 tool로 확장할지
