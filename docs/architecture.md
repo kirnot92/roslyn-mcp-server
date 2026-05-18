@@ -228,7 +228,7 @@ returned
 
 `completeness`는 일반적으로 `complete`, `partial`, `unknown` 중 하나다. Warming 중이거나 result cap에 걸리거나 root 밖 위치를 제외한 경우 metadata로 드러낸다.
 
-`find_symbols`와 `get_call_hierarchy`처럼 MCP 쪽 필터가 있는 tool은 필터 전 mappable 결과 수를 `totalUnfilteredKnown`으로 함께 제공한다.
+`find_references`, `peek_references`, `find_implementations`, `find_symbols`, `get_call_hierarchy`, `get_type_hierarchy`처럼 MCP 쪽 필터가 있는 tool은 필터 전 mappable 결과 수를 `totalUnfilteredKnown`으로 함께 제공한다.
 
 ## Tool별 계약
 
@@ -246,12 +246,14 @@ returned
 - `direction`은 `incoming`, `outgoing`, `both`다.
 - recursive depth는 제공하지 않는다. 직접 depth-1 edge만 반환한다.
 - `kindFilter`는 edge counterpart kind에 MCP 쪽에서 적용한다.
+- `includePathPrefixes`는 edge counterpart location에 MCP 쪽에서 적용한다. `incoming`은 caller `from`, `outgoing`은 callee/accessed `to`를 기준으로 필터링한다.
 
 `get_type_hierarchy`:
 
 - `textDocument/prepareTypeHierarchy` 뒤 `typeHierarchy/supertypes`, `typeHierarchy/subtypes`를 호출한다.
 - `direction`은 `supertypes`, `subtypes`, `both`다.
 - `maxDepth`, `maxResults`로 bounded BFS를 제한한다.
+- `includePathPrefixes`는 discovered follow-up type location에 MCP 쪽에서 적용한다. 제외된 follow-up type은 더 traversing하지 않는다.
 
 `peek_definition`과 `peek_references`:
 

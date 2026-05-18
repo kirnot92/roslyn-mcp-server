@@ -76,14 +76,16 @@ Read-only Roslyn tools:
 - `peek_references` - Return reference locations plus bounded source snippets.
 - `find_implementations` - Return implementation locations from an interface,
   abstract member, or base contract position. Calling it on a concrete
-  implementation may legitimately return only that implementation.
+  implementation may legitimately return only that implementation. Results can
+  be narrowed with root-relative `includePathPrefixes`.
 - `get_call_hierarchy` - Return direct depth-1 incoming callers, outgoing
   callees, or both for a method, constructor, or property accessor position,
   optionally filtering returned edge counterparts by kind: `method`,
-  `constructor`, `property`, `event`, `operator`, or `field`.
+  `constructor`, `property`, `event`, `operator`, or `field`, and by
+  root-relative `includePathPrefixes`.
 - `get_type_hierarchy` - Return base type, derived type, or interface
   implementation hierarchy edges for a type position, with bounded breadth-first
-  traversal depth and result caps.
+  traversal depth, result caps, and optional root-relative `includePathPrefixes`.
 - `find_symbols` - Search workspace symbols by name, optionally filtering
   returned results by kind such as `class`, `interface`, `method`, `property`,
   or `field`, and by symbol-name `matchMode`: `default`, `exact`, `prefix`,

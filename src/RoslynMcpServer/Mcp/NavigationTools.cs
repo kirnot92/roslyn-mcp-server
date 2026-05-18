@@ -323,11 +323,14 @@ public sealed partial class NavigationTools(
         int column,
         [Description("Positive implementation result cap; defaults to 200 and is capped by the server.")]
         int? maxResults = null,
+        [Description("Optional root-relative path prefixes used to keep only implementation locations at or under those paths. This is MCP-side filtering after Roslyn LS responds.")]
+        string[]? includePathPrefixes = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var effectiveMaxResults = NormalizeImplementationMaxResults(maxResults);
+            var parsedIncludePathPrefixes = ParseIncludePathPrefixes(includePathPrefixes);
             var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/implementation",
@@ -340,11 +343,12 @@ public sealed partial class NavigationTools(
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
-            var locations = MapLocations(response, "textDocument/implementation", effectiveMaxResults);
+            var locations = MapLocations(response, "textDocument/implementation", effectiveMaxResults, parsedIncludePathPrefixes);
             var metadata = CreateMetadata(request.Context.State, ToolKind.Implementations, locations.Truncated);
             return new ImplementationsResult(
                 locations.Items,
                 locations.TotalKnown,
+                locations.TotalUnfilteredKnown,
                 locations.Returned,
                 "Use interface/abstract/base contract positions; concrete implementation positions may return only themselves.",
                 metadata.WorkspaceState,
@@ -360,7 +364,7 @@ public sealed partial class NavigationTools(
     }
 
     [McpServerTool(Name = "get_call_hierarchy")]
-    [Description("Use when you have an exact C# callable position, such as a method, constructor, property accessor, event, or operator, and need direct depth-1 incoming callers, outgoing callees, or both. This is not recursive; kindFilter reduces returned edges after Roslyn LS responds, not request cost.")]
+    [Description("Use when you have an exact C# callable position, such as a method, constructor, property accessor, event, or operator, and need direct depth-1 incoming callers, outgoing callees, or both. This is not recursive; kindFilter and includePathPrefixes reduce returned edges after Roslyn LS responds, not request cost.")]
     public async Task<object> GetCallHierarchy(
         [Description(FileParameterDescription)]
         string file,
@@ -374,6 +378,8 @@ public sealed partial class NavigationTools(
         int? maxResults = null,
         [Description("Optional edge counterpart MCP symbol kind names to keep, such as method, constructor, property, event, operator, or field.")]
         string[]? kindFilter = null,
+        [Description("Optional root-relative path prefixes used to keep only edges whose direction-specific counterpart is at or under those paths. This is MCP-side filtering after Roslyn LS responds.")]
+        string[]? includePathPrefixes = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -381,6 +387,7 @@ public sealed partial class NavigationTools(
             var parsedDirection = ParseCallHierarchyDirection(direction);
             var effectiveMaxResults = NormalizeCallHierarchyMaxResults(maxResults);
             var parsedKindFilter = ParseCallHierarchyKindFilter(kindFilter);
+            var parsedIncludePathPrefixes = ParseIncludePathPrefixes(includePathPrefixes);
             var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
             var prepareResponse = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/prepareCallHierarchy",
@@ -429,6 +436,7 @@ public sealed partial class NavigationTools(
                         root.Symbol,
                         CallHierarchyDirection.Incoming,
                         parsedKindFilter,
+                        parsedIncludePathPrefixes,
                         effectiveMaxResults,
                         edges,
                         ref totalUnfilteredKnown,
@@ -450,6 +458,7 @@ public sealed partial class NavigationTools(
                         root.Symbol,
                         CallHierarchyDirection.Outgoing,
                         parsedKindFilter,
+                        parsedIncludePathPrefixes,
                         effectiveMaxResults,
                         edges,
                         ref totalUnfilteredKnown,
@@ -480,7 +489,7 @@ public sealed partial class NavigationTools(
     }
 
     [McpServerTool(Name = "get_type_hierarchy")]
-    [Description("Use when you have an exact C# type position and need base type, derived type, or interface implementation hierarchy. Traverses direct LSP type hierarchy edges breadth-first up to maxDepth.")]
+    [Description("Use when you have an exact C# type position and need base type, derived type, or interface implementation hierarchy. Traverses LSP type hierarchy edges breadth-first up to maxDepth. includePathPrefixes narrows returned and traversed follow-up types after Roslyn LS responds.")]
     public async Task<object> GetTypeHierarchy(
         [Description(FileParameterDescription)]
         string file,
@@ -494,6 +503,8 @@ public sealed partial class NavigationTools(
         int? maxDepth = null,
         [Description("Positive type hierarchy edge cap; defaults to 200 and is capped by the server.")]
         int? maxResults = null,
+        [Description("Optional root-relative path prefixes used to keep only follow-up type hierarchy edges whose discovered type is at or under those paths. Excluded follow-up types are not traversed further.")]
+        string[]? includePathPrefixes = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -501,6 +512,7 @@ public sealed partial class NavigationTools(
             var parsedDirection = ParseTypeHierarchyDirection(direction);
             var effectiveMaxDepth = NormalizeTypeHierarchyMaxDepth(maxDepth);
             var effectiveMaxResults = NormalizeTypeHierarchyMaxResults(maxResults);
+            var parsedIncludePathPrefixes = ParseIncludePathPrefixes(includePathPrefixes);
             var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
             var prepareResponse = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/prepareTypeHierarchy",
@@ -520,6 +532,7 @@ public sealed partial class NavigationTools(
                     [],
                     [],
                     TotalKnown: 0,
+                    TotalUnfilteredKnown: 0,
                     Returned: 0,
                     emptyMetadata.WorkspaceState,
                     emptyMetadata.Completeness,
@@ -542,6 +555,7 @@ public sealed partial class NavigationTools(
                         traversalDirection,
                         effectiveMaxDepth,
                         effectiveMaxResults,
+                        parsedIncludePathPrefixes,
                         edges,
                         visitedEdges,
                         traversalState,
@@ -555,6 +569,7 @@ public sealed partial class NavigationTools(
                 roots.Select(root => root.Symbol).ToArray(),
                 edges,
                 traversalState.TotalKnown,
+                traversalState.TotalUnfilteredKnown,
                 traversalState.Returned,
                 metadata.WorkspaceState,
                 metadata.Completeness,

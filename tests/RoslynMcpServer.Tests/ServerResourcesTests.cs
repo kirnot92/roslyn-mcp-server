@@ -13,6 +13,7 @@ public sealed class ServerResourcesTests
         Assert.Contains("best-effort, read-only C# context provider", guide);
         Assert.Contains("list_workspaces", guide);
         Assert.Contains("get_workspace_status", guide);
+        Assert.Contains("includePathPrefixes", guide);
         Assert.Contains("""kindFilter: ["method"]""", guide);
     }
 

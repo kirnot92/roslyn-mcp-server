@@ -137,7 +137,8 @@ type is the contract. If it is called on a concrete class or concrete method
 implementation such as `class Calculator : ICalculator` or `Calculator.Add`, the
 language server may correctly return only that concrete implementation. The tool
 description and top-level tool result include a `usageHint` with this call-site
-guidance.
+guidance. Use `includePathPrefixes` to keep only implementation locations under
+specific root-relative directories, such as production `src/` paths.
 When the result metadata says `completeness: "partial"` or includes
 `retryAfterMs`, retry after workspace warming before treating missing
 implementations as absent.
@@ -152,14 +153,17 @@ outgoing results it applies to the callee/accessed (`to`) symbol; for `both`,
 each direction uses its own counterpart. The server still asks Roslyn LS for the
 same call hierarchy data and applies the filter to mappable edges before
 `maxResults`, so it reduces returned noise but does not reduce Roslyn LS request
-cost. `totalKnown`, `returned`, and `truncated` describe the filtered mappable
-edge set, while `totalUnfilteredKnown` reports mappable edges before kind
-filtering. Use incoming for impact analysis and outgoing for dependencies. It
-is static Roslyn context, not a runtime-complete graph, and results can be
-partial or truncated while the workspace is warming or when limits apply. For
-most code review call graph checks, start with `kindFilter: ["method"]` to avoid
-property and field access noise. Add `constructor` or `property` only when object
-creation or accessor calls are part of the question.
+cost. `includePathPrefixes` applies to the same direction-specific counterpart:
+incoming filters caller files and outgoing filters callee/accessed files. Call
+site files are not filtered independently. `totalKnown`, `returned`, and
+`truncated` describe the filtered mappable edge set, while
+`totalUnfilteredKnown` reports mappable edges before MCP-side filters. Use
+incoming for impact analysis and outgoing for dependencies. It is static Roslyn
+context, not a runtime-complete graph, and results can be partial or truncated
+while the workspace is warming or when limits apply. For most code review call
+graph checks, start with `kindFilter: ["method"]` to avoid property and field
+access noise. Add `constructor` or `property` only when object creation or
+accessor calls are part of the question.
 
 `get_type_hierarchy` is position-based. Call it on a type identifier when you
 need base types, derived types, or interface implementation relationships. It
@@ -169,8 +173,11 @@ traversal and is capped by the server; `maxResults` caps returned hierarchy
 edges. The server preserves the original LSP type hierarchy items for follow-up
 requests, filters non-file or outside-root items from returned edges, and marks
 results truncated when the edge cap prevents later directions or deeper
-follow-up traversal. Use `get_call_hierarchy` for caller/callee analysis;
-`get_type_hierarchy` is only for inheritance and implementation structure.
+follow-up traversal. `includePathPrefixes` filters discovered follow-up type
+locations before `maxResults`; excluded follow-up types are not traversed
+further, even if their descendants might have matched the prefix. Use
+`get_call_hierarchy` for caller/callee analysis; `get_type_hierarchy` is only
+for inheritance and implementation structure.
 
 `find_symbols` is a workspace symbol-name search. Its optional `kindFilter`
 accepts MCP symbol kind names such as `class`, `interface`, `method`,
@@ -186,6 +193,9 @@ and `includePathPrefixes` to mappable results before `maxResults`, so these
 options reduce returned noise but do not reduce Roslyn LS search cost.
 `totalKnown`, `returned`, and `truncated` describe the filtered mappable result
 set, while `totalUnfilteredKnown` reports mappable symbols before those filters.
+The same path prefix coordinate system is used by references, implementations,
+call hierarchy, and type hierarchy tools where `includePathPrefixes` is
+available.
 
 ## Code Review Preflight
 

@@ -38,6 +38,7 @@ public sealed partial class NavigationTools
         CallHierarchySymbol root,
         CallHierarchyDirection direction,
         IReadOnlySet<SymbolKind>? kindFilter,
+        IReadOnlyList<string>? includePathPrefixes,
         int maxResults,
         List<CallHierarchyEdge> edges,
         ref int totalUnfilteredKnown,
@@ -69,6 +70,12 @@ public sealed partial class NavigationTools
                 continue;
             }
 
+            var counterpart = GetCallHierarchyCounterpart(edge, direction);
+            if (!IsIncludedByPathPrefixes(counterpart.Location?.File, includePathPrefixes))
+            {
+                continue;
+            }
+
             totalKnown++;
             if (edge.CallSitesTruncated)
             {
@@ -87,6 +94,9 @@ public sealed partial class NavigationTools
 
     private static SymbolKind GetCallHierarchyCounterpartKind(CallHierarchyEdge edge, CallHierarchyDirection direction) =>
         direction == CallHierarchyDirection.Incoming ? edge.From.Kind : edge.To.Kind;
+
+    private static CallHierarchySymbol GetCallHierarchyCounterpart(CallHierarchyEdge edge, CallHierarchyDirection direction) =>
+        direction == CallHierarchyDirection.Incoming ? edge.From : edge.To;
 
     private CallHierarchyEdge? TryMapCallHierarchyEdge(
         JsonElement item,

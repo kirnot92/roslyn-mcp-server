@@ -16,7 +16,7 @@
 - M3: README/usage 정리, Claude Code/Gemini CLI/Codex 설정 예시, smoke test helper, Roslyn LS 설치 오류 메시지 정리, 실제 repo smoke 기록
 - M4 startup initial solution load: `--load-solution <path>`와 background startup load, exact path contract, startup 상태 전이 테스트
 - M4 diagnostics notification offload: `textDocument/publishDiagnostics` bounded background queue, `drop_newest_when_full`, queue 통계, generation 기반 stale notification 차단
-- M5 read productivity 일부: `find_implementations`, `peek_definition`, `peek_references`, `find_symbols` kind/match/path-prefix filtering, `get_call_hierarchy`, `get_type_hierarchy`
+- M5 read productivity 일부: `find_implementations`, `peek_definition`, `peek_references`, `find_symbols` kind/match/path-prefix filtering, `get_call_hierarchy`, `get_type_hierarchy`, multi-result navigation `includePathPrefixes`
 
 최근 문서 정리로 오래된 계획 문서는 `docs/archive/plans/`, milestone 문서는 `docs/archive/milestones/`, 과거 smoke 결과는 `docs/archive/smoke-tests/`, retired guide는 `docs/archive/guides/`에 보관한다.
 
@@ -37,9 +37,9 @@ Read-only Roslyn:
 - `peek_definition`: definition location과 bounded source snippet
 - `find_references`: reference location
 - `peek_references`: reference location과 bounded source snippet
-- `find_implementations`: interface/abstract/base member 구현 위치
-- `get_call_hierarchy`: callable position의 direct depth-1 incoming/outgoing edge
-- `get_type_hierarchy`: type position의 supertype/subtype edge를 bounded BFS로 조회
+- `find_implementations`: interface/abstract/base member 구현 위치, optional path-prefix filtering
+- `get_call_hierarchy`: callable position의 direct depth-1 incoming/outgoing edge, optional kind/path-prefix filtering
+- `get_type_hierarchy`: type position의 supertype/subtype edge를 bounded BFS로 조회, optional path-prefix filtering
 - `find_symbols`: workspace symbol search, kind/match/path-prefix filtering
 - `diagnostics`: 현재 처리된 publish diagnostics cache 조회
 
@@ -78,7 +78,7 @@ Resources:
 - `--max-expensive-lsp-requests`: 4
 - `--startup-timeout`: 60초
 
-대량 결과 tool은 `totalKnown`, `returned`, `truncated`, `workspaceState`, `completeness`, `reason`, `retryAfterMs`를 통해 결과의 한계를 드러낸다. `find_symbols`의 `kindFilter`, `matchMode`, `includePathPrefixes`는 Roslyn LS 응답 뒤 MCP 쪽에서 적용하는 noise reduction 기능이며 Roslyn LS 검색 비용 절감을 보장하지 않는다.
+대량 결과 tool은 `totalKnown`, `returned`, `truncated`, `workspaceState`, `completeness`, `reason`, `retryAfterMs`를 통해 결과의 한계를 드러낸다. MCP 쪽 필터가 있는 tool은 `totalUnfilteredKnown`도 함께 제공한다. `find_symbols`의 `kindFilter`, `matchMode`, `includePathPrefixes`와 hierarchy/location 계열 tool의 `includePathPrefixes`는 Roslyn LS 응답 뒤 MCP 쪽에서 적용하는 noise reduction 기능이며 Roslyn LS 검색 비용 절감을 보장하지 않는다.
 
 ## Diagnostics 계약
 
@@ -102,7 +102,7 @@ Resources:
 
 - 실제 MCP client smoke 반복
 - `solution_overview` 재평가
-- `includePathPrefixes` 같은 path narrowing을 location-list 계열 tool로 확장할지 평가
+- path narrowing의 추가 확장 후보 평가, 예: diagnostics workspace query나 future excludePathPrefixes
 
 제외:
 

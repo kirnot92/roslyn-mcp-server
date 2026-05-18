@@ -39,6 +39,7 @@ public sealed partial class NavigationTools
         TypeHierarchyDirection direction,
         int maxDepth,
         int maxResults,
+        IReadOnlyList<string>? includePathPrefixes,
         List<TypeHierarchyEdge> edges,
         HashSet<string> visitedEdges,
         TypeHierarchyTraversalState state,
@@ -77,6 +78,12 @@ public sealed partial class NavigationTools
             {
                 var edge = CreateTypeHierarchyEdge(root.Symbol, current.Symbol, next.Symbol, direction, current.Depth + 1);
                 if (!visitedEdges.Add(CreateTypeHierarchyEdgeKey(edge)))
+                {
+                    continue;
+                }
+
+                state.TotalUnfilteredKnown++;
+                if (!IsIncludedByPathPrefixes(next.Symbol.Location.File, includePathPrefixes))
                 {
                     continue;
                 }

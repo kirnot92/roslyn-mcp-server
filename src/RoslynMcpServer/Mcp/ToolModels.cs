@@ -136,6 +136,7 @@ public sealed record ReferencesResult(
 public sealed record ImplementationsResult(
     IReadOnlyList<NavigationLocation> Items,
     int TotalKnown,
+    int TotalUnfilteredKnown,
     int Returned,
     string UsageHint,
     string WorkspaceState,
@@ -200,6 +201,7 @@ public sealed record TypeHierarchyResult(
     IReadOnlyList<TypeHierarchySymbol> Roots,
     IReadOnlyList<TypeHierarchyEdge> Edges,
     int TotalKnown,
+    int TotalUnfilteredKnown,
     int Returned,
     string WorkspaceState,
     string Completeness,

@@ -1198,6 +1198,71 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task FindImplementations_FiltersByIncludePathPrefixesBeforeMaxResults()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new Lsp.Location(CreateFileUri(root.Path, "src/App/Calculator.cs"), CreateRange(0, 0, 0, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "tests/App.Tests/CalculatorTests.cs"), CreateRange(1, 0, 1, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "src/App/Services/CalculatorService.cs"), CreateRange(2, 0, 2, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "src/App2/Calculator.cs"), CreateRange(3, 0, 3, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations(
+            "Program.cs",
+            line: 1,
+            column: 11,
+            maxResults: 1,
+            includePathPrefixes: new[] { "src\\App\\" });
+
+        var implementations = Assert.IsType<ImplementationsResult>(result);
+        var item = Assert.Single(implementations.Items);
+        Assert.Equal("src/App/Calculator.cs", item.File);
+        Assert.Equal(4, implementations.TotalUnfilteredKnown);
+        Assert.Equal(2, implementations.TotalKnown);
+        Assert.Equal(1, implementations.Returned);
+        Assert.True(implementations.Truncated);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("textDocument/implementation", request.Method);
+        Assert.Equal(["textDocument", "position"], request.Params.EnumerateObject().Select(property => property.Name));
+    }
+
+    [Fact]
+    public async Task FindImplementations_IncludePathPrefixesSupportsRootPrefix()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new Lsp.Location(CreateFileUri(root.Path, "src/App/Calculator.cs"), CreateRange(0, 0, 0, 1)),
+            new Lsp.Location(CreateFileUri(root.Path, "tests/App.Tests/CalculatorTests.cs"), CreateRange(1, 0, 1, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindImplementations(
+            "Program.cs",
+            line: 1,
+            column: 11,
+            includePathPrefixes: new[] { "." });
+
+        var implementations = Assert.IsType<ImplementationsResult>(result);
+        Assert.Equal(["src/App/Calculator.cs", "tests/App.Tests/CalculatorTests.cs"], implementations.Items.Select(item => item.File));
+        Assert.Equal(2, implementations.TotalUnfilteredKnown);
+        Assert.Equal(2, implementations.TotalKnown);
+    }
+
+    [Fact]
     public async Task FindImplementations_DoesNotExposeOutsideRootOrInvalidUriResults()
     {
         using var root = TestRoot.Create();
@@ -1294,6 +1359,28 @@ public sealed class NavigationToolsTests
 
         var error = Assert.IsType<ToolError>(result);
         Assert.Equal("invalid_max_results", error.Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task FindImplementations_ReturnsValidationErrorForInvalidIncludePathPrefixes()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "interface I { }");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var emptyArrayResult = await tools.FindImplementations("Program.cs", line: 1, column: 11, includePathPrefixes: Array.Empty<string>());
+        var emptyEntryResult = await tools.FindImplementations("Program.cs", line: 1, column: 11, includePathPrefixes: new[] { "src/App", " " });
+        var outsideResult = await tools.FindImplementations("Program.cs", line: 1, column: 11, includePathPrefixes: new[] { outside.Path });
+
+        Assert.Equal("invalid_path_prefix", Assert.IsType<ToolError>(emptyArrayResult).Error);
+        Assert.Equal("invalid_path_prefix", Assert.IsType<ToolError>(emptyEntryResult).Error);
+        Assert.Equal("invalid_path_prefix", Assert.IsType<ToolError>(outsideResult).Error);
         Assert.Empty(client.Requests);
     }
 
@@ -1771,6 +1858,47 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task GetCallHierarchy_FiltersByIncludePathPrefixesOnDirectionCounterpartBeforeMaxResults()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
+        var target = CreateCallHierarchyItem("M", CreateFileUri(root.Path, "Target.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { target });
+        client.EnqueueResponse(new[]
+        {
+            CreateIncomingCall(CreateCallHierarchyItem("Caller1", CreateFileUri(root.Path, "src/App/Caller1.cs")), CreateRange(0, 0, 0, 1)),
+            CreateIncomingCall(CreateCallHierarchyItem("CallerTests", CreateFileUri(root.Path, "tests/App.Tests/CallerTests.cs")), CreateRange(1, 0, 1, 1))
+        });
+        client.EnqueueResponse(new[]
+        {
+            CreateOutgoingCall(CreateCallHierarchyItem("Callee", CreateFileUri(root.Path, "src/App/Callee.cs")), CreateRange(2, 0, 2, 1)),
+            CreateOutgoingCall(CreateCallHierarchyItem("Callee2", CreateFileUri(root.Path, "src/App2/Callee2.cs")), CreateRange(3, 0, 3, 1))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetCallHierarchy(
+            "Program.cs",
+            line: 1,
+            column: 21,
+            direction: "both",
+            maxResults: 2,
+            includePathPrefixes: new[] { "src/App" });
+
+        var hierarchy = Assert.IsType<CallHierarchyResult>(result);
+        Assert.Equal(4, hierarchy.TotalUnfilteredKnown);
+        Assert.Equal(2, hierarchy.TotalKnown);
+        Assert.Equal(2, hierarchy.Returned);
+        Assert.False(hierarchy.Truncated);
+        Assert.Equal(["Caller1", "M"], hierarchy.Edges.Select(edge => edge.From.Name));
+        Assert.Equal(["M", "Callee"], hierarchy.Edges.Select(edge => edge.To.Name));
+        Assert.All(client.Requests, request => Assert.DoesNotContain("includePathPrefixes", request.Params.EnumerateObject().Select(property => property.Name)));
+    }
+
+    [Fact]
     public async Task GetCallHierarchy_TruncatesCallSitesAndSetsMetadata()
     {
         using var root = TestRoot.Create();
@@ -1801,6 +1929,7 @@ public sealed class NavigationToolsTests
     public async Task GetCallHierarchy_ReturnsValidationErrorsForInvalidDirectionMaxResultsAndKindFilter()
     {
         using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Target { void M() { } }");
         var client = new FakeLspClient();
@@ -1812,6 +1941,7 @@ public sealed class NavigationToolsTests
         var invalidMaxResultsResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, maxResults: 0);
         var invalidKindResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, kindFilter: new[] { "class" });
         var emptyKindResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, kindFilter: Array.Empty<string>());
+        var invalidPathResult = await tools.GetCallHierarchy("Program.cs", line: 1, column: 21, includePathPrefixes: new[] { outside.Path });
 
         var invalidDirection = Assert.IsType<ToolError>(invalidDirectionResult);
         Assert.Equal("invalid_direction", invalidDirection.Error);
@@ -1825,6 +1955,7 @@ public sealed class NavigationToolsTests
         var emptyKind = Assert.IsType<ToolError>(emptyKindResult);
         Assert.Equal("invalid_kind_filter", emptyKind.Error);
         Assert.Contains("at least one", emptyKind.Message);
+        Assert.Equal("invalid_path_prefix", Assert.IsType<ToolError>(invalidPathResult).Error);
         Assert.Empty(client.Requests);
     }
 
@@ -2082,6 +2213,79 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task GetTypeHierarchy_FiltersByIncludePathPrefixesBeforeMaxResults()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { derived });
+        client.EnqueueResponse(new[]
+        {
+            CreateTypeHierarchyItem("TestsBase", CreateFileUri(root.Path, "tests/App.Tests/TestsBase.cs")),
+            CreateTypeHierarchyItem("AppBase", CreateFileUri(root.Path, "src/App/AppBase.cs")),
+            CreateTypeHierarchyItem("AppBase2", CreateFileUri(root.Path, "src/App2/AppBase2.cs"))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy(
+            "Program.cs",
+            line: 1,
+            column: 7,
+            maxDepth: 1,
+            maxResults: 1,
+            includePathPrefixes: new[] { "src/App" });
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal("AppBase", edge.From.Name);
+        Assert.Equal(3, hierarchy.TotalUnfilteredKnown);
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+        Assert.False(hierarchy.Truncated);
+    }
+
+    [Fact]
+    public async Task GetTypeHierarchy_DoesNotTraversePrefixExcludedFollowUpTypesOrForwardPrefixes()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
+        var derived = CreateTypeHierarchyItem("Derived", CreateFileUri(root.Path, "Derived.cs"));
+        var excludedMid = CreateTypeHierarchyItem("ExcludedMid", CreateFileUri(root.Path, "tests/App.Tests/ExcludedMid.cs"));
+        var includedBase = CreateTypeHierarchyItem("IncludedBase", CreateFileUri(root.Path, "src/App/IncludedBase.cs"));
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[] { derived });
+        client.EnqueueResponse(new[] { excludedMid, includedBase });
+        client.EnqueueResponse(Array.Empty<object>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.GetTypeHierarchy(
+            "Program.cs",
+            line: 1,
+            column: 7,
+            maxDepth: 2,
+            includePathPrefixes: new[] { "src/App" });
+
+        var hierarchy = Assert.IsType<TypeHierarchyResult>(result);
+        var edge = Assert.Single(hierarchy.Edges);
+        Assert.Equal("IncludedBase", edge.From.Name);
+        Assert.Equal(2, hierarchy.TotalUnfilteredKnown);
+        Assert.Equal(1, hierarchy.TotalKnown);
+        Assert.Equal(1, hierarchy.Returned);
+        Assert.Equal(
+            ["textDocument/prepareTypeHierarchy", "typeHierarchy/supertypes", "typeHierarchy/supertypes"],
+            client.Requests.Select(request => request.Method));
+        Assert.Equal("IncludedBase", client.Requests[2].Params.GetProperty("item").GetProperty("name").GetString());
+        Assert.All(client.Requests, request => Assert.DoesNotContain("includePathPrefixes", request.Params.EnumerateObject().Select(property => property.Name)));
+    }
+
+    [Fact]
     public async Task GetTypeHierarchy_MarksTruncatedWhenResultLimitSkipsSecondDirection()
     {
         using var root = TestRoot.Create();
@@ -2177,6 +2381,7 @@ public sealed class NavigationToolsTests
     public async Task GetTypeHierarchy_ReturnsValidationErrorsForInvalidDirectionMaxDepthAndMaxResults()
     {
         using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Derived : Base { }");
         var client = new FakeLspClient();
@@ -2187,10 +2392,12 @@ public sealed class NavigationToolsTests
         var invalidDirectionResult = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, direction: "sideways");
         var invalidMaxDepthResult = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxDepth: 0);
         var invalidMaxResultsResult = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, maxResults: 0);
+        var invalidPathResult = await tools.GetTypeHierarchy("Program.cs", line: 1, column: 7, includePathPrefixes: new[] { outside.Path });
 
         Assert.Equal("invalid_direction", Assert.IsType<ToolError>(invalidDirectionResult).Error);
         Assert.Equal("invalid_max_depth", Assert.IsType<ToolError>(invalidMaxDepthResult).Error);
         Assert.Equal("invalid_max_results", Assert.IsType<ToolError>(invalidMaxResultsResult).Error);
+        Assert.Equal("invalid_path_prefix", Assert.IsType<ToolError>(invalidPathResult).Error);
         Assert.Empty(client.Requests);
     }
 

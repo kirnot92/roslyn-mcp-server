@@ -66,6 +66,7 @@ public sealed partial class NavigationTools
 
     private sealed class TypeHierarchyTraversalState
     {
+        public int TotalUnfilteredKnown { get; set; }
         public int TotalKnown { get; set; }
         public int Returned { get; set; }
         public bool HitResultLimit { get; set; }
