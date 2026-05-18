@@ -2215,6 +2215,21 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task FindSymbols_ReturnsWorkspaceLoadingWhenStartupLoadIsPending()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        await using var session = CreateStartupLoadSession(root.Path, new ThrowingLoader(), "App.sln");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Program");
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("workspace_loading", error.Error);
+        Assert.Equal(WorkspaceLoadState.StartingLanguageServer.ToString(), error.WorkspaceState);
+    }
+
+    [Fact]
     public async Task DefinitionReferencesAndPeekReferences_DoNotExposeUrisOutsideRoot()
     {
         using var root = TestRoot.Create();
@@ -2415,6 +2430,22 @@ public sealed class NavigationToolsTests
     {
         var guard = new PathGuard(root);
         return new WorkspaceSession(new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null), guard, loader);
+    }
+
+    private static WorkspaceSession CreateStartupLoadSession(
+        string root,
+        IRoslynWorkspaceLoader loader,
+        string loadSolutionPath)
+    {
+        var guard = new PathGuard(root);
+        var options = CreateOptions(root) with { LoadSolutionPath = loadSolutionPath };
+        return new WorkspaceSession(
+            new WorkspaceScanner(options, guard, gitScanner: null),
+            guard,
+            loader,
+            options,
+            documents: null,
+            diagnostics: null);
     }
 
     private static CliOptions CreateOptions(string root, long maxDocumentBytes = 2 * 1024 * 1024) =>

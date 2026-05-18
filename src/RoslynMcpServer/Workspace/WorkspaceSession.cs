@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcpServer.Cli;
 using RoslynMcpServer.Infrastructure;
 using RoslynMcpServer.Lsp;
 
@@ -26,6 +27,21 @@ public sealed class WorkspaceSession : IAsyncDisposable
     private WorkspaceLoadState state = WorkspaceLoadState.NotLoaded;
     private string? failureCode;
     private string? failureMessage;
+
+    public WorkspaceSession(
+        WorkspaceScanner scanner,
+        PathGuard pathGuard,
+        IRoslynWorkspaceLoader loader,
+        CliOptions options,
+        DocumentStateManager? documents,
+        DiagnosticStore? diagnostics)
+        : this(scanner, pathGuard, loader, documents, diagnostics)
+    {
+        if (!string.IsNullOrWhiteSpace(options.LoadSolutionPath))
+        {
+            MarkStartupLoadPending();
+        }
+    }
 
     public WorkspaceSession(
         WorkspaceScanner scanner,
@@ -94,6 +110,18 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
     public Task<WorkspaceStatus> LoadProjectAsync(string path, CancellationToken cancellationToken = default) =>
         LoadAsync(path, [".csproj"], WorkspaceKind.Project, recordValidationFailure: false, cancellationToken);
+
+    public void MarkStartupLoadPending()
+    {
+        if (this.state is not WorkspaceLoadState.NotLoaded)
+        {
+            return;
+        }
+
+        this.state = WorkspaceLoadState.StartingLanguageServer;
+        this.failureCode = null;
+        this.failureMessage = null;
+    }
 
     public async Task<ReadToolContext> PrepareReadToolAsync(CancellationToken cancellationToken = default)
     {

@@ -10,6 +10,16 @@ public sealed class StartupSolutionLoader(
     WorkspaceSession session,
     ILogger<StartupSolutionLoader> logger) : BackgroundService
 {
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(options.LoadSolutionPath))
+        {
+            session.MarkStartupLoadPending();
+        }
+
+        return base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (string.IsNullOrWhiteSpace(options.LoadSolutionPath))
