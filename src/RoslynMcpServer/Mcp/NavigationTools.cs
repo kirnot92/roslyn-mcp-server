@@ -571,6 +571,8 @@ public sealed partial class NavigationTools(
         string[]? kindFilter = null,
         [Description("Optional symbol name match mode after Roslyn LS responds: default, exact, prefix, or contains. Omit for Roslyn LS default matching.")]
         string? matchMode = null,
+        [Description("Optional root-relative path prefixes used to keep only symbols located at or under those paths. This is MCP-side filtering after Roslyn LS responds.")]
+        string[]? includePathPrefixes = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -579,6 +581,7 @@ public sealed partial class NavigationTools(
             var effectiveMaxResults = NormalizeSymbolMaxResults(maxResults);
             var parsedKindFilter = ParseSymbolKindFilter(kindFilter);
             var parsedMatchMode = ParseSymbolMatchMode(matchMode);
+            var parsedIncludePathPrefixes = ParseIncludePathPrefixes(includePathPrefixes);
             var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
             var response = await context.Handle.Client.RequestAsync(
                 "workspace/symbol",
@@ -587,7 +590,7 @@ public sealed partial class NavigationTools(
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
-            var symbols = MapWorkspaceSymbols(response, effectiveMaxResults, parsedKindFilter, query, parsedMatchMode);
+            var symbols = MapWorkspaceSymbols(response, effectiveMaxResults, parsedKindFilter, query, parsedMatchMode, parsedIncludePathPrefixes);
             var metadata = CreateMetadata(context.State, ToolKind.Symbols, symbols.Truncated);
             return new FindSymbolsResult(
                 symbols.Items,

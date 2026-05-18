@@ -236,6 +236,36 @@ public sealed partial class NavigationTools
             "matchMode must be one of: default, exact, prefix, contains.");
     }
 
+    private IReadOnlyList<string>? ParseIncludePathPrefixes(IReadOnlyList<string>? includePathPrefixes)
+    {
+        if (includePathPrefixes is null)
+        {
+            return null;
+        }
+
+        if (includePathPrefixes.Count == 0)
+        {
+            throw new UserFacingException(
+                "invalid_path_prefix",
+                "includePathPrefixes must contain at least one path prefix.");
+        }
+
+        var prefixes = new List<string>(includePathPrefixes.Count);
+        foreach (var rawPrefix in includePathPrefixes)
+        {
+            if (string.IsNullOrWhiteSpace(rawPrefix))
+            {
+                throw new UserFacingException(
+                    "invalid_path_prefix",
+                    "includePathPrefixes must not contain empty path prefixes.");
+            }
+
+            prefixes.Add(pathMapper.NormalizePathPrefix(rawPrefix.Trim()));
+        }
+
+        return prefixes;
+    }
+
     private static IReadOnlySet<SymbolKind>? ParseCallHierarchyKindFilter(IReadOnlyList<string>? kindFilter) =>
         ParseKindFilter(kindFilter, CallHierarchyKindFilterValues, AllowedCallHierarchyKindFilterValues);
 

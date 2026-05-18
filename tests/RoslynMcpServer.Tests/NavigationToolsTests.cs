@@ -2390,13 +2390,142 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
-    public async Task FindSymbols_DoesNotSendMatchModeToRoslynLs()
+    public async Task FindSymbols_FiltersByIncludePathPrefixes()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            CreateWorkspaceSymbol(root.Path, "src/App/Calculator.cs", "Calculator", SymbolKind.Class),
+            CreateWorkspaceSymbol(root.Path, "src/App/Services/CalculatorService.cs", "CalculatorService", SymbolKind.Class),
+            CreateWorkspaceSymbol(root.Path, "src/App2/Calculator.cs", "CalculatorClone", SymbolKind.Class),
+            CreateWorkspaceSymbol(root.Path, "tests/App.Tests/CalculatorTests.cs", "CalculatorTests", SymbolKind.Class)
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", includePathPrefixes: new[] { "src/App" });
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Collection(
+            symbols.Items,
+            item => Assert.Equal("src/App/Calculator.cs", item.Location?.File),
+            item => Assert.Equal("src/App/Services/CalculatorService.cs", item.Location?.File));
+        Assert.Equal(4, symbols.TotalUnfilteredKnown);
+        Assert.Equal(2, symbols.TotalKnown);
+        Assert.Equal(2, symbols.Returned);
+        Assert.False(symbols.Truncated);
+    }
+
+    [Fact]
+    public async Task FindSymbols_AppliesMaxResultsAfterIncludePathPrefixes()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            CreateWorkspaceSymbol(root.Path, "tests/App.Tests/CalculatorTests.cs", "CalculatorTests", SymbolKind.Class),
+            CreateWorkspaceSymbol(root.Path, "src/App/Calculator.cs", "Calculator", SymbolKind.Class),
+            CreateWorkspaceSymbol(root.Path, "src/App/CalculatorService.cs", "CalculatorService", SymbolKind.Class)
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", maxResults: 1, includePathPrefixes: new[] { "src/App" });
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("Calculator", item.Name);
+        Assert.Equal(3, symbols.TotalUnfilteredKnown);
+        Assert.Equal(2, symbols.TotalKnown);
+        Assert.Equal(1, symbols.Returned);
+        Assert.True(symbols.Truncated);
+    }
+
+    [Fact]
+    public async Task FindSymbols_IncludePathPrefixesNormalizesSlashStyles()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            CreateWorkspaceSymbol(root.Path, "src/App/Calculator.cs", "Calculator", SymbolKind.Class),
+            CreateWorkspaceSymbol(root.Path, "tests/App.Tests/CalculatorTests.cs", "CalculatorTests", SymbolKind.Class)
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", includePathPrefixes: new[] { "src\\App\\" });
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("src/App/Calculator.cs", item.Location?.File);
+        Assert.Equal(1, symbols.TotalKnown);
+    }
+
+    [Fact]
+    public async Task FindSymbols_IncludePathPrefixesExcludesLocationlessSymbols()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new object[]
+        {
+            CreateWorkspaceSymbol("Locationless", SymbolKind.Class),
+            CreateWorkspaceSymbol(root.Path, "src/App/Calculator.cs", "Calculator", SymbolKind.Class)
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindSymbols("Calc", includePathPrefixes: new[] { "src/App" });
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("Calculator", item.Name);
+        Assert.Equal(2, symbols.TotalUnfilteredKnown);
+        Assert.Equal(1, symbols.TotalKnown);
+    }
+
+    [Fact]
+    public async Task FindSymbols_ReturnsValidationErrorForInvalidIncludePathPrefixes()
+    {
+        using var root = TestRoot.Create();
+        using var outside = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var client = new FakeLspClient();
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var emptyArrayResult = await tools.FindSymbols("Calc", includePathPrefixes: Array.Empty<string>());
+        var emptyEntryResult = await tools.FindSymbols("Calc", includePathPrefixes: new[] { "src/App", " " });
+        var outsideResult = await tools.FindSymbols("Calc", includePathPrefixes: new[] { outside.Path });
+
+        var emptyArrayError = Assert.IsType<ToolError>(emptyArrayResult);
+        var emptyEntryError = Assert.IsType<ToolError>(emptyEntryResult);
+        var outsideError = Assert.IsType<ToolError>(outsideResult);
+        Assert.Equal("invalid_path_prefix", emptyArrayError.Error);
+        Assert.Equal("invalid_path_prefix", emptyEntryError.Error);
+        Assert.Equal("invalid_path_prefix", outsideError.Error);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task FindSymbols_DoesNotSendMcpSideFiltersToRoslynLs()
     {
         var (result, client) = await ExecuteFindSymbolsRequestAsync(
             Array.Empty<object>(),
             query: "Calc",
             kindFilter: new[] { "class" },
-            matchMode: "exact");
+            matchMode: "exact",
+            includePathPrefixes: new[] { "src" });
 
         Assert.IsType<FindSymbolsResult>(result);
         var request = Assert.Single(client.Requests);
@@ -2908,7 +3037,8 @@ public sealed class NavigationToolsTests
         string query = "Symbol",
         int? maxResults = null,
         string[]? kindFilter = null,
-        string? matchMode = null)
+        string? matchMode = null,
+        string[]? includePathPrefixes = null)
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
@@ -2918,7 +3048,7 @@ public sealed class NavigationToolsTests
         await session.LoadProjectAsync("App.csproj");
         var tools = CreateTools(root.Path, session);
 
-        var result = await tools.FindSymbols(query, maxResults, kindFilter, matchMode);
+        var result = await tools.FindSymbols(query, maxResults, kindFilter, matchMode, includePathPrefixes);
         return (result, client);
     }
 
@@ -3000,6 +3130,16 @@ public sealed class NavigationToolsTests
         {
             name,
             kind = (int)kind
+        };
+
+    private static object CreateWorkspaceSymbol(string root, string relativePath, string name, SymbolKind kind) =>
+        new
+        {
+            name,
+            kind = (int)kind,
+            location = new Lsp.Location(
+                CreateFileUri(root, relativePath),
+                new Lsp.Range(new Position(0, 0), new Position(0, 1)))
         };
 
     private static Lsp.Location[] CreateImplementationLocations(string root, int count)

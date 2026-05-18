@@ -11,7 +11,8 @@ public sealed partial class NavigationTools
         int maxResults,
         IReadOnlySet<SymbolKind>? kindFilter,
         string query,
-        SymbolMatchMode matchMode)
+        SymbolMatchMode matchMode,
+        IReadOnlyList<string>? includePathPrefixes)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
@@ -46,6 +47,11 @@ public sealed partial class NavigationTools
                 continue;
             }
 
+            if (!IsIncludedByPathPrefixes(symbol, includePathPrefixes))
+            {
+                continue;
+            }
+
             totalKnown++;
             if (returned >= maxResults)
             {
@@ -68,6 +74,36 @@ public sealed partial class NavigationTools
             SymbolMatchMode.Contains => name.Contains(query, StringComparison.OrdinalIgnoreCase),
             _ => false
         };
+
+    private static bool IsIncludedByPathPrefixes(WorkspaceSymbolItem symbol, IReadOnlyList<string>? includePathPrefixes)
+    {
+        if (includePathPrefixes is null)
+        {
+            return true;
+        }
+
+        if (symbol.Location is null)
+        {
+            return false;
+        }
+
+        return includePathPrefixes.Any(prefix => MatchesPathPrefix(symbol.Location.File, prefix));
+    }
+
+    private static bool MatchesPathPrefix(string file, string prefix)
+    {
+        if (prefix == ".")
+        {
+            return true;
+        }
+
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(file, prefix, comparison) ||
+            file.StartsWith(prefix + "/", comparison);
+    }
 
     private WorkspaceSymbolItem? TryMapWorkspaceSymbol(JsonElement item)
     {
