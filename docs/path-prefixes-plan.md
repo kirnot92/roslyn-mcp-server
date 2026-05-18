@@ -2,18 +2,23 @@
 
 ## Decision
 
-Add an optional `pathPrefixes` parameter to multi-result read tools.
+Add an optional `includePathPrefixes` parameter to multi-result read tools.
 
 This lets the user or agent narrow Roslyn results to known repository areas
 without asking the server to guess the right project or subsystem. The option is
-a result filter, not a new search mode.
+an include-side result filter, not a new search mode.
+
+Use the explicit `includePathPrefixes` name even though the MVP only implements
+include filtering. Exclude filtering is a likely follow-up for tests, generated
+code, samples, and fixtures, and `includePathPrefixes` leaves a clear symmetric
+slot for a future `excludePathPrefixes` parameter.
 
 ## Contract
 
 Proposed parameter:
 
 ```csharp
-string[]? pathPrefixes = null
+string[]? includePathPrefixes = null
 ```
 
 Rules:
@@ -28,15 +33,15 @@ Rules:
 - A result is kept when its root-relative file path exactly equals a prefix, or
   is under a prefix with a `/` segment boundary. `src/Foo` must not match
   `src/Foobar.cs`.
-- `null` means no path filtering.
+- `null` means no include path filtering.
 - Empty arrays, empty entries, root-outside paths, and invalid paths return a
   validation error such as `invalid_path_prefix`.
 
-The filter is OR-based:
+The include filter is OR-based:
 
 ```json
 {
-  "pathPrefixes": [
+  "includePathPrefixes": [
     "src/System.Management.Automation",
     "src/Microsoft.PowerShell.ConsoleHost"
   ]
@@ -45,7 +50,7 @@ The filter is OR-based:
 
 ## Initial Tool Scope
 
-Add `pathPrefixes` first to tools that can return many locations:
+Add `includePathPrefixes` first to tools that can return many locations:
 
 - `find_symbols`
 - `find_references`
@@ -76,14 +81,14 @@ traversal can otherwise either hide matching descendants/callers or expand raw
 traversal cost.
 
 `diagnostics` should wait until `DiagnosticStore` can apply severity and
-`pathPrefixes` before `maxResults`. The current workspace diagnostics query
+include path filtering before `maxResults`. The current workspace diagnostics query
 accepts `maxResults` at the store boundary, so tool-level post-filtering would
 let prefix-excluded diagnostics consume the result budget.
 
 ## Semantics
 
-`pathPrefixes` is MCP-side post-filtering. It reduces returned noise but does
-not reduce Roslyn LS request cost.
+`includePathPrefixes` is MCP-side post-filtering. It reduces returned noise but
+does not reduce Roslyn LS request cost.
 
 Filtering should happen before `maxResults` is applied:
 
@@ -91,11 +96,11 @@ Filtering should happen before `maxResults` is applied:
 Roslyn LS result
   -> map root-internal locations
   -> existing kind/name/severity filters
-  -> pathPrefixes
+  -> includePathPrefixes
   -> maxResults
 ```
 
-Location-based helpers must not apply `maxResults` before `pathPrefixes`.
+Location-based helpers must not apply `maxResults` before `includePathPrefixes`.
 For example, `MapLocations` currently maps locations and applies the cap in the
 same pass; refactor that shape so prefix-excluded results cannot consume the
 result budget before in-prefix results are considered.
@@ -114,10 +119,19 @@ Call sites are returned only for edges whose counterpart survived the path
 filter. Keep the prepared root symbol even if the root itself is outside the
 prefixes, because the user explicitly selected that root position.
 
-When `pathPrefixes` is omitted, preserve current behavior for results without a
-usable location, such as workspace symbols that Roslyn returns without a file
-range. When `pathPrefixes` is provided, exclude results that do not have a
-root-relative file path to match.
+When `includePathPrefixes` is omitted, preserve current behavior for results
+without a usable location, such as workspace symbols that Roslyn returns without
+a file range. When `includePathPrefixes` is provided, exclude results that do
+not have a root-relative file path to match.
+
+Future `excludePathPrefixes` semantics should apply after the include filter and
+before `maxResults`:
+
+```text
+included = includePathPrefixes is null || path is under any include prefix
+excluded = excludePathPrefixes is not null && path is under any exclude prefix
+keep = included && !excluded
+```
 
 Deferred diagnostics behavior should apply only with `scope: "workspace"`.
 Combining it with file-specific diagnostics should return a validation error.
@@ -126,7 +140,7 @@ Metadata should keep existing count meanings and avoid widening every result DTO
 in the MVP:
 
 - Do not add a shared `totalBeforePathFilter` field yet.
-- `totalKnown`: results after all filters including `pathPrefixes`.
+- `totalKnown`: results after all filters including `includePathPrefixes`.
 - `returned`: actual returned item count after `maxResults`.
 - `truncated`: `totalKnown > returned`, plus any existing tool-specific
   truncation reason such as call-site truncation.
@@ -138,15 +152,16 @@ future diagnostics, but they should not be exposed in the MVP contract.
 
 Likely code areas:
 
-- Add a shared parser/normalizer for `pathPrefixes`.
+- Add a shared parser/normalizer for `includePathPrefixes`.
 - Reuse `PathGuard` and existing root-relative path normalization.
 - Apply filtering in each tool after current mapping to user-facing locations.
 - Avoid duplicating prefix comparison logic in every tool.
-- Do not wire `pathPrefixes` into workspace diagnostics until `DiagnosticStore`
-  can query by path before applying `maxResults`.
+- Do not wire `includePathPrefixes` into workspace diagnostics until
+  `DiagnosticStore` can query by path before applying `maxResults`.
 
 The MVP should not add `excludeTests` or `excludeGenerated`. Those are useful
-but heuristic. `pathPrefixes` is explicit and easier to reason about.
+but heuristic. Explicit include/exclude path prefixes are easier to reason about
+and compose across repositories.
 
 ## Tests
 
@@ -161,7 +176,7 @@ Add focused tests for:
 - applies before `maxResults`
 - ensures prefix-excluded results do not consume the `maxResults` budget
 - preserves current behavior when omitted
-- excludes locationless `find_symbols` results when `pathPrefixes` is provided
+- excludes locationless `find_symbols` results when `includePathPrefixes` is provided
 - works with `find_symbols`
 - works with references/peek references
 
