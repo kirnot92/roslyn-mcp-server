@@ -203,6 +203,39 @@ public sealed partial class NavigationTools
     private static IReadOnlySet<SymbolKind>? ParseSymbolKindFilter(IReadOnlyList<string>? kindFilter) =>
         ParseKindFilter(kindFilter, SymbolKindFilterValues, AllowedSymbolKindFilterValues);
 
+    private static SymbolMatchMode ParseSymbolMatchMode(string? matchMode)
+    {
+        if (matchMode is null)
+        {
+            return SymbolMatchMode.Default;
+        }
+
+        var normalized = matchMode.Trim();
+        if (string.Equals(normalized, "default", StringComparison.OrdinalIgnoreCase))
+        {
+            return SymbolMatchMode.Default;
+        }
+
+        if (string.Equals(normalized, "exact", StringComparison.OrdinalIgnoreCase))
+        {
+            return SymbolMatchMode.Exact;
+        }
+
+        if (string.Equals(normalized, "prefix", StringComparison.OrdinalIgnoreCase))
+        {
+            return SymbolMatchMode.Prefix;
+        }
+
+        if (string.Equals(normalized, "contains", StringComparison.OrdinalIgnoreCase))
+        {
+            return SymbolMatchMode.Contains;
+        }
+
+        throw new UserFacingException(
+            "invalid_match_mode",
+            "matchMode must be one of: default, exact, prefix, contains.");
+    }
+
     private static IReadOnlySet<SymbolKind>? ParseCallHierarchyKindFilter(IReadOnlyList<string>? kindFilter) =>
         ParseKindFilter(kindFilter, CallHierarchyKindFilterValues, AllowedCallHierarchyKindFilterValues);
 

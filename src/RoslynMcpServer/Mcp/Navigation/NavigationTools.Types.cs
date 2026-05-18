@@ -100,4 +100,12 @@ public sealed partial class NavigationTools
         Subtypes,
         Both
     }
+
+    private enum SymbolMatchMode
+    {
+        Default,
+        Exact,
+        Prefix,
+        Contains
+    }
 }

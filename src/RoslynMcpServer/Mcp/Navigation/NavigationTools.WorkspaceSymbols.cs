@@ -9,7 +9,9 @@ public sealed partial class NavigationTools
     private WorkspaceSymbolMapResult MapWorkspaceSymbols(
         JsonElement response,
         int maxResults,
-        IReadOnlySet<SymbolKind>? kindFilter)
+        IReadOnlySet<SymbolKind>? kindFilter,
+        string query,
+        SymbolMatchMode matchMode)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
@@ -39,6 +41,11 @@ public sealed partial class NavigationTools
                 continue;
             }
 
+            if (!MatchesSymbolName(symbol.Name, query, matchMode))
+            {
+                continue;
+            }
+
             totalKnown++;
             if (returned >= maxResults)
             {
@@ -51,6 +58,16 @@ public sealed partial class NavigationTools
 
         return new WorkspaceSymbolMapResult(items, totalKnown, totalUnfilteredKnown, returned, totalKnown > returned);
     }
+
+    private static bool MatchesSymbolName(string name, string query, SymbolMatchMode matchMode) =>
+        matchMode switch
+        {
+            SymbolMatchMode.Default => true,
+            SymbolMatchMode.Exact => string.Equals(name, query, StringComparison.OrdinalIgnoreCase),
+            SymbolMatchMode.Prefix => name.StartsWith(query, StringComparison.OrdinalIgnoreCase),
+            SymbolMatchMode.Contains => name.Contains(query, StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
 
     private WorkspaceSymbolItem? TryMapWorkspaceSymbol(JsonElement item)
     {

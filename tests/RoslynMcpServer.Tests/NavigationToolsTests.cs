@@ -2231,6 +2231,202 @@ public sealed class NavigationToolsTests
     }
 
     [Fact]
+    public async Task FindSymbols_DefaultKeepsRoslynLsResultsThatContainsWouldFilterOut()
+    {
+        var response = new object[]
+        {
+            CreateWorkspaceSymbol("Version", SymbolKind.Property),
+            CreateWorkspaceSymbol("SessionManager", SymbolKind.Class)
+        };
+
+        var (defaultResult, _) = await ExecuteFindSymbolsRequestAsync(response, query: "Session", matchMode: null);
+        var (containsResult, _) = await ExecuteFindSymbolsRequestAsync(response, query: "Session", matchMode: "contains");
+
+        var defaultSymbols = Assert.IsType<FindSymbolsResult>(defaultResult);
+        Assert.Collection(
+            defaultSymbols.Items,
+            item => Assert.Equal("Version", item.Name),
+            item => Assert.Equal("SessionManager", item.Name));
+        Assert.Equal(2, defaultSymbols.TotalUnfilteredKnown);
+        Assert.Equal(2, defaultSymbols.TotalKnown);
+
+        var containsSymbols = Assert.IsType<FindSymbolsResult>(containsResult);
+        var item = Assert.Single(containsSymbols.Items);
+        Assert.Equal("SessionManager", item.Name);
+        Assert.Equal(2, containsSymbols.TotalUnfilteredKnown);
+        Assert.Equal(1, containsSymbols.TotalKnown);
+    }
+
+    [Fact]
+    public async Task FindSymbols_ExactMatchModeKeepsOnlyExactNames()
+    {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(
+            new object[]
+            {
+                CreateWorkspaceSymbol("calc", SymbolKind.Class),
+                CreateWorkspaceSymbol("Calculator", SymbolKind.Class),
+                CreateWorkspaceSymbol("MyCalc", SymbolKind.Class)
+            },
+            query: "Calc",
+            matchMode: "exact");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("calc", item.Name);
+        Assert.Equal(3, symbols.TotalUnfilteredKnown);
+        Assert.Equal(1, symbols.TotalKnown);
+        Assert.Equal(1, symbols.Returned);
+    }
+
+    [Fact]
+    public async Task FindSymbols_PrefixMatchModeKeepsOnlyPrefixNames()
+    {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(
+            new object[]
+            {
+                CreateWorkspaceSymbol("Calc", SymbolKind.Class),
+                CreateWorkspaceSymbol("Calculator", SymbolKind.Class),
+                CreateWorkspaceSymbol("MyCalc", SymbolKind.Class),
+                CreateWorkspaceSymbol("Version", SymbolKind.Property)
+            },
+            query: "Calc",
+            matchMode: "prefix");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Collection(
+            symbols.Items,
+            item => Assert.Equal("Calc", item.Name),
+            item => Assert.Equal("Calculator", item.Name));
+        Assert.Equal(4, symbols.TotalUnfilteredKnown);
+        Assert.Equal(2, symbols.TotalKnown);
+    }
+
+    [Fact]
+    public async Task FindSymbols_ContainsMatchModeKeepsOnlyContainingNames()
+    {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(
+            new object[]
+            {
+                CreateWorkspaceSymbol("Calc", SymbolKind.Class),
+                CreateWorkspaceSymbol("Calculator", SymbolKind.Class),
+                CreateWorkspaceSymbol("MyCalc", SymbolKind.Class),
+                CreateWorkspaceSymbol("Version", SymbolKind.Property)
+            },
+            query: "Calc",
+            matchMode: "contains");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Collection(
+            symbols.Items,
+            item => Assert.Equal("Calc", item.Name),
+            item => Assert.Equal("Calculator", item.Name),
+            item => Assert.Equal("MyCalc", item.Name));
+        Assert.Equal(4, symbols.TotalUnfilteredKnown);
+        Assert.Equal(3, symbols.TotalKnown);
+    }
+
+    [Fact]
+    public async Task FindSymbols_MatchModeTrimsAndParsesCaseInsensitively()
+    {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(
+            new object[]
+            {
+                CreateWorkspaceSymbol("Calculator", SymbolKind.Class),
+                CreateWorkspaceSymbol("MyCalculator", SymbolKind.Class)
+            },
+            query: "Calc",
+            matchMode: " PrEfIx ");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("Calculator", item.Name);
+    }
+
+    [Fact]
+    public async Task FindSymbols_AppliesMatchModeAfterKindFilter()
+    {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(
+            new object[]
+            {
+                CreateWorkspaceSymbol("Calc", SymbolKind.Method),
+                CreateWorkspaceSymbol("CalcService", SymbolKind.Class),
+                CreateWorkspaceSymbol("MyCalc", SymbolKind.Class),
+                CreateWorkspaceSymbol("CalcOptions", SymbolKind.Field)
+            },
+            query: "Calc",
+            kindFilter: new[] { "class" },
+            matchMode: "prefix");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("CalcService", item.Name);
+        Assert.Equal(4, symbols.TotalUnfilteredKnown);
+        Assert.Equal(1, symbols.TotalKnown);
+        Assert.Equal(1, symbols.Returned);
+    }
+
+    [Fact]
+    public async Task FindSymbols_AppliesMaxResultsAfterMatchMode()
+    {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(
+            new object[]
+            {
+                CreateWorkspaceSymbol("CalcOne", SymbolKind.Class),
+                CreateWorkspaceSymbol("Version", SymbolKind.Property),
+                CreateWorkspaceSymbol("CalcTwo", SymbolKind.Class),
+                CreateWorkspaceSymbol("CalcThree", SymbolKind.Class)
+            },
+            query: "Calc",
+            maxResults: 1,
+            matchMode: "prefix");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("CalcOne", item.Name);
+        Assert.Equal(4, symbols.TotalUnfilteredKnown);
+        Assert.Equal(3, symbols.TotalKnown);
+        Assert.Equal(1, symbols.Returned);
+        Assert.True(symbols.Truncated);
+    }
+
+    [Fact]
+    public async Task FindSymbols_DoesNotSendMatchModeToRoslynLs()
+    {
+        var (result, client) = await ExecuteFindSymbolsRequestAsync(
+            Array.Empty<object>(),
+            query: "Calc",
+            kindFilter: new[] { "class" },
+            matchMode: "exact");
+
+        Assert.IsType<FindSymbolsResult>(result);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("workspace/symbol", request.Method);
+        Assert.Equal(["query"], request.Params.EnumerateObject().Select(property => property.Name));
+        Assert.Equal("Calc", request.Params.GetProperty("query").GetString());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("banana")]
+    [InlineData("1")]
+    public async Task FindSymbols_ReturnsValidationErrorForInvalidMatchMode(string matchMode)
+    {
+        var (result, client) = await ExecuteFindSymbolsRequestAsync(
+            Array.Empty<object>(),
+            query: "Calc",
+            matchMode: matchMode);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_match_mode", error.Error);
+        Assert.Contains("default", error.Message);
+        Assert.Contains("exact", error.Message);
+        Assert.Contains("prefix", error.Message);
+        Assert.Contains("contains", error.Message);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
     public async Task FindSymbols_ReturnsValidationErrorForUnknownKindFilter()
     {
         using var root = TestRoot.Create();
@@ -2703,6 +2899,17 @@ public sealed class NavigationToolsTests
 
     private static async Task<object> ExecuteFindSymbolsWithResponse(object? response)
     {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(response);
+        return result;
+    }
+
+    private static async Task<(object Result, FakeLspClient Client)> ExecuteFindSymbolsRequestAsync(
+        object? response,
+        string query = "Symbol",
+        int? maxResults = null,
+        string[]? kindFilter = null,
+        string? matchMode = null)
+    {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         var client = new FakeLspClient();
@@ -2711,7 +2918,8 @@ public sealed class NavigationToolsTests
         await session.LoadProjectAsync("App.csproj");
         var tools = CreateTools(root.Path, session);
 
-        return await tools.FindSymbols("Symbol");
+        var result = await tools.FindSymbols(query, maxResults, kindFilter, matchMode);
+        return (result, client);
     }
 
     private static string CreateFileUri(string root, string relativePath) =>

@@ -601,13 +601,15 @@ MCP tool 클래스는 얇게 유지한다. 입력 검증과 출력 DTO 변환은
   - `WorkspaceWarming`에서는 best-effort로 실행하고 cross-project 구현 누락 가능성을 metadata reason에 표시한다.
 
 - `find_symbols`
-  - 입력: `query`, optional `maxResults`, optional `kindFilter`
+  - 입력: `query`, optional `maxResults`, optional `kindFilter`, optional `matchMode`
   - LSP: `workspace/symbol`
   - 기본 결과 상한은 300개이며 서버 hard cap은 1000개다.
   - `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 `SymbolKindExtensions.ToMcpName()` 출력 이름을 대소문자 무시로 받는다.
   - 빈 filter list나 알 수 없는 kind 이름은 `invalid_kind_filter`로 거부한다.
-  - `kindFilter`는 LSP 요청 이후 MCP 쪽에서 mappable workspace symbol 결과에 적용한다. Roslyn LS `workspace/symbol` 요청은 같은 query로 호출되며 검색 비용 절감을 보장하지 않는다.
-  - `maxResults`는 kind filtering 이후 적용한다.
+  - `matchMode`는 `default`, `exact`, `prefix`, `contains`를 받는다. 생략 또는 `null`이면 `default`이고, 빈 문자열이나 알 수 없는 값은 `invalid_match_mode`로 거부한다.
+  - `kindFilter`와 `matchMode`는 LSP 요청 이후 MCP 쪽에서 mappable workspace symbol 결과에 적용한다. Roslyn LS `workspace/symbol` 요청은 같은 query로 호출되며 검색 비용 절감을 보장하지 않는다.
+  - `matchMode`는 simple symbol `Name`에만 적용하며 `ContainerName`, qualified name, file path, source text는 보지 않는다.
+  - `maxResults`는 kind/match filtering 이후 적용한다.
   - `totalKnown`, `returned`, `truncated`는 필터 후 mappable 결과 기준이며, `totalUnfilteredKnown`은 필터 전 mappable 결과 수다. 필터가 없으면 두 total 값은 같다.
   - `WorkspaceWarming`에서도 best-effort로 실행한다.
   - warming 중이면 결과에 `completeness: "partial"` 또는 `unknown`을 포함한다.

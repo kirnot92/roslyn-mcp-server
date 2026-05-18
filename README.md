@@ -86,7 +86,8 @@ Read-only Roslyn tools:
   traversal depth and result caps.
 - `find_symbols` - Search workspace symbols by name, optionally filtering
   returned results by kind such as `class`, `interface`, `method`, `property`,
-  or `field`.
+  or `field`, and by symbol-name `matchMode`: `default`, `exact`, `prefix`,
+  or `contains`.
 - `diagnostics` - Return currently known file or workspace diagnostics.
 
 Resources:

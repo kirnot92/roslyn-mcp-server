@@ -174,12 +174,14 @@ follow-up traversal. Use `get_call_hierarchy` for caller/callee analysis;
 
 `find_symbols` is a workspace symbol-name search. Its optional `kindFilter`
 accepts MCP symbol kind names such as `class`, `interface`, `method`,
-`property`, `field`, `enumMember`, and `typeParameter`, case-insensitively. The
-server still calls Roslyn LS `workspace/symbol` with the same query and applies
-the filter to mappable results before `maxResults`, so it reduces returned noise
-but does not reduce Roslyn LS search cost. `totalKnown`, `returned`, and
-`truncated` describe the filtered mappable result set, while
-`totalUnfilteredKnown` reports mappable symbols before kind filtering.
+`property`, `field`, `enumMember`, and `typeParameter`, case-insensitively.
+`matchMode` accepts `default`, `exact`, `prefix`, or `contains`; omit it to keep
+Roslyn LS default matching. The server still calls Roslyn LS `workspace/symbol`
+with the same query and applies `kindFilter` and `matchMode` to mappable results
+before `maxResults`, so these options reduce returned noise but do not reduce
+Roslyn LS search cost. `totalKnown`, `returned`, and `truncated` describe the
+filtered mappable result set, while `totalUnfilteredKnown` reports mappable
+symbols before `kindFilter` and `matchMode`.
 
 ## Code Review Preflight
 

@@ -569,6 +569,8 @@ public sealed partial class NavigationTools(
         int? maxResults = null,
         [Description("Optional MCP symbol kind names to keep, such as class, interface, method, property, field, enumMember, or typeParameter.")]
         string[]? kindFilter = null,
+        [Description("Optional symbol name match mode after Roslyn LS responds: default, exact, prefix, or contains. Omit for Roslyn LS default matching.")]
+        string? matchMode = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -576,6 +578,7 @@ public sealed partial class NavigationTools(
             query = ValidateSymbolQuery(query);
             var effectiveMaxResults = NormalizeSymbolMaxResults(maxResults);
             var parsedKindFilter = ParseSymbolKindFilter(kindFilter);
+            var parsedMatchMode = ParseSymbolMatchMode(matchMode);
             var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
             var response = await context.Handle.Client.RequestAsync(
                 "workspace/symbol",
@@ -584,7 +587,7 @@ public sealed partial class NavigationTools(
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
-            var symbols = MapWorkspaceSymbols(response, effectiveMaxResults, parsedKindFilter);
+            var symbols = MapWorkspaceSymbols(response, effectiveMaxResults, parsedKindFilter, query, parsedMatchMode);
             var metadata = CreateMetadata(context.State, ToolKind.Symbols, symbols.Truncated);
             return new FindSymbolsResult(
                 symbols.Items,

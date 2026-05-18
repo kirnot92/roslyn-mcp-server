@@ -45,10 +45,11 @@
   - `peek_definition(file, line, column, contextLines?, maxDefinitions?)` tool을 추가했다.
   - `peek_references(file, line, column, includeDeclaration?, maxResults?, contextLines?)` tool을 추가했다.
   - LSP `textDocument/definition` 결과를 원본 파일 snippet과 함께 반환하며, root 밖 또는 읽을 수 없는 파일은 건너뛰고 mappable definition 기준 metadata를 반환한다.
-  - `find_symbols(query, maxResults?, kindFilter?)`의 `kindFilter` 옵션을 추가했다.
+  - `find_symbols(query, maxResults?, kindFilter?, matchMode?)`의 `kindFilter`와 `matchMode` 옵션을 추가했다.
   - `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
+  - `matchMode`는 `default`, `exact`, `prefix`, `contains`를 지원하며 simple symbol name에만 적용한다. 생략 또는 `null`은 기존 Roslyn LS 기본 matching을 유지한다.
   - 필터는 Roslyn LS `workspace/symbol` 응답을 받은 뒤 MCP 쪽에서 적용한다. Roslyn LS 검색 비용 절감을 보장하지 않고, 반환 noise 감소를 목적으로 한다.
-  - `find_symbols` 결과 metadata에는 필터 후 mappable 결과 기준의 `totalKnown`, `returned`, `truncated`와 필터 전 mappable 결과 수인 `totalUnfilteredKnown`이 포함된다.
+  - `find_symbols` 결과 metadata에는 kind/match filtering 후 mappable 결과 기준의 `totalKnown`, `returned`, `truncated`와 필터 전 mappable 결과 수인 `totalUnfilteredKnown`이 포함된다.
   - `get_call_hierarchy(file, line, column, direction = "incoming", maxResults?)` tool을 추가했다.
   - LSP call hierarchy의 prepare/incoming/outgoing 흐름을 사용하며 직접 depth-1 호출자/피호출자 관계만 반환한다.
   - `direction`은 `incoming`, `outgoing`, `both`를 지원하고 recursive depth/maxDepth는 제공하지 않는다.
@@ -186,7 +187,7 @@ M2b 직후 남은 범위:
 2026-05-17 기준 M2c(`find_symbols`)가 완료되었다.
 
 - MCP read tool
-  - `find_symbols(query, maxResults?, kindFilter?)`
+  - `find_symbols(query, maxResults?, kindFilter?, matchMode?)`
 - LSP 요청
   - `workspace/symbol`
 - 결과 mapper
@@ -199,10 +200,11 @@ M2b 직후 남은 범위:
   - 서버 hard cap은 1000
   - 사용자 `maxResults`와 hard cap 중 작은 값을 적용한다.
   - metadata에 `totalKnown`, `totalUnfilteredKnown`, `returned`, `truncated`를 포함한다.
-  - `kindFilter`가 있으면 `totalKnown`, `returned`, `truncated`는 필터 후 mappable 결과 기준이며, `totalUnfilteredKnown`은 필터 전 mappable 결과 수다.
-- kind filtering
+  - `kindFilter`나 `matchMode`가 있으면 `totalKnown`, `returned`, `truncated`는 필터 후 mappable 결과 기준이며, `totalUnfilteredKnown`은 필터 전 mappable 결과 수다.
+- kind/match filtering
   - `kindFilter`는 `SymbolKindExtensions.ToMcpName()` 출력과 같은 이름을 대소문자 무시로 받는다.
   - 빈 filter list나 알 수 없는 kind 이름은 `invalid_kind_filter`로 거부한다.
+  - `matchMode`는 `default`, `exact`, `prefix`, `contains`를 받는다. 빈 문자열이나 알 수 없는 값은 `invalid_match_mode`로 거부한다.
   - LSP `workspace/symbol` 요청은 동일한 query로 호출하고, 필터는 MCP 쪽에서 응답 mapping 후 적용한다.
 - workspace 상태 metadata
   - `WorkspaceWarming`: `partial`
