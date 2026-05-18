@@ -16,6 +16,8 @@ public sealed class CliOptionsTests
         Assert.Equal(100, options.MaxSolutionCandidates);
         Assert.Equal(CliOptions.DefaultMaxProjectCandidates, options.MaxProjectCandidates);
         Assert.Equal(1000, options.MaxProjectCandidates);
+        Assert.Equal(CliOptions.DefaultMaxExpensiveLspRequests, options.MaxExpensiveLspRequests);
+        Assert.Equal(4, options.MaxExpensiveLspRequests);
     }
 
     [Fact]

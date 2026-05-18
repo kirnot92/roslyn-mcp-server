@@ -162,7 +162,7 @@ Path handling:
 - `--max-open-documents`: 200
 - `--max-document-bytes`: 2 MiB
 - `--max-in-flight-lsp-requests`: 16
-- `--max-expensive-lsp-requests`: 2
+- `--max-expensive-lsp-requests`: 4
 - `--startup-timeout`: 60초
 
 Tuning 판단 기준:
@@ -172,6 +172,13 @@ Tuning 판단 기준:
 - expensive request limit이 interactive MCP 사용을 과도하게 막는가
 - diagnostics queue capacity가 burst를 견디되 memory를 과도하게 쓰지 않는가
 - result cap이 agent가 다음 행동을 정하기에 충분한가
+
+최근 tuning 근거:
+
+- 2026-05-18 MAUI `Microsoft.Maui.sln` 기준 기본 scanner 설정은 6 solution, 134 project를 0.157초에 찾았고 truncated `false`였다.
+- 같은 MAUI repo에서 기본 `--max-expensive-lsp-requests 2`는 병렬 `find_symbols` 4개 중 2개를 거절했다.
+- `--max-expensive-lsp-requests 4` 후보는 동일 병렬 요청 4개를 모두 처리했고 각 요청은 약 2.1초에 완료됐다.
+- 이 결과를 반영해 기본 expensive LSP request 상한은 4로 조정한다.
 
 ## Smoke 기록 위치
 
