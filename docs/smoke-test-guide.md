@@ -89,7 +89,6 @@ python scripts/smoke-tests/mcp_powershell_gotodef_ramp.py
 ## 유용한 옵션
 
 ```powershell
-$env:ROSLYN_MCP_SMOKE_EXTRA_ARGS = "--scan-timeout 20"
 $env:ASPNETCORE_SMOKE_WARMUP_SECONDS = "180"
 $env:ASPNETCORE_LONG_WARMUP_SECONDS = "600"
 $env:ASPNETCORE_LONG_POLL_SECONDS = "60"

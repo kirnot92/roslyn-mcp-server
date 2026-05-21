@@ -60,7 +60,8 @@ should use partial results when they are good enough and call
 Workspace tools:
 
 - `list_workspaces` - Discover `.sln`, `.slnx`, and `.csproj` candidates under
-  the workspace root.
+  the workspace root. Optional `maxDepth` skips git-based discovery and performs
+  bounded filesystem BFS for near-root workspace files.
 - `load_solution` - Load a selected `.sln` or `.slnx` into Roslyn LS.
 - `load_project` - Load a selected `.csproj` into Roslyn LS.
 - `get_workspace_status` - Report the selected target, load state, warnings,

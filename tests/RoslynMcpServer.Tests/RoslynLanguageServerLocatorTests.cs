@@ -44,8 +44,6 @@ public sealed class RoslynLanguageServerLocatorTests
             null,
             null,
             TimeSpan.FromSeconds(60),
-            6,
-            TimeSpan.FromSeconds(3),
             100,
             1000,
             200,

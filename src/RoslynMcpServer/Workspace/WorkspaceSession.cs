@@ -94,9 +94,9 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
     public WorkspaceLoadState State => this.state;
 
-    public WorkspaceScanResult ListWorkspaces(CancellationToken cancellationToken = default)
+    public WorkspaceScanResult ListWorkspaces(int? maxDepth = null, CancellationToken cancellationToken = default)
     {
-        this.lastWorkspaceScan = this.scanner.Scan(cancellationToken);
+        this.lastWorkspaceScan = this.scanner.Scan(maxDepth, cancellationToken);
         return this.lastWorkspaceScan;
     }
 
@@ -331,7 +331,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
             return this.lastWorkspaceScan;
         }
 
-        this.lastWorkspaceScan = this.scanner.Scan(cancellationToken);
+        this.lastWorkspaceScan = this.scanner.Scan(cancellationToken: cancellationToken);
         return this.lastWorkspaceScan;
     }
 

@@ -67,6 +67,7 @@ src/RoslynMcpServer/
   Workspace/
     DocumentPathMapper.cs
     DocumentStateManager.cs
+    FileSystemWorkspaceScanner.cs
     GitWorkspaceScanner.cs
     IGitWorkspaceScanner.cs
     PathGuard.cs
@@ -92,8 +93,6 @@ scripts/smoke-tests/
 --log-file <path>
 --ls-log-dir <path>
 --startup-timeout <seconds>
---scan-max-depth <depth>
---scan-timeout <seconds>
 --max-solution-candidates <count>
 --max-project-candidates <count>
 --max-open-documents <count>
@@ -136,11 +135,12 @@ Failed
 
 탐색 보호 장치:
 
-- `--scan-max-depth`
-- `--scan-timeout`
 - `--max-solution-candidates`
 - `--max-project-candidates`
 - git repository에서는 가능한 경우 git pathspec 기반 scan
+- `list_workspaces`의 `maxDepth`가 지정되면 git scan을 건너뛰고 해당 depth까지 filesystem BFS 수행
+- git scan은 30초 internal budget을 사용하고, filesystem scan은 30초 internal timeout을 사용
+- git scan이 실패하면 depth 3 filesystem fallback 수행
 - `.git`, build output, package cache 같은 불필요한 디렉터리 제외
 
 결과가 제한에 걸리면 `WorkspaceScanResult.Truncated`와 `TruncationReason`으로 표시한다.

@@ -149,6 +149,14 @@ cause. Read tools still return best-effort results with `workspaceState`,
 warming, retry hints use `retryAfterMs: 30000` so clients avoid tight polling on
 large repositories.
 
+`list_workspaces` uses git-based discovery by default when the root is a git
+worktree. If git discovery cannot return candidates, the server retries with a
+shallow filesystem BFS at depth 3. Git discovery uses an internal 30 second
+budget rather than a public CLI option. Passing `maxDepth` skips git and
+performs bounded filesystem BFS to that depth, which is useful when a large
+repository has near-root solution files and git is slow in the current
+environment.
+
 `document_symbols` returns a bounded file-level symbol tree. Its optional
 `kindFilter` accepts the same MCP symbol kind names as `find_symbols`, such as
 `class`, `interface`, `method`, `property`, `field`, `enum`, `enumMember`,
@@ -242,15 +250,15 @@ load and keeps the later navigation calls from paying the full cold-start cost.
 
 ## Notes For Large Repositories
 
-Workspace discovery is bounded by scan depth, scan timeout, and candidate limits.
+Workspace discovery is bounded by internal 30 second scan budgets, optional `list_workspaces.maxDepth`, and candidate limits.
 Large result tools include metadata such as `totalKnown`, `returned`, and
 `truncated`. A truncated result is expected behavior, not a transport failure.
 If workspace discovery times out, check `truncated`, `truncationReason`, and
 `elapsed` on `list_workspaces` or `get_workspace_status.workspaces`. The common
 causes are cold git state, slow or network-backed disks, antivirus scanning,
 many untracked files, git being unavailable, or using a root that is wider than
-the repository you meant to inspect. Increase `--scan-timeout` when discovery is
-legitimately slow.
+the repository you meant to inspect. If the default shallow fallback misses a
+known workspace file, retry `list_workspaces` with a larger `maxDepth`.
 
 Diagnostics are currently based on diagnostics already published by Roslyn LS
 and processed by the bounded background diagnostics queue. The server does not

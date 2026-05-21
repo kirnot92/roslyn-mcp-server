@@ -86,8 +86,6 @@ Server resource:
 - `--log-file <path>`
 - `--ls-log-dir <path>`
 - `--startup-timeout <seconds>`
-- `--scan-max-depth <depth>`
-- `--scan-timeout <seconds>`
 - `--max-solution-candidates <count>`
 - `--max-project-candidates <count>`
 - `--max-open-documents <count>`

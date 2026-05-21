@@ -10,8 +10,6 @@ public sealed record CliOptions(
     string? LogFile,
     string? LanguageServerLogDirectory,
     TimeSpan StartupTimeout,
-    int ScanMaxDepth,
-    TimeSpan ScanTimeout,
     int MaxSolutionCandidates,
     int MaxProjectCandidates,
     int MaxOpenDocuments,
@@ -19,13 +17,11 @@ public sealed record CliOptions(
     int MaxInFlightLspRequests,
     int MaxExpensiveLspRequests)
 {
-    public const int DefaultScanMaxDepth = 6;
     public const int DefaultMaxSolutionCandidates = 100;
     public const int DefaultMaxProjectCandidates = 1000;
     public const int DefaultMaxOpenDocuments = 200;
     public const long DefaultMaxDocumentBytes = 2 * 1024 * 1024;
     public const int DefaultMaxExpensiveLspRequests = 4;
-    public static readonly TimeSpan DefaultScanTimeout = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(60);
 
     public static CliOptions Parse(string[] args)
@@ -37,8 +33,6 @@ public sealed record CliOptions(
         string? logFile = null;
         string? languageServerLogDirectory = null;
         var startupTimeout = DefaultStartupTimeout;
-        var scanMaxDepth = DefaultScanMaxDepth;
-        var scanTimeout = DefaultScanTimeout;
         var maxSolutionCandidates = DefaultMaxSolutionCandidates;
         var maxProjectCandidates = DefaultMaxProjectCandidates;
         var maxOpenDocuments = DefaultMaxOpenDocuments;
@@ -77,12 +71,6 @@ public sealed record CliOptions(
                 case "--startup-timeout":
                     startupTimeout = ParseTimeout(ReadValue(args, ref i, arg), arg);
                     break;
-                case "--scan-max-depth":
-                    scanMaxDepth = ParseNonNegativeInt(ReadValue(args, ref i, arg), arg);
-                    break;
-                case "--scan-timeout":
-                    scanTimeout = ParseTimeout(ReadValue(args, ref i, arg), arg);
-                    break;
                 case "--max-solution-candidates":
                     maxSolutionCandidates = ParsePositiveInt(ReadValue(args, ref i, arg), arg);
                     break;
@@ -118,8 +106,6 @@ public sealed record CliOptions(
             logFile is null ? null : Path.GetFullPath(logFile),
             languageServerLogDirectory is null ? null : Path.GetFullPath(languageServerLogDirectory),
             startupTimeout,
-            scanMaxDepth,
-            scanTimeout,
             maxSolutionCandidates,
             maxProjectCandidates,
             maxOpenDocuments,
@@ -138,8 +124,6 @@ public sealed record CliOptions(
           --log-file <path>
           --ls-log-dir <path>
           --startup-timeout <seconds>
-          --scan-max-depth <depth>
-          --scan-timeout <seconds>
           --max-solution-candidates <count>
           --max-project-candidates <count>
           --max-open-documents <count>
@@ -174,16 +158,6 @@ public sealed record CliOptions(
         if (!int.TryParse(value, out var parsed) || parsed <= 0)
         {
             throw new CliUsageException($"{optionName} must be a positive integer.");
-        }
-
-        return parsed;
-    }
-
-    private static int ParseNonNegativeInt(string value, string optionName)
-    {
-        if (!int.TryParse(value, out var parsed) || parsed < 0)
-        {
-            throw new CliUsageException($"{optionName} must be a non-negative integer.");
         }
 
         return parsed;

@@ -28,10 +28,8 @@ public sealed class GitWorkspaceScannerTests
 
         var scanner = new GitWorkspaceScanner(CreateOptions(root.Path), new PathGuard(root.Path));
 
-        var attempt = scanner.TryScan();
-        var result = attempt.Result;
+        var result = scanner.TryScan();
 
-        Assert.Equal(GitWorkspaceScanStatus.Succeeded, attempt.Status);
         Assert.NotNull(result);
         Assert.False(result.Truncated);
         Assert.Equal(["App.sln"], result.Solutions.Select(x => x.RelativePath).ToArray());
@@ -39,16 +37,15 @@ public sealed class GitWorkspaceScannerTests
     }
 
     [Fact]
-    public void TryScan_ReturnsSkippedOutsideGitWorkTree()
+    public void TryScan_ReturnsNullOutsideGitWorkTree()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
         var scanner = new GitWorkspaceScanner(CreateOptions(root.Path), new PathGuard(root.Path));
 
-        var attempt = scanner.TryScan();
+        var result = scanner.TryScan();
 
-        Assert.Equal(GitWorkspaceScanStatus.Skipped, attempt.Status);
-        Assert.Null(attempt.Result);
+        Assert.Null(result);
     }
 
     [Fact]
@@ -73,13 +70,11 @@ public sealed class GitWorkspaceScannerTests
         var options = CreateOptions(root.Path);
         var scanner = new GitWorkspaceScanner(options, new PathGuard(root.Path));
 
-        var attempt = scanner.TryScan();
-        var result = attempt.Result;
+        var result = scanner.TryScan();
 
-        Assert.Equal(GitWorkspaceScanStatus.Succeeded, attempt.Status);
         Assert.NotNull(result);
         Assert.False(result.Truncated);
-        Assert.True(result.Elapsed < options.ScanTimeout);
+        Assert.True(result.Elapsed < TimeSpan.FromSeconds(30));
         Assert.Equal(["PowerShell.sln"], result.Solutions.Select(x => x.RelativePath).ToArray());
         Assert.Equal(["src/PowerShell/PowerShell.csproj"], result.Projects.Select(x => x.RelativePath).ToArray());
     }
@@ -102,10 +97,8 @@ public sealed class GitWorkspaceScannerTests
         var options = CreateOptions(root.Path) with { MaxProjectCandidates = 1 };
         var scanner = new GitWorkspaceScanner(options, new PathGuard(root.Path));
 
-        var attempt = scanner.TryScan();
-        var result = attempt.Result;
+        var result = scanner.TryScan();
 
-        Assert.Equal(GitWorkspaceScanStatus.Succeeded, attempt.Status);
         Assert.NotNull(result);
         Assert.True(result.Truncated);
         Assert.Equal("project_candidate_limit", result.TruncationReason);
@@ -135,10 +128,8 @@ public sealed class GitWorkspaceScannerTests
         };
         var scanner = new GitWorkspaceScanner(options, new PathGuard(root.Path));
 
-        var attempt = scanner.TryScan();
-        var result = attempt.Result;
+        var result = scanner.TryScan();
 
-        Assert.Equal(GitWorkspaceScanStatus.Succeeded, attempt.Status);
         Assert.NotNull(result);
         Assert.True(result.Truncated);
         Assert.Equal("candidate_limit", result.TruncationReason);
@@ -147,12 +138,14 @@ public sealed class GitWorkspaceScannerTests
     }
 
     [Fact]
-    public void WorkspaceScanner_FallsBackToFileSystemWhenGitScanFails()
+    public void WorkspaceScanner_FallsBackToShallowFileSystemScanWhenGitScanFails()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
         Directory.CreateDirectory(Path.Combine(root.Path, "src"));
         File.WriteAllText(Path.Combine(root.Path, "src", "App.csproj"), string.Empty);
+        Directory.CreateDirectory(Path.Combine(root.Path, "src", "Deep", "A", "TooDeep"));
+        File.WriteAllText(Path.Combine(root.Path, "src", "Deep", "A", "TooDeep", "TooDeep.csproj"), string.Empty);
         var options = CreateOptions(root.Path);
         var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), new FastNullGitScanner());
 
@@ -164,17 +157,22 @@ public sealed class GitWorkspaceScannerTests
     }
 
     [Fact]
-    public void WorkspaceScanner_FallsBackToFileSystemWhenGitScanTimesOut()
+    public void WorkspaceScanner_MaxDepthSkipsGitAndLimitsFileSystemDepth()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
+        Directory.CreateDirectory(Path.Combine(root.Path, "src"));
+        File.WriteAllText(Path.Combine(root.Path, "src", "App.csproj"), string.Empty);
+        Directory.CreateDirectory(Path.Combine(root.Path, "src", "Deep"));
+        File.WriteAllText(Path.Combine(root.Path, "src", "Deep", "Deep.csproj"), string.Empty);
         var options = CreateOptions(root.Path);
-        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), new TimedOutGitScanner());
+        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), new ThrowingGitScanner());
 
-        var result = scanner.Scan();
+        var result = scanner.Scan(maxDepth: 1, cancellationToken: CancellationToken.None);
 
         Assert.False(result.Truncated);
         Assert.Equal(["App.sln"], result.Solutions.Select(x => x.RelativePath).ToArray());
+        Assert.Equal(["src/App.csproj"], result.Projects.Select(x => x.RelativePath).ToArray());
     }
 
     private static CliOptions CreateOptions(string root) =>
@@ -186,8 +184,6 @@ public sealed class GitWorkspaceScannerTests
             null,
             null,
             TimeSpan.FromSeconds(60),
-            6,
-            TimeSpan.FromSeconds(3),
             100,
             500,
             200,
@@ -235,21 +231,15 @@ public sealed class GitWorkspaceScannerTests
         Assert.Equal(0, process.ExitCode);
     }
 
-    private sealed class TimedOutGitScanner : IGitWorkspaceScanner
-    {
-        public GitWorkspaceScanAttempt TryScan(CancellationToken cancellationToken = default) =>
-            TryScan(TimeSpan.FromMilliseconds(1), cancellationToken);
-
-        public GitWorkspaceScanAttempt TryScan(TimeSpan budget, CancellationToken cancellationToken = default) =>
-            GitWorkspaceScanAttempt.TimedOut(TimeSpan.FromMilliseconds(1));
-    }
-
     private sealed class FastNullGitScanner : IGitWorkspaceScanner
     {
-        public GitWorkspaceScanAttempt TryScan(CancellationToken cancellationToken = default) =>
-            GitWorkspaceScanAttempt.Failed(TimeSpan.Zero);
+        public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default) =>
+            null;
+    }
 
-        public GitWorkspaceScanAttempt TryScan(TimeSpan budget, CancellationToken cancellationToken = default) =>
-            GitWorkspaceScanAttempt.Failed(TimeSpan.Zero);
+    private sealed class ThrowingGitScanner : IGitWorkspaceScanner
+    {
+        public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Git scanner should not be called.");
     }
 }

@@ -10,11 +10,14 @@ public sealed class WorkspaceTools(WorkspaceSession session)
 {
     [McpServerTool(Name = "list_workspaces")]
     [Description("Use when you need to discover .sln, .slnx, or .csproj candidates under the configured root, especially before load_solution/load_project or when no workspace is loaded.")]
-    public object ListWorkspaces()
+    public object ListWorkspaces(
+        [Description("Optional non-negative filesystem BFS depth. When set, skips git-based discovery and scans only to this depth; useful for large repositories when looking for near-root workspace files.")]
+        int? maxDepth = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            return session.ListWorkspaces();
+            return session.ListWorkspaces(maxDepth, cancellationToken);
         }
         catch (UserFacingException ex)
         {

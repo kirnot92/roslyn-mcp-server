@@ -42,6 +42,7 @@
 현재 코드에서 허용하는 예외:
 
 - MCP tool method의 optional 입력값. 예: `maxResults = null`
+- `WorkspaceScanner.Scan(int? maxDepth = null, ...)`처럼 MCP optional 입력을 그대로 전달하는 얇은 coordination API
 - .NET async API의 `CancellationToken cancellationToken = default`
 - framework 또는 외부 SDK가 관용적으로 기대하는 signature
 
@@ -69,7 +70,7 @@
 ```csharp
 public interface IGitWorkspaceScanner
 {
-    WorkspaceScanResult? TryScan(TimeSpan budget, CancellationToken cancellationToken = default);
+    WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default);
 }
 
 public sealed class GitWorkspaceScanner : IGitWorkspaceScanner

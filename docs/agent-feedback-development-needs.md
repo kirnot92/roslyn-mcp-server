@@ -112,7 +112,7 @@
 | 항목 | 내용 |
 | --- | --- |
 | scan mode | `Sources/*.sln` 같은 얕은 탐색 우선 또는 glob/path hint 기반 discovery를 검토한다. |
-| scan timeout tuning | opt-in large repo profile 또는 `--scan-timeout` 가이드 개선을 검토한다. |
+| scan timeout tuning | internal scan budget과 `list_workspaces(maxDepth)` 가이드 개선을 검토한다. |
 | workspace cache | 최근 scan 결과와 load target metadata를 세션 내에서 더 명확히 재사용한다. |
 | load target cache | client/server 프로젝트를 오갈 때 warming 비용을 줄일 수 있는지 검토한다. |
 

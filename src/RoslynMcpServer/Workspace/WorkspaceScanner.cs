@@ -1,202 +1,41 @@
-using System.Diagnostics;
 using RoslynMcpServer.Cli;
+using RoslynMcpServer.Infrastructure;
 
 namespace RoslynMcpServer.Workspace;
 
-// Git-aware scanning is preferred when available because git already applies
-// repository ignore rules. This scanner owns the bounded filesystem fallback
-// for non-git roots or environments where git probing fails. Git gets only a
-// bounded portion of the scan budget so fallback can still run when git is slow.
+// Coordinates git-aware discovery with bounded filesystem fallback. An explicit
+// maxDepth skips git and uses filesystem BFS.
 public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IGitWorkspaceScanner? gitScanner)
 {
-    private static readonly TimeSpan MaxGitScanBudget = TimeSpan.FromSeconds(3);
-    private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".git",
-        ".vs",
-        "bin",
-        "obj",
-        "node_modules",
-        "packages",
-        ".idea",
-        ".vscode",
-        ".cache",
-        ".nuke",
-        "artifacts",
-        "dist",
-        "out",
-        "target"
-    };
+    private const int FallbackFileSystemMaxDepth = 3;
+    private static readonly TimeSpan DefaultScanTimeout = TimeSpan.FromSeconds(30);
 
-    public WorkspaceScanResult Scan() => Scan(CancellationToken.None);
+    private readonly FileSystemWorkspaceScanner fileSystemScanner = new(options, pathGuard);
 
-    public WorkspaceScanResult Scan(CancellationToken cancellationToken)
+    public WorkspaceScanResult Scan(int? maxDepth = null, CancellationToken cancellationToken = default)
     {
-        var sw = Stopwatch.StartNew();
+        if (maxDepth is not null)
+        {
+            if (maxDepth.Value < 0)
+            {
+                throw new UserFacingException("invalid_max_depth", "maxDepth must be a non-negative integer.");
+            }
+
+            return this.fileSystemScanner.Scan(DefaultScanTimeout, maxDepth.Value, cancellationToken);
+        }
+
         // Try git first so .gitignore, .git/info/exclude, and global excludes
         // shape workspace discovery without reimplementing those rules here.
-        var gitAttempt = gitScanner?.TryScan(GetGitScanBudget(options.ScanTimeout), cancellationToken);
-        if (gitAttempt?.Result is not null)
+        var gitResult = gitScanner?.TryScan(cancellationToken);
+        if (gitResult is not null)
         {
-            return gitAttempt.Result;
+            return gitResult;
         }
 
-        // Non-cooperative scanners or very small timeouts can still exhaust the
-        // whole budget before fallback has a chance to run.
-        var remaining = options.ScanTimeout - sw.Elapsed;
-        if (remaining <= TimeSpan.Zero)
-        {
-            return new WorkspaceScanResult(
-                pathGuard.Root,
-                [],
-                [],
-                Truncated: true,
-                TruncationReason: "scan_timeout",
-                sw.Elapsed);
-        }
-
-        return ScanFileSystem(remaining, cancellationToken);
-    }
-
-    private WorkspaceScanResult ScanFileSystem(TimeSpan scanTimeout, CancellationToken cancellationToken)
-    {
-        var sw = Stopwatch.StartNew();
-        var solutions = new List<WorkspaceCandidate>();
-        var projects = new List<WorkspaceCandidate>();
-        string? truncationReason = null;
-
-        var queue = new Queue<(string Directory, int Depth)>();
-        queue.Enqueue((pathGuard.Root, 0));
-        var stopScanning = false;
-
-        while (queue.Count > 0 && !stopScanning)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (sw.Elapsed > scanTimeout)
-            {
-                truncationReason = "scan_timeout";
-                break;
-            }
-
-            var (directory, depth) = queue.Dequeue();
-            if (depth > options.ScanMaxDepth)
-            {
-                continue;
-            }
-
-            IEnumerable<string> entries;
-            try
-            {
-                entries = Directory.EnumerateFileSystemEntries(directory);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                continue;
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-
-            foreach (var entry in entries)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (sw.Elapsed > scanTimeout)
-                {
-                    truncationReason = "scan_timeout";
-                    break;
-                }
-
-                var attributes = SafeGetAttributes(entry);
-                if (attributes is null)
-                {
-                    continue;
-                }
-
-                if ((attributes.Value & FileAttributes.Directory) != 0)
-                {
-                    var name = Path.GetFileName(entry);
-                    if (depth < options.ScanMaxDepth &&
-                        !ExcludedDirectories.Contains(name) &&
-                        (attributes.Value & FileAttributes.ReparsePoint) == 0)
-                    {
-                        queue.Enqueue((entry, depth + 1));
-                    }
-
-                    continue;
-                }
-
-                var extension = Path.GetExtension(entry);
-                if (string.Equals(extension, ".sln", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (solutions.Count >= options.MaxSolutionCandidates)
-                    {
-                        truncationReason = "solution_candidate_limit";
-                        stopScanning = CandidateLimitsReached(solutions, projects);
-                        continue;
-                    }
-
-                    solutions.Add(ToCandidate(entry, string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
-                        ? WorkspaceKind.SolutionX
-                        : WorkspaceKind.Solution));
-                    stopScanning = CandidateLimitsReached(solutions, projects);
-                }
-                else if (string.Equals(extension, ".csproj", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (projects.Count >= options.MaxProjectCandidates)
-                    {
-                        truncationReason = "project_candidate_limit";
-                        stopScanning = CandidateLimitsReached(solutions, projects);
-                        continue;
-                    }
-
-                    projects.Add(ToCandidate(entry, WorkspaceKind.Project));
-                    stopScanning = CandidateLimitsReached(solutions, projects);
-                }
-
-                if (stopScanning)
-                {
-                    truncationReason ??= "candidate_limit";
-                    break;
-                }
-            }
-
-        }
-
-        sw.Stop();
-
-        return new WorkspaceScanResult(
-            pathGuard.Root,
-            SortCandidates(solutions),
-            SortCandidates(projects),
-            truncationReason is not null,
-            truncationReason,
-            sw.Elapsed);
-    }
-
-    private WorkspaceCandidate ToCandidate(string fullPath, WorkspaceKind kind)
-    {
-        var normalized = Path.GetFullPath(fullPath);
-        return new WorkspaceCandidate(kind, normalized, pathGuard.ToRelativePath(normalized));
-    }
-
-    private static FileAttributes? SafeGetAttributes(string path)
-    {
-        try
-        {
-            return File.GetAttributes(path);
-        }
-        catch (IOException)
-        {
-            return null;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return null;
-        }
+        return this.fileSystemScanner.Scan(
+            DefaultScanTimeout,
+            FallbackFileSystemMaxDepth,
+            cancellationToken);
     }
 
     public static IReadOnlyList<WorkspaceCandidate> SortCandidates(IEnumerable<WorkspaceCandidate> candidates) =>
@@ -204,16 +43,4 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
             .OrderBy(candidate => candidate.RelativePath.Count(c => c == '/'))
             .ThenBy(candidate => candidate.RelativePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-
-    private bool CandidateLimitsReached(
-        IReadOnlyCollection<WorkspaceCandidate> solutions,
-        IReadOnlyCollection<WorkspaceCandidate> projects) =>
-        solutions.Count >= options.MaxSolutionCandidates &&
-        projects.Count >= options.MaxProjectCandidates;
-
-    private static TimeSpan GetGitScanBudget(TimeSpan scanTimeout)
-    {
-        var halfBudget = TimeSpan.FromTicks(Math.Max(1, scanTimeout.Ticks / 2));
-        return halfBudget < MaxGitScanBudget ? halfBudget : MaxGitScanBudget;
-    }
 }

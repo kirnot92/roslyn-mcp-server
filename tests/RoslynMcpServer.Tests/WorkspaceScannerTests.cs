@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using RoslynMcpServer.Cli;
+using RoslynMcpServer.Infrastructure;
 using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Tests;
@@ -41,8 +42,6 @@ public sealed class WorkspaceScannerTests
             null,
             null,
             TimeSpan.FromSeconds(60),
-            6,
-            TimeSpan.FromSeconds(3),
             100,
             1,
             200,
@@ -75,8 +74,6 @@ public sealed class WorkspaceScannerTests
             null,
             null,
             TimeSpan.FromSeconds(60),
-            6,
-            TimeSpan.FromSeconds(3),
             1,
             1,
             200,
@@ -93,6 +90,17 @@ public sealed class WorkspaceScannerTests
         Assert.Equal(["App.csproj"], result.Projects.Select(x => x.RelativePath).ToArray());
     }
 
+    [Fact]
+    public void Scan_RejectsNegativeMaxDepth()
+    {
+        using var root = TestRoot.Create();
+        var scanner = CreateScanner(root.Path);
+
+        var ex = Assert.Throws<UserFacingException>(() => scanner.Scan(maxDepth: -1));
+
+        Assert.Equal("invalid_max_depth", ex.Code);
+    }
+
     private static WorkspaceScanner CreateScanner(string root)
     {
         var options = new CliOptions(
@@ -103,8 +111,6 @@ public sealed class WorkspaceScannerTests
             null,
             null,
             TimeSpan.FromSeconds(60),
-            6,
-            TimeSpan.FromSeconds(3),
             100,
             500,
             200,

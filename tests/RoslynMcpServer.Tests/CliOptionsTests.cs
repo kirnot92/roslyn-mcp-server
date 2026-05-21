@@ -16,8 +16,6 @@ public sealed class CliOptionsTests
         Assert.Equal(100, options.MaxSolutionCandidates);
         Assert.Equal(CliOptions.DefaultMaxProjectCandidates, options.MaxProjectCandidates);
         Assert.Equal(1000, options.MaxProjectCandidates);
-        Assert.Equal(CliOptions.DefaultScanTimeout, options.ScanTimeout);
-        Assert.Equal(TimeSpan.FromSeconds(10), options.ScanTimeout);
         Assert.Equal(CliOptions.DefaultMaxExpensiveLspRequests, options.MaxExpensiveLspRequests);
         Assert.Equal(4, options.MaxExpensiveLspRequests);
     }
@@ -68,15 +66,11 @@ public sealed class CliOptionsTests
         var options = CliOptions.Parse(
         [
             "--root", root.Path,
-            "--scan-max-depth", "3",
-            "--scan-timeout", "1.5",
             "--max-solution-candidates", "7",
             "--max-project-candidates", "11",
             "--max-in-flight-lsp-requests", "5"
         ]);
 
-        Assert.Equal(3, options.ScanMaxDepth);
-        Assert.Equal(TimeSpan.FromSeconds(1.5), options.ScanTimeout);
         Assert.Equal(7, options.MaxSolutionCandidates);
         Assert.Equal(11, options.MaxProjectCandidates);
         Assert.Equal(5, options.MaxInFlightLspRequests);

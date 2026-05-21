@@ -115,8 +115,6 @@ public sealed class DocumentStateManagerTests
             null,
             null,
             TimeSpan.FromSeconds(60),
-            6,
-            TimeSpan.FromSeconds(3),
             100,
             500,
             maxOpenDocuments,
