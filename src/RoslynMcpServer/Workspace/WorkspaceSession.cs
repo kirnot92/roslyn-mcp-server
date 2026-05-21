@@ -126,7 +126,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
     public async Task MarkStartupLoadFailedAsync(UserFacingException exception)
     {
-        await this.stateLock.WaitAsync().ConfigureAwait(false);
+        await this.stateLock.WaitAsync();
         try
         {
             if (this.state is not WorkspaceLoadState.StartingLanguageServer)
@@ -169,7 +169,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
             return new ReadToolContext(this.handle, currentState);
         }
 
-        if (!await this.stateLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        if (!await this.stateLock.WaitAsync(0, cancellationToken))
         {
             throw WorkspaceLoading();
         }
@@ -200,7 +200,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
             }
 
             var target = SelectAutoLoadTarget(GetLastWorkspaceScanOrScan(cancellationToken));
-            await LoadTargetCoreAsync(target, cancellationToken).ConfigureAwait(false);
+            await LoadTargetCoreAsync(target, cancellationToken);
             return new ReadToolContext(this.handle!, this.state);
         }
         finally
@@ -213,13 +213,13 @@ public sealed class WorkspaceSession : IAsyncDisposable
     {
         if (this.handle is not null)
         {
-            await this.handle.Client.ShutdownAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
-            await this.handle.DisposeAsync().ConfigureAwait(false);
+            await this.handle.Client.ShutdownAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+            await this.handle.DisposeAsync();
         }
 
         if (this.diagnosticNotifications is not null)
         {
-            await this.diagnosticNotifications.DisposeAsync().ConfigureAwait(false);
+            await this.diagnosticNotifications.DisposeAsync();
         }
 
         this.stateLock.Dispose();
@@ -231,11 +231,11 @@ public sealed class WorkspaceSession : IAsyncDisposable
         WorkspaceKind requestedKind,
         CancellationToken cancellationToken)
     {
-        await this.stateLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await this.stateLock.WaitAsync(cancellationToken);
         try
         {
             var target = CreateTarget(path, allowedExtensions, requestedKind);
-            await LoadTargetCoreAsync(target, cancellationToken).ConfigureAwait(false);
+            await LoadTargetCoreAsync(target, cancellationToken);
 
             return ToStatus(GetLastWorkspaceScanOrScan(cancellationToken));
         }
@@ -248,7 +248,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
     private async Task LoadTargetCoreAsync(WorkspaceTarget target, CancellationToken cancellationToken)
     {
         var oldHandle = BeginRestart();
-        await StopHandleAsync(oldHandle).ConfigureAwait(false);
+        await StopHandleAsync(oldHandle);
 
         this.state = WorkspaceLoadState.StartingLanguageServer;
         this.failureCode = null;
@@ -256,7 +256,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
         try
         {
-            var handle = await this.loader.LoadAsync(target, cancellationToken).ConfigureAwait(false);
+            var handle = await this.loader.LoadAsync(target, cancellationToken);
             this.handle = handle;
             var notificationGeneration = this.diagnosticNotifications?.CurrentGeneration ?? 0;
             this.notificationHandler = (method, parameters) => OnNotificationReceived(notificationGeneration, method, parameters);
@@ -391,8 +391,8 @@ public sealed class WorkspaceSession : IAsyncDisposable
             return;
         }
 
-        await handle.Client.ShutdownAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
-        await handle.DisposeAsync().ConfigureAwait(false);
+        await handle.Client.ShutdownAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+        await handle.DisposeAsync();
     }
 
     private void OnNotificationReceived(int generation, string method, System.Text.Json.JsonElement? parameters)

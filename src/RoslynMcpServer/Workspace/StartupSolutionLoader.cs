@@ -29,14 +29,14 @@ public sealed class StartupSolutionLoader(
 
         try
         {
-            await session.LoadSolutionAsync(options.LoadSolutionPath, stoppingToken).ConfigureAwait(false);
+            await session.LoadSolutionAsync(options.LoadSolutionPath, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
         }
         catch (UserFacingException ex)
         {
-            await session.MarkStartupLoadFailedAsync(ex).ConfigureAwait(false);
+            await session.MarkStartupLoadFailedAsync(ex);
             logger.LogWarning(
                 ex,
                 "Startup solution load failed with user-facing error {ErrorCode}: {Message}",

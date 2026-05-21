@@ -49,15 +49,15 @@ public sealed class RoslynWorkspaceLoader(
                         }
                     }
                 }
-            }, options.StartupTimeout, cancellationToken).ConfigureAwait(false);
+            }, options.StartupTimeout, cancellationToken);
 
-            await handle.Client.NotifyAsync("initialized", new { }, cancellationToken).ConfigureAwait(false);
-            await NotifyOpenTargetAsync(handle.Client, target, cancellationToken).ConfigureAwait(false);
+            await handle.Client.NotifyAsync("initialized", new { }, cancellationToken);
+            await NotifyOpenTargetAsync(handle.Client, target, cancellationToken);
             return handle;
         }
         catch
         {
-            await handle.DisposeAsync().ConfigureAwait(false);
+            await handle.DisposeAsync();
             throw;
         }
     }

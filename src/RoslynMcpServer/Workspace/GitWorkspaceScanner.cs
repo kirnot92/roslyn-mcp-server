@@ -312,7 +312,7 @@ public sealed class GitWorkspaceScanner(
 
         while (true)
         {
-            var read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            var read = await stream.ReadAsync(buffer, cancellationToken);
             if (read == 0)
             {
                 break;

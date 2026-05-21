@@ -44,7 +44,7 @@ internal static class SourceSnippetReader
                         $"File exceeds the configured MaxDocumentBytes limit ({documents.MaxDocumentBytes} bytes): {location.File}"));
             }
 
-            var lines = await File.ReadAllLinesAsync(fullPath, cancellationToken).ConfigureAwait(false);
+            var lines = await File.ReadAllLinesAsync(fullPath, cancellationToken);
             if (location.Range.StartLine < 1 ||
                 location.Range.StartLine > lines.Length ||
                 location.Range.EndLine < location.Range.StartLine)

@@ -80,7 +80,7 @@ public sealed class RoslynLanguageServerIntegrationTests
                     NullLoggerFactory.Instance)),
             documents: documents,
             diagnostics: diagnosticStore);
-        await using var disposeSession = session.ConfigureAwait(false);
+        await using var disposeSession = session;
 
         var tools = new NavigationTools(session, documents, mapper);
         await session.LoadProjectAsync("Sample.csproj");

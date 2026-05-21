@@ -34,7 +34,7 @@ public sealed class DiagnosticsTools(
         {
             var filter = ParseSeverity(severity);
             var effectiveMaxResults = NormalizeMaxResults(maxResults);
-            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
+            var context = await session.PrepareReadToolAsync(cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(file))
             {
@@ -43,7 +43,7 @@ public sealed class DiagnosticsTools(
                     throw new UserFacingException("invalid_scope", "Specify either file or scope: workspace, not both.");
                 }
 
-                return await FileDiagnostics(file, filter, effectiveMaxResults, context, cancellationToken).ConfigureAwait(false);
+                return await FileDiagnostics(file, filter, effectiveMaxResults, context, cancellationToken);
             }
 
             if (!string.Equals(scope, "workspace", StringComparison.OrdinalIgnoreCase))
@@ -66,7 +66,7 @@ public sealed class DiagnosticsTools(
         ReadToolContext context,
         CancellationToken cancellationToken)
     {
-        var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
+        var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken);
         var relativePath = pathMapper.ToRelativePath(document.FullPath);
         var snapshot = diagnostics.GetFile(relativePath, severity);
         var metadata = CreateMetadata(context.State, scope: "file", hasKnownPublish: snapshot is not null, truncated: false);

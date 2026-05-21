@@ -16,8 +16,8 @@ internal static class NavigationPositionRequests
         CancellationToken cancellationToken)
     {
         var position = PositionMapper.ToLspPosition(line, column);
-        var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
-        var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
+        var context = await session.PrepareReadToolAsync(cancellationToken);
+        var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken);
         documents.ValidatePosition(document, file, line, column);
 
         return new PositionRequestContext(context, document, position);

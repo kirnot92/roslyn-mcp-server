@@ -69,7 +69,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     {
         ThrowIfFaulted();
 
-        if (!await this.inFlightLimit.WaitAsync(0).ConfigureAwait(false))
+        if (!await this.inFlightLimit.WaitAsync(0))
         {
             throw new UserFacingException("too_many_lsp_requests", "Too many LSP requests are already in flight.");
         }
@@ -77,7 +77,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         var expensiveAcquired = false;
         if (isExpensive)
         {
-            if (!await this.expensiveLimit.WaitAsync(0).ConfigureAwait(false))
+            if (!await this.expensiveLimit.WaitAsync(0))
             {
                 this.inFlightLimit.Release();
                 throw new UserFacingException("too_many_expensive_lsp_requests", "Too many expensive LSP requests are already in flight.");
@@ -112,7 +112,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
                 id,
                 method,
                 @params = parameters ?? new { }
-            }, linkedCts.Token).ConfigureAwait(false);
+            }, linkedCts.Token);
 
             using var cancellationRegistration = linkedCts.Token.UnsafeRegister(static state =>
             {
@@ -124,7 +124,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
                 }
             }, (this, id));
 
-            return await tcs.Task.ConfigureAwait(false);
+            return await tcs.Task;
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
@@ -149,8 +149,8 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
     {
         try
         {
-            await RequestAsync("shutdown", null, timeout, cancellationToken).ConfigureAwait(false);
-            await NotifyAsync("exit", null, cancellationToken).ConfigureAwait(false);
+            await RequestAsync("shutdown", null, timeout, cancellationToken);
+            await NotifyAsync("exit", null, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or UserFacingException)
         {
@@ -170,7 +170,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         {
             try
             {
-                await this.readLoop.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                await this.readLoop.WaitAsync(TimeSpan.FromSeconds(2));
             }
             catch (TimeoutException)
             {
@@ -188,10 +188,10 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
 
     private async Task WriteMessageAsync(object payload, CancellationToken cancellationToken)
     {
-        await this.writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await this.writeLock.WaitAsync(cancellationToken);
         try
         {
-            await LspFraming.WriteAsync(this.input, payload, cancellationToken).ConfigureAwait(false);
+            await LspFraming.WriteAsync(this.input, payload, cancellationToken);
         }
         finally
         {
@@ -205,7 +205,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
         {
             while (!this.disposeCts.IsCancellationRequested)
             {
-                using var document = await LspFraming.ReadAsync(this.output, this.maxResponsePayloadBytes, this.disposeCts.Token).ConfigureAwait(false);
+                using var document = await LspFraming.ReadAsync(this.output, this.maxResponsePayloadBytes, this.disposeCts.Token);
                 if (document is null)
                 {
                     break;
@@ -217,7 +217,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
                     root.TryGetProperty("method", out var requestMethodElement))
                 {
                     var requestMethod = requestMethodElement.GetString();
-                    await ReplyToServerRequestAsync(id, requestMethod, this.disposeCts.Token).ConfigureAwait(false);
+                    await ReplyToServerRequestAsync(id, requestMethod, this.disposeCts.Token);
                 }
                 else if (root.TryGetProperty("id", out idElement) && idElement.TryGetInt64(out id))
                 {
@@ -313,7 +313,7 @@ public sealed class LspClient : ILspClient, IAsyncDisposable
                 {
                     id
                 }
-            }, CancellationToken.None).ConfigureAwait(false);
+            }, CancellationToken.None);
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
         {

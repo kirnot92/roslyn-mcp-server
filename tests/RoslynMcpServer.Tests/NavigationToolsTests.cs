@@ -3949,7 +3949,7 @@ public sealed class NavigationToolsTests
         public async Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken)
         {
             Started.SetResult();
-            await Release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await Release.Task.WaitAsync(cancellationToken);
             return new RoslynWorkspaceHandle(target, new FakeLspClient());
         }
     }
@@ -4000,7 +4000,7 @@ public sealed class NavigationToolsTests
             ShutdownStarted?.SetResult();
             if (ReleaseShutdown is not null)
             {
-                await ReleaseShutdown.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+                await ReleaseShutdown.Task.WaitAsync(timeout, cancellationToken);
             }
         }
 

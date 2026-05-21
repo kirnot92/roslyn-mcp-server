@@ -34,8 +34,8 @@ public sealed partial class NavigationTools(
             var normalizedQuery = NavigationToolOptions.NormalizeDocumentSymbolQuery(query);
             var effectiveMaxResults = NavigationToolOptions.NormalizeDocumentSymbolMaxResults(maxResults);
             var effectiveTimeout = NavigationToolOptions.NormalizeConfigurableTimeout(timeoutSec);
-            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
-            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
+            var context = await session.PrepareReadToolAsync(cancellationToken);
+            var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken);
             var response = await context.Handle.Client.RequestAsync(
                 "textDocument/documentSymbol",
                 new
@@ -43,7 +43,7 @@ public sealed partial class NavigationTools(
                     textDocument = new TextDocumentIdentifier(document.Uri)
                 },
                 effectiveTimeout,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
 
             var mappedSymbols = DocumentSymbolMapper.Map(response, parsedKindFilter, normalizedQuery, effectiveMaxResults);
             var metadata = NavigationToolMetadata.Create(context.State, ToolKind.DocumentSymbols, mappedSymbols.Truncated);
@@ -78,7 +78,7 @@ public sealed partial class NavigationTools(
     {
         try
         {
-            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken).ConfigureAwait(false);
+            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/hover",
                 new
@@ -87,7 +87,7 @@ public sealed partial class NavigationTools(
                     position = request.Position
                 },
                 NavigationTimeout,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
 
             var hover = HoverMapper.Map(response);
             var metadata = NavigationToolMetadata.Create(request.Context.State, ToolKind.Hover, hover.Truncated);
@@ -120,7 +120,7 @@ public sealed partial class NavigationTools(
     {
         try
         {
-            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken).ConfigureAwait(false);
+            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/definition",
                 new
@@ -129,7 +129,7 @@ public sealed partial class NavigationTools(
                     position = request.Position
                 },
                 DefinitionTimeout,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
 
             var locations = NavigationLocationMapper.Map(pathMapper, response, "textDocument/definition", maxResults: null);
             var metadata = NavigationToolMetadata.Create(request.Context.State, ToolKind.Definition, truncated: false);
@@ -166,7 +166,7 @@ public sealed partial class NavigationTools(
         {
             var effectiveContextLines = NavigationToolOptions.NormalizePeekContextLines(contextLines);
             var effectiveMaxDefinitions = NavigationToolOptions.NormalizePeekMaxDefinitions(maxDefinitions);
-            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken).ConfigureAwait(false);
+            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/definition",
                 new
@@ -175,13 +175,13 @@ public sealed partial class NavigationTools(
                     position = request.Position
                 },
                 DefinitionTimeout,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
 
             var locations = NavigationLocationMapper.Map(pathMapper, response, "textDocument/definition", effectiveMaxDefinitions);
             var items = new List<PeekDefinitionItem>(locations.Items.Count);
             foreach (var location in locations.Items)
             {
-                var snippet = await SourceSnippetReader.ReadAsync(pathMapper, documents, location, effectiveContextLines, "Definition", cancellationToken).ConfigureAwait(false);
+                var snippet = await SourceSnippetReader.ReadAsync(pathMapper, documents, location, effectiveContextLines, "Definition", cancellationToken);
                 items.Add(new PeekDefinitionItem(
                     location.File,
                     location.Line,
@@ -232,7 +232,7 @@ public sealed partial class NavigationTools(
             var effectiveMaxResults = NavigationToolOptions.NormalizeReferenceMaxResults(maxResults);
             var parsedIncludePathPrefixes = NavigationToolOptions.ParseIncludePathPrefixes(pathMapper, includePathPrefixes);
             var effectiveTimeout = NavigationToolOptions.NormalizeConfigurableTimeout(timeoutSec);
-            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken).ConfigureAwait(false);
+            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/references",
                 new ReferenceParams(
@@ -241,7 +241,7 @@ public sealed partial class NavigationTools(
                     new ReferenceContext(includeDeclaration)),
                 effectiveTimeout,
                 cancellationToken,
-                isExpensive: true).ConfigureAwait(false);
+                isExpensive: true);
 
             var locations = NavigationLocationMapper.Map(pathMapper, response, "textDocument/references", effectiveMaxResults, parsedIncludePathPrefixes);
             var metadata = NavigationToolMetadata.Create(request.Context.State, ToolKind.References, locations.Truncated);
@@ -289,7 +289,7 @@ public sealed partial class NavigationTools(
             var effectiveContextLines = NavigationToolOptions.NormalizePeekContextLines(contextLines);
             var parsedIncludePathPrefixes = NavigationToolOptions.ParseIncludePathPrefixes(pathMapper, includePathPrefixes);
             var effectiveTimeout = NavigationToolOptions.NormalizeConfigurableTimeout(timeoutSec);
-            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken).ConfigureAwait(false);
+            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/references",
                 new ReferenceParams(
@@ -298,13 +298,13 @@ public sealed partial class NavigationTools(
                     new ReferenceContext(includeDeclaration)),
                 effectiveTimeout,
                 cancellationToken,
-                isExpensive: true).ConfigureAwait(false);
+                isExpensive: true);
 
             var locations = NavigationLocationMapper.Map(pathMapper, response, "textDocument/references", effectiveMaxResults, parsedIncludePathPrefixes);
             var items = new List<PeekReferenceItem>(locations.Items.Count);
             foreach (var location in locations.Items)
             {
-                var snippet = await SourceSnippetReader.ReadAsync(pathMapper, documents, location, effectiveContextLines, "Reference", cancellationToken).ConfigureAwait(false);
+                var snippet = await SourceSnippetReader.ReadAsync(pathMapper, documents, location, effectiveContextLines, "Reference", cancellationToken);
                 items.Add(new PeekReferenceItem(
                     location.File,
                     location.Line,
@@ -351,7 +351,7 @@ public sealed partial class NavigationTools(
         {
             var effectiveMaxResults = NavigationToolOptions.NormalizeImplementationMaxResults(maxResults);
             var parsedIncludePathPrefixes = NavigationToolOptions.ParseIncludePathPrefixes(pathMapper, includePathPrefixes);
-            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken).ConfigureAwait(false);
+            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/implementation",
                 new
@@ -361,7 +361,7 @@ public sealed partial class NavigationTools(
                 },
                 ImplementationsTimeout,
                 cancellationToken,
-                isExpensive: true).ConfigureAwait(false);
+                isExpensive: true);
 
             var locations = NavigationLocationMapper.Map(pathMapper, response, "textDocument/implementation", effectiveMaxResults, parsedIncludePathPrefixes);
             var metadata = NavigationToolMetadata.Create(request.Context.State, ToolKind.Implementations, locations.Truncated);
@@ -408,7 +408,7 @@ public sealed partial class NavigationTools(
             var effectiveMaxResults = NavigationToolOptions.NormalizeCallHierarchyMaxResults(maxResults);
             var parsedKindFilter = NavigationToolOptions.ParseCallHierarchyKindFilter(kindFilter);
             var parsedIncludePathPrefixes = NavigationToolOptions.ParseIncludePathPrefixes(pathMapper, includePathPrefixes);
-            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken).ConfigureAwait(false);
+            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken);
             var prepareResponse = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/prepareCallHierarchy",
                 new
@@ -417,7 +417,7 @@ public sealed partial class NavigationTools(
                     position = request.Position
                 },
                 CallHierarchyTimeout,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
 
             var roots = CallHierarchyMapper.MapPreparedItems(pathMapper, prepareResponse);
             if (roots.Count == 0)
@@ -450,7 +450,7 @@ public sealed partial class NavigationTools(
                         new { item = root.OriginalItem },
                         CallHierarchyTimeout,
                         cancellationToken,
-                        isExpensive: true).ConfigureAwait(false);
+                        isExpensive: true);
                     CallHierarchyMapper.AddEdges(
                         pathMapper,
                         incomingResponse,
@@ -473,7 +473,7 @@ public sealed partial class NavigationTools(
                         new { item = root.OriginalItem },
                         CallHierarchyTimeout,
                         cancellationToken,
-                        isExpensive: true).ConfigureAwait(false);
+                        isExpensive: true);
                     CallHierarchyMapper.AddEdges(
                         pathMapper,
                         outgoingResponse,
@@ -535,7 +535,7 @@ public sealed partial class NavigationTools(
             var effectiveMaxDepth = NavigationToolOptions.NormalizeTypeHierarchyMaxDepth(maxDepth);
             var effectiveMaxResults = NavigationToolOptions.NormalizeTypeHierarchyMaxResults(maxResults);
             var parsedIncludePathPrefixes = NavigationToolOptions.ParseIncludePathPrefixes(pathMapper, includePathPrefixes);
-            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken).ConfigureAwait(false);
+            var request = await NavigationPositionRequests.PrepareAsync(session, documents, file, line, column, cancellationToken);
             var prepareResponse = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/prepareTypeHierarchy",
                 new
@@ -544,7 +544,7 @@ public sealed partial class NavigationTools(
                     position = request.Position
                 },
                 TypeHierarchyTimeout,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
 
             var roots = TypeHierarchyMapper.MapPreparedItems(pathMapper, prepareResponse);
             if (roots.Count == 0)
@@ -582,7 +582,7 @@ public sealed partial class NavigationTools(
                         edges,
                         visitedEdges,
                         traversalState,
-                        cancellationToken).ConfigureAwait(false);
+                        cancellationToken);
                 }
             }
 
@@ -628,13 +628,13 @@ public sealed partial class NavigationTools(
             var parsedKindFilter = NavigationToolOptions.ParseSymbolKindFilter(kindFilter);
             var parsedMatchMode = NavigationToolOptions.ParseSymbolMatchMode(matchMode);
             var parsedIncludePathPrefixes = NavigationToolOptions.ParseIncludePathPrefixes(pathMapper, includePathPrefixes);
-            var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
+            var context = await session.PrepareReadToolAsync(cancellationToken);
             var response = await context.Handle.Client.RequestAsync(
                 "workspace/symbol",
                 new WorkspaceSymbolParams(query),
                 WorkspaceSymbolTimeout,
                 cancellationToken,
-                isExpensive: true).ConfigureAwait(false);
+                isExpensive: true);
 
             var symbols = WorkspaceSymbolMapper.Map(pathMapper, response, effectiveMaxResults, parsedKindFilter, query, parsedMatchMode, parsedIncludePathPrefixes);
             var metadata = NavigationToolMetadata.Create(context.State, ToolKind.Symbols, symbols.Truncated);

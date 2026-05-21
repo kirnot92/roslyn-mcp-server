@@ -144,7 +144,7 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
         {
             try
             {
-                await this.worker.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                await this.worker.WaitAsync(TimeSpan.FromSeconds(2));
             }
             catch (TimeoutException)
             {
@@ -164,7 +164,7 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
         {
             while (!this.disposeCts.IsCancellationRequested)
             {
-                await this.available.WaitAsync(this.disposeCts.Token).ConfigureAwait(false);
+                await this.available.WaitAsync(this.disposeCts.Token);
                 while (TryDequeue(out var item))
                 {
                     lock (this.processingLock)

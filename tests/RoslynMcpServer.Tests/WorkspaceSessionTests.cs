@@ -333,7 +333,7 @@ public sealed class WorkspaceSessionTests
         public async Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken)
         {
             Started.SetResult();
-            await Release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await Release.Task.WaitAsync(cancellationToken);
             return new RoslynWorkspaceHandle(target, new NotificationRecordingClient());
         }
     }

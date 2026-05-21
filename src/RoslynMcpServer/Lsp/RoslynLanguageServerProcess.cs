@@ -41,7 +41,7 @@ public sealed class RoslynLanguageServerProcess(
         {
             while (!process.HasExited)
             {
-                var line = await process.StandardError.ReadLineAsync().ConfigureAwait(false);
+                var line = await process.StandardError.ReadLineAsync();
                 if (line is null)
                 {
                     break;
@@ -142,14 +142,14 @@ public sealed class RoslynLanguageServerConnection(Process process, LspClient cl
         {
             try
             {
-                await Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                await Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2));
             }
             catch (TimeoutException)
             {
                 try
                 {
                     Process.Kill(entireProcessTree: true);
-                    await Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                    await Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2));
                 }
                 catch (Exception)
                 {
@@ -158,7 +158,7 @@ public sealed class RoslynLanguageServerConnection(Process process, LspClient cl
             }
         }
 
-        await Client.DisposeAsync().ConfigureAwait(false);
+        await Client.DisposeAsync();
         Process.Dispose();
     }
 }

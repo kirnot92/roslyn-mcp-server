@@ -34,7 +34,7 @@ public sealed class WorkspaceTools(WorkspaceSession session)
     {
         try
         {
-            return await session.LoadSolutionAsync(path, cancellationToken).ConfigureAwait(false);
+            return await session.LoadSolutionAsync(path, cancellationToken);
         }
         catch (UserFacingException ex)
         {
@@ -51,7 +51,7 @@ public sealed class WorkspaceTools(WorkspaceSession session)
     {
         try
         {
-            return await session.LoadProjectAsync(path, cancellationToken).ConfigureAwait(false);
+            return await session.LoadProjectAsync(path, cancellationToken);
         }
         catch (UserFacingException ex)
         {
@@ -65,7 +65,7 @@ public sealed class WorkspaceTools(WorkspaceSession session)
     {
         try
         {
-            return await session.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+            return await session.GetStatusAsync(cancellationToken);
         }
         catch (UserFacingException ex)
         {

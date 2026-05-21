@@ -76,7 +76,7 @@ internal static class TypeHierarchyMapper
                 new { item = current.OriginalItem },
                 TypeHierarchyTimeout,
                 cancellationToken,
-                isExpensive: true).ConfigureAwait(false);
+                isExpensive: true);
 
             var nextItems = MapTypeHierarchyFollowUpItems(pathMapper, response, direction);
             foreach (var next in nextItems)

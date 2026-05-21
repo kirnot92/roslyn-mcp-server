@@ -23,7 +23,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
         CancellationToken cancellationToken = default)
     {
         var fullPath = pathMapper.ResolveFileInput(file);
-        await this.syncLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await this.syncLock.WaitAsync(cancellationToken);
         try
         {
             if (!ReferenceEquals(this.lspClient, client))
@@ -52,7 +52,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
 
             if (!this.documents.TryGetValue(key, out var state))
             {
-                var text = await File.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
+                var text = await File.ReadAllTextAsync(fullPath, cancellationToken);
                 state = new OpenDocumentState(
                     uri,
                     key,
@@ -64,16 +64,16 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
                 await client.NotifyAsync(
                     "textDocument/didOpen",
                     new DidOpenTextDocumentParams(new TextDocumentItem(uri, "csharp", state.Version, text)),
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken);
 
                 this.documents[key] = state;
-                await EvictIfNeededAsync(key, client, cancellationToken).ConfigureAwait(false);
+                await EvictIfNeededAsync(key, client, cancellationToken);
                 return state;
             }
 
             if (state.LastWriteTime != lastWriteTime || state.Length != info.Length)
             {
-                var text = await File.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
+                var text = await File.ReadAllTextAsync(fullPath, cancellationToken);
                 state = state with
                 {
                     Version = state.Version + 1,
@@ -88,7 +88,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
                     new DidChangeTextDocumentParams(
                         new VersionedTextDocumentIdentifier(uri, state.Version),
                         [new TextDocumentContentChangeEvent(text)]),
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken);
             }
             else
             {
@@ -96,7 +96,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
             }
 
             this.documents[key] = state;
-            await EvictIfNeededAsync(key, client, cancellationToken).ConfigureAwait(false);
+            await EvictIfNeededAsync(key, client, cancellationToken);
             return state;
         }
         finally
@@ -149,7 +149,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
             await client.NotifyAsync(
                 "textDocument/didClose",
                 new DidCloseTextDocumentParams(new TextDocumentIdentifier(lru.Value.Uri)),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
         }
     }
 }

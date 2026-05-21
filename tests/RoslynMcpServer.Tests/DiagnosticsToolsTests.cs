@@ -466,7 +466,7 @@ public sealed class DiagnosticsToolsTests
         public async Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken)
         {
             Started.SetResult();
-            await Release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await Release.Task.WaitAsync(cancellationToken);
             return new RoslynWorkspaceHandle(target, new FakeLspClient());
         }
     }

@@ -13,9 +13,9 @@ public static class LspFraming
     {
         var body = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions.Default);
         var header = Encoding.ASCII.GetBytes($"Content-Length: {body.Length}\r\n\r\n");
-        await stream.WriteAsync(header, cancellationToken).ConfigureAwait(false);
-        await stream.WriteAsync(body, cancellationToken).ConfigureAwait(false);
-        await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await stream.WriteAsync(header, cancellationToken);
+        await stream.WriteAsync(body, cancellationToken);
+        await stream.FlushAsync(cancellationToken);
     }
 
     public static Task<JsonDocument?> ReadAsync(Stream stream, CancellationToken cancellationToken) =>
@@ -30,7 +30,7 @@ public static class LspFraming
         while (!EndsWith(headerBytes, Separator))
         {
             var buffer = new byte[1];
-            var read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            var read = await stream.ReadAsync(buffer, cancellationToken);
             if (read == 0)
             {
                 return null;
@@ -54,7 +54,7 @@ public static class LspFraming
         var offset = 0;
         while (offset < body.Length)
         {
-            var read = await stream.ReadAsync(body.AsMemory(offset, body.Length - offset), cancellationToken).ConfigureAwait(false);
+            var read = await stream.ReadAsync(body.AsMemory(offset, body.Length - offset), cancellationToken);
             if (read == 0)
             {
                 throw new EndOfStreamException("Unexpected end of LSP message body.");
