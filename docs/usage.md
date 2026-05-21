@@ -223,7 +223,9 @@ for inheritance and implementation structure.
 accepts MCP symbol kind names such as `class`, `interface`, `method`,
 `property`, `field`, `enumMember`, and `typeParameter`, case-insensitively.
 `matchMode` accepts `default`, `exact`, `prefix`, or `contains`; omit it to keep
-Roslyn LS default matching. `includePathPrefixes` accepts root-relative path
+Roslyn LS default matching. Default matching keeps Roslyn LS fuzzy candidates
+but ranks exact, prefix, and contains name matches ahead of fuzzy-only results
+before applying `maxResults`. `includePathPrefixes` accepts root-relative path
 prefixes such as `src/RoslynMcpServer/Mcp` and keeps only symbols with locations
 at or under one of those prefixes. Slash styles are normalized, matching uses
 path segment boundaries, and symbols without a mappable location are excluded

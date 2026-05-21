@@ -92,8 +92,10 @@ Read-only Roslyn tools:
 - `find_symbols` - Search workspace symbols by name, optionally filtering
   returned results by kind such as `class`, `interface`, `method`, `property`,
   or `field`, and by symbol-name `matchMode`: `default`, `exact`, `prefix`,
-  or `contains`. It can also keep only symbols located under root-relative
-  `includePathPrefixes`, which is useful in large repositories.
+  or `contains`. Default matching keeps Roslyn LS fuzzy candidates but ranks
+  exact, prefix, and contains name matches before the result cap. It can also
+  keep only symbols located under root-relative `includePathPrefixes`, which is
+  useful in large repositories.
 - `diagnostics` - Return currently known file or workspace diagnostics.
 
 Resources:

@@ -245,6 +245,7 @@ returned
 - query는 최소 2자 이상이다.
 - `kindFilter`는 `class`, `interface`, `method`, `property`, `field`, `enumMember`, `typeParameter` 같은 MCP symbol kind 이름을 대소문자 무시로 받는다.
 - `matchMode`는 `default`, `exact`, `prefix`, `contains`를 지원한다.
+- `default` matching keeps Roslyn LS fuzzy candidates but ranks exact, prefix, and contains symbol-name matches before `maxResults`.
 - `includePathPrefixes`는 root-relative path prefix 목록으로 결과 위치를 좁힌다.
 - kind, match, path-prefix filter는 Roslyn LS 응답 뒤 MCP 쪽에서 적용하므로 Roslyn LS 검색 비용 절감을 보장하지 않는다.
 

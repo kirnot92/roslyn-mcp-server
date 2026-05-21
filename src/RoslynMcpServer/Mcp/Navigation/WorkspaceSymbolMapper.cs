@@ -26,10 +26,9 @@ internal static class WorkspaceSymbolMapper
             throw new UserFacingException("invalid_lsp_response", "workspace/symbol returned an unexpected response shape.");
         }
 
-        var items = new List<WorkspaceSymbolItem>();
+        var candidates = new List<RankedWorkspaceSymbol>();
         var totalUnfilteredKnown = 0;
-        var totalKnown = 0;
-        var returned = 0;
+        var ordinal = 0;
         foreach (var item in response.EnumerateArray())
         {
             var symbol = TryMapWorkspaceSymbol(workspaceRoot, item);
@@ -54,14 +53,23 @@ internal static class WorkspaceSymbolMapper
                 continue;
             }
 
-            totalKnown++;
-            if (returned >= maxResults)
-            {
-                continue;
-            }
+            candidates.Add(new RankedWorkspaceSymbol(symbol, GetSymbolNameRelevance(symbol.Name, query), ordinal++));
+        }
 
-            items.Add(symbol);
-            returned++;
+        candidates.Sort(static (left, right) =>
+        {
+            var relevanceComparison = left.Relevance.CompareTo(right.Relevance);
+            return relevanceComparison != 0
+                ? relevanceComparison
+                : left.Ordinal.CompareTo(right.Ordinal);
+        });
+
+        var totalKnown = candidates.Count;
+        var returned = Math.Min(totalKnown, maxResults);
+        var items = new List<WorkspaceSymbolItem>(returned);
+        for (var i = 0; i < returned; i++)
+        {
+            items.Add(candidates[i].Symbol);
         }
 
         return new WorkspaceSymbolMapResult(items, totalKnown, totalUnfilteredKnown, returned, totalKnown > returned);
@@ -76,6 +84,31 @@ internal static class WorkspaceSymbolMapper
             SymbolMatchMode.Contains => name.Contains(query, StringComparison.OrdinalIgnoreCase),
             _ => false
         };
+
+    private static int GetSymbolNameRelevance(string name, string query)
+    {
+        if (string.Equals(name, query, StringComparison.Ordinal))
+        {
+            return 0;
+        }
+
+        if (string.Equals(name, query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+
+        if (name.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 3;
+        }
+
+        return 4;
+    }
 
     private static WorkspaceSymbolItem? TryMapWorkspaceSymbol(WorkspaceRoot workspaceRoot, JsonElement item)
     {
@@ -186,4 +219,6 @@ internal static class WorkspaceSymbolMapper
         item.TryGetProperty(propertyName, out var element) && element.ValueKind == JsonValueKind.String
             ? element.GetString()
             : null;
+
+    private readonly record struct RankedWorkspaceSymbol(WorkspaceSymbolItem Symbol, int Relevance, int Ordinal);
 }

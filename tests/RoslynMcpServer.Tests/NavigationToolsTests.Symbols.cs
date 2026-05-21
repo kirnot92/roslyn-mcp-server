@@ -573,8 +573,8 @@ public sealed partial class NavigationToolsTests
         var symbols = Assert.IsType<FindSymbolsResult>(result);
         Assert.Collection(
             symbols.Items,
-            item => Assert.Equal(SymbolKind.Interface, item.Kind),
-            item => Assert.Equal(SymbolKind.Field, item.Kind));
+            item => Assert.Equal(SymbolKind.Field, item.Kind),
+            item => Assert.Equal(SymbolKind.Interface, item.Kind));
         Assert.Equal(4, symbols.TotalUnfilteredKnown);
         Assert.Equal(2, symbols.TotalKnown);
         Assert.Equal(2, symbols.Returned);
@@ -636,7 +636,7 @@ public sealed partial class NavigationToolsTests
     }
 
     [Fact]
-    public async Task FindSymbols_DefaultKeepsRoslynLsResultsThatContainsWouldFilterOut()
+    public async Task FindSymbols_DefaultKeepsRoslynLsFuzzyResultsButRanksNameMatchesFirst()
     {
         var response = new object[]
         {
@@ -650,8 +650,8 @@ public sealed partial class NavigationToolsTests
         var defaultSymbols = Assert.IsType<FindSymbolsResult>(defaultResult);
         Assert.Collection(
             defaultSymbols.Items,
-            item => Assert.Equal("Version", item.Name),
-            item => Assert.Equal("SessionManager", item.Name));
+            item => Assert.Equal("SessionManager", item.Name),
+            item => Assert.Equal("Version", item.Name));
         Assert.Equal(2, defaultSymbols.TotalUnfilteredKnown);
         Assert.Equal(2, defaultSymbols.TotalKnown);
 
@@ -660,6 +660,76 @@ public sealed partial class NavigationToolsTests
         Assert.Equal("SessionManager", item.Name);
         Assert.Equal(2, containsSymbols.TotalUnfilteredKnown);
         Assert.Equal(1, containsSymbols.TotalKnown);
+    }
+
+    [Fact]
+    public async Task FindSymbols_DefaultRanksResultsBySymbolNameRelevance()
+    {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(
+            new object[]
+            {
+                CreateWorkspaceSymbol("Version", SymbolKind.Property),
+                CreateWorkspaceSymbol("RunspaceFactory", SymbolKind.Class),
+                CreateWorkspaceSymbol("PSRunspace", SymbolKind.Class),
+                CreateWorkspaceSymbol("runspace", SymbolKind.Class),
+                CreateWorkspaceSymbol("Runspace", SymbolKind.Class),
+                CreateWorkspaceSymbol("SessionState", SymbolKind.Class)
+            },
+            query: "Runspace");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Collection(
+            symbols.Items,
+            item => Assert.Equal("Runspace", item.Name),
+            item => Assert.Equal("runspace", item.Name),
+            item => Assert.Equal("RunspaceFactory", item.Name),
+            item => Assert.Equal("PSRunspace", item.Name),
+            item => Assert.Equal("Version", item.Name),
+            item => Assert.Equal("SessionState", item.Name));
+        Assert.Equal(6, symbols.TotalUnfilteredKnown);
+        Assert.Equal(6, symbols.TotalKnown);
+    }
+
+    [Fact]
+    public async Task FindSymbols_AppliesMaxResultsAfterDefaultRelevanceRanking()
+    {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(
+            new object[]
+            {
+                CreateWorkspaceSymbol("Version", SymbolKind.Property),
+                CreateWorkspaceSymbol("RunspaceFactory", SymbolKind.Class),
+                CreateWorkspaceSymbol("Runspace", SymbolKind.Class)
+            },
+            query: "Runspace",
+            maxResults: 1);
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        var item = Assert.Single(symbols.Items);
+        Assert.Equal("Runspace", item.Name);
+        Assert.Equal(3, symbols.TotalUnfilteredKnown);
+        Assert.Equal(3, symbols.TotalKnown);
+        Assert.Equal(1, symbols.Returned);
+        Assert.True(symbols.Truncated);
+    }
+
+    [Fact]
+    public async Task FindSymbols_PreservesRoslynLsOrderWithinSameRelevanceBucket()
+    {
+        var (result, _) = await ExecuteFindSymbolsRequestAsync(
+            new object[]
+            {
+                CreateWorkspaceSymbol("CalcBeta", SymbolKind.Class),
+                CreateWorkspaceSymbol("CalcAlpha", SymbolKind.Class),
+                CreateWorkspaceSymbol("CalcGamma", SymbolKind.Class)
+            },
+            query: "Calc");
+
+        var symbols = Assert.IsType<FindSymbolsResult>(result);
+        Assert.Collection(
+            symbols.Items,
+            item => Assert.Equal("CalcBeta", item.Name),
+            item => Assert.Equal("CalcAlpha", item.Name),
+            item => Assert.Equal("CalcGamma", item.Name));
     }
 
     [Fact]
