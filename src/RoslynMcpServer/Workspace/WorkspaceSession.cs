@@ -11,7 +11,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
     private const string PublishDiagnosticsMethod = "textDocument/publishDiagnostics";
     private const string WindowLogMessageMethod = "window/logMessage";
     private readonly WorkspaceScanner scanner;
-    private readonly PathGuard pathGuard;
+    private readonly WorkspaceRoot workspaceRoot;
     private readonly IRoslynWorkspaceLoader loader;
     private readonly DocumentStateManager? documents;
     private readonly DiagnosticStore? diagnostics;
@@ -27,7 +27,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
     public static WorkspaceSession CreateForServer(
         WorkspaceScanner scanner,
-        PathGuard pathGuard,
+        WorkspaceRoot workspaceRoot,
         IRoslynWorkspaceLoader loader,
         CliOptions options,
         DocumentStateManager documents,
@@ -35,7 +35,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
     {
         var session = new WorkspaceSession(
             scanner,
-            pathGuard,
+            workspaceRoot,
             loader,
             documents,
             diagnostics,
@@ -50,7 +50,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
     public static WorkspaceSession CreateForTest(
         WorkspaceScanner scanner,
-        PathGuard pathGuard,
+        WorkspaceRoot workspaceRoot,
         IRoslynWorkspaceLoader loader,
         CliOptions? options = null,
         DocumentStateManager? documents = null,
@@ -59,7 +59,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
     {
         var session = new WorkspaceSession(
             scanner,
-            pathGuard,
+            workspaceRoot,
             loader,
             documents,
             diagnostics,
@@ -75,19 +75,19 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
     private WorkspaceSession(
         WorkspaceScanner scanner,
-        PathGuard pathGuard,
+        WorkspaceRoot workspaceRoot,
         IRoslynWorkspaceLoader loader,
         DocumentStateManager? documents,
         DiagnosticStore? diagnostics,
         DiagnosticNotificationProcessor? diagnosticNotifications)
     {
         this.scanner = scanner;
-        this.pathGuard = pathGuard;
+        this.workspaceRoot = workspaceRoot;
         this.loader = loader;
         this.documents = documents;
         this.diagnostics = diagnostics;
         this.diagnosticNotifications = diagnosticNotifications;
-        this.warningCollector = new WorkspaceWarningCollector(pathGuard);
+        this.warningCollector = new WorkspaceWarningCollector(workspaceRoot);
     }
 
     public WorkspaceLoadState State => this.state;
@@ -313,7 +313,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
     private WorkspaceTarget CreateTarget(string path, string[] allowedExtensions, WorkspaceKind requestedKind)
     {
-        var fullPath = this.pathGuard.RequireFileInsideRoot(path, allowedExtensions);
+        var fullPath = this.workspaceRoot.RequireFileInsideRoot(path, allowedExtensions);
         var extension = Path.GetExtension(fullPath);
         var kind = string.Equals(extension, ".slnx", StringComparison.OrdinalIgnoreCase)
             ? WorkspaceKind.SolutionX
@@ -321,9 +321,9 @@ public sealed class WorkspaceSession : IAsyncDisposable
         return new WorkspaceTarget(
             kind,
             fullPath,
-            this.pathGuard.ToRelativePath(fullPath),
-            this.pathGuard.Root,
-            Path.GetDirectoryName(fullPath) ?? this.pathGuard.Root);
+            this.workspaceRoot.ToRelativePath(fullPath),
+            this.workspaceRoot.Root,
+            Path.GetDirectoryName(fullPath) ?? this.workspaceRoot.Root);
     }
 
     private WorkspaceScanResult GetLastWorkspaceScanOrScan(CancellationToken cancellationToken)
@@ -346,8 +346,8 @@ public sealed class WorkspaceSession : IAsyncDisposable
                 solution.Kind,
                 solution.FullPath,
                 solution.RelativePath,
-                this.pathGuard.Root,
-                Path.GetDirectoryName(solution.FullPath) ?? this.pathGuard.Root);
+                this.workspaceRoot.Root,
+                Path.GetDirectoryName(solution.FullPath) ?? this.workspaceRoot.Root);
         }
 
         if (scan.Solutions.Count > 1)
@@ -366,8 +366,8 @@ public sealed class WorkspaceSession : IAsyncDisposable
                 project.Kind,
                 project.FullPath,
                 project.RelativePath,
-                this.pathGuard.Root,
-                Path.GetDirectoryName(project.FullPath) ?? this.pathGuard.Root);
+                this.workspaceRoot.Root,
+                Path.GetDirectoryName(project.FullPath) ?? this.workspaceRoot.Root);
         }
 
         if (scan.Projects.Count > 1)
@@ -480,7 +480,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
         var diagnosticQueueStatistics = this.diagnosticNotifications?.Statistics;
         return new(
-            this.pathGuard.Root,
+            this.workspaceRoot.Root,
             this.state,
             this.handle?.Target,
             this.handle?.IsRunning ?? false,

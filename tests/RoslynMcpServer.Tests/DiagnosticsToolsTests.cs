@@ -342,8 +342,8 @@ public sealed class DiagnosticsToolsTests
         DocumentStateManager documents,
         DiagnosticStore store)
     {
-        var mapper = new DocumentPathMapper(new PathGuard(root));
-        return new DiagnosticsTools(session, documents, mapper, store);
+        var workspaceRoot = new WorkspaceRoot(root);
+        return new DiagnosticsTools(session, documents, workspaceRoot, store);
     }
 
     private static WorkspaceSession CreateSession(
@@ -352,10 +352,10 @@ public sealed class DiagnosticsToolsTests
         DocumentStateManager documents,
         DiagnosticStore store)
     {
-        var guard = new PathGuard(root);
+        var workspaceRoot = new WorkspaceRoot(root);
         return WorkspaceSession.CreateForTest(
-            new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null),
-            guard,
+            new WorkspaceScanner(CreateOptions(root), workspaceRoot, gitScanner: null),
+            workspaceRoot,
             loader,
             documents: documents,
             diagnostics: store);
@@ -368,10 +368,10 @@ public sealed class DiagnosticsToolsTests
         DiagnosticStore store,
         DiagnosticNotificationProcessor processor)
     {
-        var guard = new PathGuard(root);
+        var workspaceRoot = new WorkspaceRoot(root);
         return WorkspaceSession.CreateForTest(
-            new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null),
-            guard,
+            new WorkspaceScanner(CreateOptions(root), workspaceRoot, gitScanner: null),
+            workspaceRoot,
             loader,
             documents: documents,
             diagnostics: store,
@@ -380,14 +380,14 @@ public sealed class DiagnosticsToolsTests
 
     private static DocumentStateManager CreateDocumentState(string root)
     {
-        var guard = new PathGuard(root);
-        return new DocumentStateManager(CreateOptions(root), new DocumentPathMapper(guard));
+        var workspaceRoot = new WorkspaceRoot(root);
+        return new DocumentStateManager(CreateOptions(root), workspaceRoot);
     }
 
     private static DiagnosticStore CreateStore(string root)
     {
-        var guard = new PathGuard(root);
-        return new DiagnosticStore(new DocumentPathMapper(guard), new FakeClock());
+        var workspaceRoot = new WorkspaceRoot(root);
+        return new DiagnosticStore(workspaceRoot, new FakeClock());
     }
 
     private static CliOptions CreateOptions(string root) =>

@@ -9,7 +9,7 @@ namespace RoslynMcpServer.Mcp;
 internal static class TypeHierarchyMapper
 {
     internal static IReadOnlyList<PreparedTypeHierarchyItem> MapPreparedItems(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement response)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
@@ -25,7 +25,7 @@ internal static class TypeHierarchyMapper
         var roots = new List<PreparedTypeHierarchyItem>();
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = MapTypeHierarchySymbol(pathMapper, item, "textDocument/prepareTypeHierarchy");
+            var symbol = MapTypeHierarchySymbol(workspaceRoot, item, "textDocument/prepareTypeHierarchy");
             if (symbol is null)
             {
                 continue;
@@ -38,7 +38,7 @@ internal static class TypeHierarchyMapper
     }
 
     internal static async Task TraverseAsync(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         ILspClient client,
         PreparedTypeHierarchyItem root,
         TypeHierarchyDirection direction,
@@ -78,7 +78,7 @@ internal static class TypeHierarchyMapper
                 cancellationToken,
                 isExpensive: true);
 
-            var nextItems = MapTypeHierarchyFollowUpItems(pathMapper, response, direction);
+            var nextItems = MapTypeHierarchyFollowUpItems(workspaceRoot, response, direction);
             foreach (var next in nextItems)
             {
                 var edge = CreateTypeHierarchyEdge(root.Symbol, current.Symbol, next.Symbol, direction, current.Depth + 1);
@@ -120,7 +120,7 @@ internal static class TypeHierarchyMapper
     }
 
     private static IReadOnlyList<PreparedTypeHierarchyItem> MapTypeHierarchyFollowUpItems(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement response,
         TypeHierarchyDirection direction)
     {
@@ -137,7 +137,7 @@ internal static class TypeHierarchyMapper
         var items = new List<PreparedTypeHierarchyItem>();
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = MapTypeHierarchySymbol(pathMapper, item, TypeHierarchyMethodName(direction));
+            var symbol = MapTypeHierarchySymbol(workspaceRoot, item, TypeHierarchyMethodName(direction));
             if (symbol is null)
             {
                 continue;
@@ -150,7 +150,7 @@ internal static class TypeHierarchyMapper
     }
 
     private static TypeHierarchySymbol? MapTypeHierarchySymbol(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement item,
         string method)
     {
@@ -176,7 +176,7 @@ internal static class TypeHierarchyMapper
         string relativePath;
         try
         {
-            relativePath = pathMapper.UriToRelativePath(uri);
+            relativePath = workspaceRoot.UriToRelativePath(uri);
         }
         catch (UserFacingException ex) when (ex.Code is "path_outside_root" or "invalid_lsp_uri")
         {

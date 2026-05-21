@@ -3,7 +3,7 @@ using RoslynMcpServer.Cli;
 
 namespace RoslynMcpServer.Workspace;
 
-public sealed class FileSystemWorkspaceScanner(CliOptions options, PathGuard pathGuard)
+public sealed class FileSystemWorkspaceScanner(CliOptions options, WorkspaceRoot workspaceRoot)
 {
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -34,7 +34,7 @@ public sealed class FileSystemWorkspaceScanner(CliOptions options, PathGuard pat
         string? truncationReason = null;
 
         var queue = new Queue<(string Directory, int Depth)>();
-        queue.Enqueue((pathGuard.Root, 0));
+        queue.Enqueue((workspaceRoot.Root, 0));
         var stopScanning = false;
 
         while (queue.Count > 0 && !stopScanning)
@@ -136,7 +136,7 @@ public sealed class FileSystemWorkspaceScanner(CliOptions options, PathGuard pat
         sw.Stop();
 
         return new WorkspaceScanResult(
-            pathGuard.Root,
+            workspaceRoot.Root,
             solutions,
             projects,
             truncationReason is not null,
@@ -147,7 +147,7 @@ public sealed class FileSystemWorkspaceScanner(CliOptions options, PathGuard pat
     private WorkspaceCandidate ToCandidate(string fullPath, WorkspaceKind kind)
     {
         var normalized = Path.GetFullPath(fullPath);
-        return new WorkspaceCandidate(kind, normalized, pathGuard.ToRelativePath(normalized));
+        return new WorkspaceCandidate(kind, normalized, workspaceRoot.ToRelativePath(normalized));
     }
 
     private static FileAttributes? SafeGetAttributes(string path)

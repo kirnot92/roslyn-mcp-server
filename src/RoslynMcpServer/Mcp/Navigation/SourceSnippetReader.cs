@@ -8,7 +8,7 @@ namespace RoslynMcpServer.Mcp;
 internal static class SourceSnippetReader
 {
     internal static async Task<SourceSnippetReadResult> ReadAsync(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         DocumentStateManager documents,
         NavigationLocation location,
         int contextLines,
@@ -18,7 +18,7 @@ internal static class SourceSnippetReader
         string fullPath;
         try
         {
-            fullPath = pathMapper.ResolveFileInput(location.File);
+            fullPath = workspaceRoot.ResolveFileInput(location.File);
         }
         catch (UserFacingException ex)
         {

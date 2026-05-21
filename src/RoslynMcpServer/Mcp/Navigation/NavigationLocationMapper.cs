@@ -27,7 +27,7 @@ internal static class NavigationPositionRequests
 internal static class NavigationLocationMapper
 {
     internal static LocationMapResult Map(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement response,
         string method,
         int? maxResults,
@@ -48,7 +48,7 @@ internal static class NavigationLocationMapper
             foreach (var element in response.EnumerateArray())
             {
                 AddLocationIfMappable(
-                    pathMapper,
+                    workspaceRoot,
                     element,
                     method,
                     maxResults,
@@ -65,7 +65,7 @@ internal static class NavigationLocationMapper
         if (response.ValueKind == JsonValueKind.Object)
         {
             AddLocationIfMappable(
-                pathMapper,
+                workspaceRoot,
                 response,
                 method,
                 maxResults,
@@ -81,7 +81,7 @@ internal static class NavigationLocationMapper
     }
 
     private static void AddLocationIfMappable(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement element,
         string method,
         int? maxResults,
@@ -91,7 +91,7 @@ internal static class NavigationLocationMapper
         ref int totalKnown,
         ref int returned)
     {
-        var location = TryMapLocation(pathMapper, element, method);
+        var location = TryMapLocation(workspaceRoot, element, method);
         if (location is null)
         {
             return;
@@ -113,7 +113,7 @@ internal static class NavigationLocationMapper
         returned++;
     }
 
-    private static NavigationLocation? TryMapLocation(DocumentPathMapper pathMapper, JsonElement element, string method)
+    private static NavigationLocation? TryMapLocation(WorkspaceRoot workspaceRoot, JsonElement element, string method)
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
@@ -145,7 +145,7 @@ internal static class NavigationLocationMapper
         string relativePath;
         try
         {
-            relativePath = pathMapper.UriToRelativePath(uri);
+            relativePath = workspaceRoot.UriToRelativePath(uri);
         }
         catch (UserFacingException ex) when (ex.Code is "path_outside_root" or "invalid_lsp_uri")
         {

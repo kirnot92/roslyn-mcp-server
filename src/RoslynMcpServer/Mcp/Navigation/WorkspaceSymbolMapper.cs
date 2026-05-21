@@ -8,7 +8,7 @@ namespace RoslynMcpServer.Mcp;
 internal static class WorkspaceSymbolMapper
 {
     internal static WorkspaceSymbolMapResult Map(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement response,
         int maxResults,
         IReadOnlySet<SymbolKind>? kindFilter,
@@ -32,7 +32,7 @@ internal static class WorkspaceSymbolMapper
         var returned = 0;
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = TryMapWorkspaceSymbol(pathMapper, item);
+            var symbol = TryMapWorkspaceSymbol(workspaceRoot, item);
             if (symbol is null)
             {
                 continue;
@@ -77,7 +77,7 @@ internal static class WorkspaceSymbolMapper
             _ => false
         };
 
-    private static WorkspaceSymbolItem? TryMapWorkspaceSymbol(DocumentPathMapper pathMapper, JsonElement item)
+    private static WorkspaceSymbolItem? TryMapWorkspaceSymbol(WorkspaceRoot workspaceRoot, JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object ||
             !item.TryGetProperty("name", out var nameElement) ||
@@ -95,7 +95,7 @@ internal static class WorkspaceSymbolMapper
             return null;
         }
 
-        var location = TryMapWorkspaceSymbolLocation(pathMapper, item, out var shouldInclude);
+        var location = TryMapWorkspaceSymbolLocation(workspaceRoot, item, out var shouldInclude);
         if (!shouldInclude)
         {
             return null;
@@ -111,7 +111,7 @@ internal static class WorkspaceSymbolMapper
     }
 
     private static NavigationLocation? TryMapWorkspaceSymbolLocation(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement item,
         out bool shouldInclude)
     {
@@ -142,7 +142,7 @@ internal static class WorkspaceSymbolMapper
         string relativePath;
         try
         {
-            relativePath = pathMapper.UriToRelativePath(uri);
+            relativePath = workspaceRoot.UriToRelativePath(uri);
         }
         catch (UserFacingException ex) when (ex.Code is "path_outside_root" or "invalid_lsp_uri")
         {

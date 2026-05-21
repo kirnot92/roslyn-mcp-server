@@ -3,28 +3,28 @@ using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Tests;
 
-public sealed class PathGuardTests
+public sealed class WorkspaceRootTests
 {
     [Fact]
     public void ResolveInsideRoot_AllowsRelativePathUnderRoot()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
-        var guard = new PathGuard(root.Path);
+        var workspaceRoot = new WorkspaceRoot(root.Path);
 
-        var fullPath = guard.ResolveInsideRoot("App.sln");
+        var fullPath = workspaceRoot.ResolveInsideRoot("App.sln");
 
         Assert.Equal(Path.Combine(root.Path, "App.sln"), fullPath);
-        Assert.Equal("App.sln", guard.ToRelativePath(fullPath));
+        Assert.Equal("App.sln", workspaceRoot.ToRelativePath(fullPath));
     }
 
     [Fact]
     public void ResolveInsideRoot_RejectsParentEscape()
     {
         using var root = TestRoot.Create();
-        var guard = new PathGuard(root.Path);
+        var workspaceRoot = new WorkspaceRoot(root.Path);
 
-        var ex = Assert.Throws<UserFacingException>(() => guard.ResolveInsideRoot("..\\outside.sln"));
+        var ex = Assert.Throws<UserFacingException>(() => workspaceRoot.ResolveInsideRoot("..\\outside.sln"));
 
         Assert.Equal("path_outside_root", ex.Code);
     }
@@ -46,10 +46,10 @@ public sealed class PathGuardTests
             return;
         }
 
-        var guard = new PathGuard(root.Path);
+        var workspaceRoot = new WorkspaceRoot(root.Path);
 
         var userError = Assert.Throws<UserFacingException>(() =>
-            guard.RequireFileInsideRoot(Path.Combine("link", "Outside.sln"), ".sln"));
+            workspaceRoot.RequireFileInsideRoot(Path.Combine("link", "Outside.sln"), ".sln"));
 
         Assert.Equal("path_reparse_point", userError.Code);
     }

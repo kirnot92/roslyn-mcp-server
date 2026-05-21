@@ -6,13 +6,13 @@ internal sealed class WorkspaceWarningCollector
 {
     private const string ProjectLoaderErrorToken = "[LanguageServerProjectLoader] Error while loading ";
     private const int MaxWorkspaceWarnings = 50;
-    private readonly PathGuard pathGuard;
+    private readonly WorkspaceRoot workspaceRoot;
     private readonly object warningsLock = new();
     private readonly List<WorkspaceWarning> warnings = [];
 
-    public WorkspaceWarningCollector(PathGuard pathGuard)
+    public WorkspaceWarningCollector(WorkspaceRoot workspaceRoot)
     {
-        this.pathGuard = pathGuard;
+        this.workspaceRoot = workspaceRoot;
     }
 
     public bool TryRecordWorkspaceLoadWarning(JsonElement? parameters)
@@ -111,8 +111,8 @@ internal sealed class WorkspaceWarningCollector
             try
             {
                 var fullPath = Path.GetFullPath(path);
-                return this.pathGuard.IsInsideRoot(fullPath)
-                    ? this.pathGuard.ToRelativePath(fullPath)
+                return this.workspaceRoot.IsInsideRoot(fullPath)
+                    ? this.workspaceRoot.ToRelativePath(fullPath)
                     : path;
             }
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)

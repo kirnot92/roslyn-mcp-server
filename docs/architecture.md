@@ -65,10 +65,9 @@ src/RoslynMcpServer/
     Navigation/
       NavigationTools.*.cs
   Workspace/
-    DocumentPathMapper.cs
     DocumentStateManager.cs
-    PathGuard.cs
     StartupSolutionLoader.cs
+    WorkspaceRoot.cs
     WorkspaceModels.cs
     WorkspaceSession.cs
     WorkspaceWarningCollector.cs
@@ -147,7 +146,7 @@ Failed
 
 결과가 제한에 걸리면 `WorkspaceScanResult.Truncated`와 `TruncationReason`으로 표시한다.
 
-`PathGuard`는 모든 입력 경로가 root 내부인지 검증한다. Root 밖 path는 tool 입력으로 받지 않고, LSP 결과에서도 root 밖 URI는 제외한다.
+`WorkspaceRoot`는 모든 입력 경로가 root 내부인지 검증하고 root 내부 path와 LSP file URI 변환을 담당한다. Root 밖 path는 tool 입력으로 받지 않고, LSP 결과에서도 root 밖 URI는 제외한다.
 
 ## LSP Client
 
@@ -177,7 +176,7 @@ Navigation tool은 file path를 LSP document URI로 변환하고, 필요하면 `
 
 관련 component:
 
-- `DocumentPathMapper`: root 내부 path와 LSP URI 변환
+- `WorkspaceRoot`: root 내부 path 검증과 LSP URI 변환
 - `DocumentStateManager`: open document LRU, 큰 파일 제한, didOpen/didClose 관리
 - `PositionMapper`: MCP 1-based line/column과 LSP 0-based position 변환
 

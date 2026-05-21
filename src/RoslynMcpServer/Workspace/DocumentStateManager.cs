@@ -4,7 +4,7 @@ using RoslynMcpServer.Lsp;
 
 namespace RoslynMcpServer.Workspace;
 
-public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper pathMapper)
+public sealed class DocumentStateManager(CliOptions options, WorkspaceRoot workspaceRoot)
 {
     private readonly Dictionary<string, OpenDocumentState> documents = new(PathComparer);
     private readonly SemaphoreSlim syncLock = new(1, 1);
@@ -22,7 +22,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
         ILspClient client,
         CancellationToken cancellationToken = default)
     {
-        var fullPath = pathMapper.ResolveFileInput(file);
+        var fullPath = workspaceRoot.ResolveFileInput(file);
         await this.syncLock.WaitAsync(cancellationToken);
         try
         {
@@ -48,7 +48,7 @@ public sealed class DocumentStateManager(CliOptions options, DocumentPathMapper 
             var lastWriteTime = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
             var now = DateTimeOffset.UtcNow;
             var key = Path.GetFullPath(fullPath);
-            var uri = pathMapper.ToFileUri(fullPath);
+            var uri = workspaceRoot.ToFileUri(fullPath);
 
             if (!this.documents.TryGetValue(key, out var state))
             {

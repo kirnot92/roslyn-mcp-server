@@ -10,7 +10,7 @@ namespace RoslynMcpServer.Mcp;
 public sealed class DiagnosticsTools(
     WorkspaceSession session,
     DocumentStateManager documents,
-    DocumentPathMapper pathMapper,
+    WorkspaceRoot workspaceRoot,
     DiagnosticStore diagnostics)
 {
     private const string FileParameterDescription = "Root-relative C# file path under the configured root; absolute paths inside root are also accepted.";
@@ -67,7 +67,7 @@ public sealed class DiagnosticsTools(
         CancellationToken cancellationToken)
     {
         var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken);
-        var relativePath = pathMapper.ToRelativePath(document.FullPath);
+        var relativePath = workspaceRoot.ToRelativePath(document.FullPath);
         var snapshot = diagnostics.GetFile(relativePath, severity);
         var metadata = CreateMetadata(context.State, scope: "file", hasKnownPublish: snapshot is not null, truncated: false);
         if (snapshot is null)

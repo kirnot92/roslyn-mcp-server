@@ -131,8 +131,8 @@ public sealed class DiagnosticNotificationProcessorTests
 
     private static DiagnosticStore CreateStore(string root)
     {
-        var guard = new PathGuard(root);
-        return new DiagnosticStore(new DocumentPathMapper(guard), new FakeClock());
+        var workspaceRoot = new WorkspaceRoot(root);
+        return new DiagnosticStore(workspaceRoot, new FakeClock());
     }
 
     private static JsonElement Publish(string root, string file, params object[] diagnostics) =>

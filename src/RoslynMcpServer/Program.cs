@@ -30,9 +30,8 @@ if (!string.IsNullOrWhiteSpace(options.LogFile))
 }
 
 builder.Services.AddSingleton(options);
-builder.Services.AddSingleton(new PathGuard(options.Root));
+builder.Services.AddSingleton(new WorkspaceRoot(options.Root));
 builder.Services.AddSingleton<IClock, SystemClock>();
-builder.Services.AddSingleton<DocumentPathMapper>();
 builder.Services.AddSingleton<DocumentStateManager>();
 builder.Services.AddSingleton<DiagnosticStore>();
 builder.Services.AddSingleton<WorkspaceScanner>();
@@ -41,7 +40,7 @@ builder.Services.AddSingleton<IRoslynLanguageServerProcess, RoslynLanguageServer
 builder.Services.AddSingleton<IRoslynWorkspaceLoader, RoslynWorkspaceLoader>();
 builder.Services.AddSingleton(serviceProvider => WorkspaceSession.CreateForServer(
     serviceProvider.GetRequiredService<WorkspaceScanner>(),
-    serviceProvider.GetRequiredService<PathGuard>(),
+    serviceProvider.GetRequiredService<WorkspaceRoot>(),
     serviceProvider.GetRequiredService<IRoslynWorkspaceLoader>(),
     serviceProvider.GetRequiredService<CliOptions>(),
     serviceProvider.GetRequiredService<DocumentStateManager>(),

@@ -64,13 +64,12 @@ public sealed class RoslynLanguageServerIntegrationTests
             throw SkipException.ForSkip(RoslynLanguageServerLocator.InstallMessage);
         }
 
-        var guard = new PathGuard(root.Path);
-        var mapper = new DocumentPathMapper(guard);
-        var documents = new DocumentStateManager(options, mapper);
-        var diagnosticStore = new DiagnosticStore(mapper, new SystemClock());
+        var workspaceRoot = new WorkspaceRoot(root.Path);
+        var documents = new DocumentStateManager(options, workspaceRoot);
+        var diagnosticStore = new DiagnosticStore(workspaceRoot, new SystemClock());
         var session = WorkspaceSession.CreateForTest(
-            new WorkspaceScanner(options, guard, new GitWorkspaceScanner(options, guard)),
-            guard,
+            new WorkspaceScanner(options, workspaceRoot, new GitWorkspaceScanner(options, workspaceRoot)),
+            workspaceRoot,
             new RoslynWorkspaceLoader(
                 options,
                 new RoslynLanguageServerProcess(
@@ -82,7 +81,7 @@ public sealed class RoslynLanguageServerIntegrationTests
             diagnostics: diagnosticStore);
         await using var disposeSession = session;
 
-        var tools = new NavigationTools(session, documents, mapper);
+        var tools = new NavigationTools(session, documents, workspaceRoot);
         await session.LoadProjectAsync("Sample.csproj");
 
         var symbolsResult = await tools.DocumentSymbols("Calculator.cs");

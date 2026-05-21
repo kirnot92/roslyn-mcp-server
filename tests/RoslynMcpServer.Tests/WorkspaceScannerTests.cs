@@ -48,7 +48,7 @@ public sealed class WorkspaceScannerTests
             2 * 1024 * 1024,
             16,
             2);
-        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), gitScanner: null);
+        var scanner = new WorkspaceScanner(options, new WorkspaceRoot(root.Path), gitScanner: null);
 
         var result = scanner.Scan();
 
@@ -80,7 +80,7 @@ public sealed class WorkspaceScannerTests
             2 * 1024 * 1024,
             16,
             2);
-        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), gitScanner: null);
+        var scanner = new WorkspaceScanner(options, new WorkspaceRoot(root.Path), gitScanner: null);
 
         var result = scanner.Scan();
 
@@ -117,6 +117,6 @@ public sealed class WorkspaceScannerTests
             2 * 1024 * 1024,
             16,
             2);
-        return new WorkspaceScanner(options, new PathGuard(root), gitScanner: null);
+        return new WorkspaceScanner(options, new WorkspaceRoot(root), gitScanner: null);
     }
 }

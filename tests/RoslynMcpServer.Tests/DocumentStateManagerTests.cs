@@ -121,8 +121,8 @@ public sealed class DocumentStateManagerTests
             maxDocumentBytes,
             16,
             2);
-        var guard = new PathGuard(root);
-        return new DocumentStateManager(options, new DocumentPathMapper(guard));
+        var workspaceRoot = new WorkspaceRoot(root);
+        return new DocumentStateManager(options, workspaceRoot);
     }
 
     private sealed class FakeLspClient : ILspClient

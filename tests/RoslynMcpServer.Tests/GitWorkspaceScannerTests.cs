@@ -26,7 +26,7 @@ public sealed class GitWorkspaceScannerTests
         Directory.CreateDirectory(Path.Combine(root.Path, "ignored"));
         File.WriteAllText(Path.Combine(root.Path, "ignored", "Ignored.sln"), string.Empty);
 
-        var scanner = new GitWorkspaceScanner(CreateOptions(root.Path), new PathGuard(root.Path));
+        var scanner = new GitWorkspaceScanner(CreateOptions(root.Path), new WorkspaceRoot(root.Path));
 
         var result = scanner.TryScan();
 
@@ -41,7 +41,7 @@ public sealed class GitWorkspaceScannerTests
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.sln"), string.Empty);
-        var scanner = new GitWorkspaceScanner(CreateOptions(root.Path), new PathGuard(root.Path));
+        var scanner = new GitWorkspaceScanner(CreateOptions(root.Path), new WorkspaceRoot(root.Path));
 
         var result = scanner.TryScan();
 
@@ -68,7 +68,7 @@ public sealed class GitWorkspaceScannerTests
         Directory.CreateDirectory(Path.Combine(root.Path, "src", "PowerShell"));
         File.WriteAllText(Path.Combine(root.Path, "src", "PowerShell", "PowerShell.csproj"), string.Empty);
         var options = CreateOptions(root.Path);
-        var scanner = new GitWorkspaceScanner(options, new PathGuard(root.Path));
+        var scanner = new GitWorkspaceScanner(options, new WorkspaceRoot(root.Path));
 
         var result = scanner.TryScan();
 
@@ -95,7 +95,7 @@ public sealed class GitWorkspaceScannerTests
         Directory.CreateDirectory(Path.Combine(root.Path, "z"));
         File.WriteAllText(Path.Combine(root.Path, "z", "App.sln"), string.Empty);
         var options = CreateOptions(root.Path) with { MaxProjectCandidates = 1 };
-        var scanner = new GitWorkspaceScanner(options, new PathGuard(root.Path));
+        var scanner = new GitWorkspaceScanner(options, new WorkspaceRoot(root.Path));
 
         var result = scanner.TryScan();
 
@@ -126,7 +126,7 @@ public sealed class GitWorkspaceScannerTests
             MaxSolutionCandidates = 1,
             MaxProjectCandidates = 1
         };
-        var scanner = new GitWorkspaceScanner(options, new PathGuard(root.Path));
+        var scanner = new GitWorkspaceScanner(options, new WorkspaceRoot(root.Path));
 
         var result = scanner.TryScan();
 
@@ -147,7 +147,7 @@ public sealed class GitWorkspaceScannerTests
         Directory.CreateDirectory(Path.Combine(root.Path, "src", "Deep", "A", "TooDeep"));
         File.WriteAllText(Path.Combine(root.Path, "src", "Deep", "A", "TooDeep", "TooDeep.csproj"), string.Empty);
         var options = CreateOptions(root.Path);
-        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), new FastNullGitScanner());
+        var scanner = new WorkspaceScanner(options, new WorkspaceRoot(root.Path), new FastNullGitScanner());
 
         var result = scanner.Scan();
 
@@ -166,7 +166,7 @@ public sealed class GitWorkspaceScannerTests
         Directory.CreateDirectory(Path.Combine(root.Path, "src", "Deep"));
         File.WriteAllText(Path.Combine(root.Path, "src", "Deep", "Deep.csproj"), string.Empty);
         var options = CreateOptions(root.Path);
-        var scanner = new WorkspaceScanner(options, new PathGuard(root.Path), new ThrowingGitScanner());
+        var scanner = new WorkspaceScanner(options, new WorkspaceRoot(root.Path), new ThrowingGitScanner());
 
         var result = scanner.Scan(maxDepth: 1, cancellationToken: CancellationToken.None);
 

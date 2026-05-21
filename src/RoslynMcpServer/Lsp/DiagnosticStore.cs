@@ -4,7 +4,7 @@ using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Lsp;
 
-public sealed class DiagnosticStore(DocumentPathMapper pathMapper, IClock clock)
+public sealed class DiagnosticStore(WorkspaceRoot workspaceRoot, IClock clock)
 {
     public const int DefaultMaxDiagnosticFiles = 1000;
     public const int DefaultMaxDiagnosticsPerFile = 500;
@@ -72,7 +72,7 @@ public sealed class DiagnosticStore(DocumentPathMapper pathMapper, IClock clock)
             string relativePath;
             try
             {
-                relativePath = pathMapper.UriToRelativePath(uri);
+                relativePath = workspaceRoot.UriToRelativePath(uri);
             }
             catch (UserFacingException)
             {

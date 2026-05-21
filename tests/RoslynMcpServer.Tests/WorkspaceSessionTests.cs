@@ -246,10 +246,10 @@ public sealed class WorkspaceSessionTests
     private static WorkspaceSession CreateSession(string root, IRoslynWorkspaceLoader loader)
     {
         var options = CreateOptions(root, loadSolutionPath: null);
-        var guard = new PathGuard(root);
+        var workspaceRoot = new WorkspaceRoot(root);
         return WorkspaceSession.CreateForTest(
-            new WorkspaceScanner(options, guard, gitScanner: null),
-            guard,
+            new WorkspaceScanner(options, workspaceRoot, gitScanner: null),
+            workspaceRoot,
             loader);
     }
 

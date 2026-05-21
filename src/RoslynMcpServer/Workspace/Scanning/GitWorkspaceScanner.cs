@@ -12,7 +12,7 @@ namespace RoslynMcpServer.Workspace;
 // fails before exhausting the scan budget.
 public sealed class GitWorkspaceScanner(
     CliOptions options,
-    PathGuard pathGuard,
+    WorkspaceRoot workspaceRoot,
     ILogger<GitWorkspaceScanner>? logger = null) : IGitWorkspaceScanner
 {
     private static readonly TimeSpan DefaultGitScanBudget = TimeSpan.FromSeconds(30);
@@ -57,7 +57,7 @@ public sealed class GitWorkspaceScanner(
 
             CloseStandardInput(process);
 
-            var builder = new GitScanResultBuilder(options, pathGuard);
+            var builder = new GitScanResultBuilder(options, workspaceRoot);
             var outputTask = ReadWorkspacePathsAsync(
                 process.StandardOutput.BaseStream,
                 builder,
@@ -153,7 +153,7 @@ public sealed class GitWorkspaceScanner(
     private sealed class GitScanResultBuilder
     {
         private readonly CliOptions options;
-        private readonly PathGuard pathGuard;
+        private readonly WorkspaceRoot workspaceRoot;
         private readonly List<WorkspaceCandidate> solutions = [];
         private readonly List<WorkspaceCandidate> projects = [];
         private readonly HashSet<string> seen = new(OperatingSystem.IsWindows()
@@ -162,10 +162,10 @@ public sealed class GitWorkspaceScanner(
 
         private string? truncationReason;
 
-        public GitScanResultBuilder(CliOptions options, PathGuard pathGuard)
+        public GitScanResultBuilder(CliOptions options, WorkspaceRoot workspaceRoot)
         {
             this.options = options;
-            this.pathGuard = pathGuard;
+            this.workspaceRoot = workspaceRoot;
         }
 
         public bool StoppedAfterCandidateLimit { get; private set; }
@@ -187,7 +187,7 @@ public sealed class GitWorkspaceScanner(
             string fullPath;
             try
             {
-                fullPath = this.pathGuard.ResolveInsideRoot(relativePath);
+                fullPath = this.workspaceRoot.ResolveInsideRoot(relativePath);
             }
             catch
             {
@@ -232,7 +232,7 @@ public sealed class GitWorkspaceScanner(
 
         public WorkspaceScanResult ToResult(TimeSpan elapsed) =>
             new(
-                this.pathGuard.Root,
+                this.workspaceRoot.Root,
                 this.solutions,
                 this.projects,
                 this.truncationReason is not null,
@@ -242,7 +242,7 @@ public sealed class GitWorkspaceScanner(
         private WorkspaceCandidate ToCandidate(string fullPath, WorkspaceKind kind)
         {
             var normalized = Path.GetFullPath(fullPath);
-            return new WorkspaceCandidate(kind, normalized, this.pathGuard.ToRelativePath(normalized));
+            return new WorkspaceCandidate(kind, normalized, this.workspaceRoot.ToRelativePath(normalized));
         }
     }
 
@@ -255,11 +255,11 @@ public sealed class GitWorkspaceScanner(
             RedirectStandardError = true,
             RedirectStandardInput = true,
             CreateNoWindow = true,
-            WorkingDirectory = pathGuard.Root
+            WorkingDirectory = workspaceRoot.Root
         };
 
         startInfo.ArgumentList.Add("-C");
-        startInfo.ArgumentList.Add(pathGuard.Root);
+        startInfo.ArgumentList.Add(workspaceRoot.Root);
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);

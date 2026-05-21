@@ -3883,17 +3883,16 @@ public sealed class NavigationToolsTests
 
     private static NavigationTools CreateTools(string root, WorkspaceSession session, long maxDocumentBytes = 2 * 1024 * 1024)
     {
-        var guard = new PathGuard(root);
-        var mapper = new DocumentPathMapper(guard);
-        return new NavigationTools(session, new DocumentStateManager(CreateOptions(root, maxDocumentBytes: maxDocumentBytes), mapper), mapper);
+        var workspaceRoot = new WorkspaceRoot(root);
+        return new NavigationTools(session, new DocumentStateManager(CreateOptions(root, maxDocumentBytes: maxDocumentBytes), workspaceRoot), workspaceRoot);
     }
 
     private static WorkspaceSession CreateSession(string root, IRoslynWorkspaceLoader loader)
     {
-        var guard = new PathGuard(root);
+        var workspaceRoot = new WorkspaceRoot(root);
         return WorkspaceSession.CreateForTest(
-            new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null),
-            guard,
+            new WorkspaceScanner(CreateOptions(root), workspaceRoot, gitScanner: null),
+            workspaceRoot,
             loader);
     }
 
@@ -3902,11 +3901,11 @@ public sealed class NavigationToolsTests
         IRoslynWorkspaceLoader loader,
         string loadSolutionPath)
     {
-        var guard = new PathGuard(root);
+        var workspaceRoot = new WorkspaceRoot(root);
         var options = CreateOptions(root) with { LoadSolutionPath = loadSolutionPath };
         return WorkspaceSession.CreateForTest(
-            new WorkspaceScanner(options, guard, gitScanner: null),
-            guard,
+            new WorkspaceScanner(options, workspaceRoot, gitScanner: null),
+            workspaceRoot,
             loader,
             options);
     }

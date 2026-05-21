@@ -2,12 +2,12 @@ using RoslynMcpServer.Infrastructure;
 
 namespace RoslynMcpServer.Workspace;
 
-public sealed class PathGuard
+public sealed class WorkspaceRoot
 {
     private readonly string rootWithSeparator;
     private readonly StringComparison comparison;
 
-    public PathGuard(string root)
+    public WorkspaceRoot(string root)
     {
         Root = Path.GetFullPath(root);
         if (!Directory.Exists(Root))
@@ -27,6 +27,8 @@ public sealed class PathGuard
     }
 
     public string Root { get; }
+
+    public string ResolveFileInput(string file) => RequireFileInsideRoot(file);
 
     public string ResolveInsideRoot(string path)
     {
@@ -70,7 +72,44 @@ public sealed class PathGuard
     }
 
     public string ToRelativePath(string fullPath) =>
-        Path.GetRelativePath(Root, fullPath).Replace(Path.DirectorySeparatorChar, '/');
+        Path.GetRelativePath(Root, Path.GetFullPath(fullPath)).Replace(Path.DirectorySeparatorChar, '/');
+
+    public string ToFileUri(string fullPath) => new Uri(Path.GetFullPath(fullPath)).AbsoluteUri;
+
+    public string NormalizePathPrefix(string pathPrefix)
+    {
+        try
+        {
+            var normalizedInput = pathPrefix
+                .Replace('\\', Path.DirectorySeparatorChar)
+                .Replace('/', Path.DirectorySeparatorChar);
+            var fullPath = ResolveInsideRoot(normalizedInput);
+            return TrimTrailingSlashes(ToRelativePath(fullPath));
+        }
+        catch (UserFacingException ex) when (ex.Code is "invalid_path" or "path_outside_root" or "path_reparse_point")
+        {
+            throw new UserFacingException("invalid_path_prefix", $"Invalid path prefix: {pathPrefix}");
+        }
+        catch (ArgumentException)
+        {
+            throw new UserFacingException("invalid_path_prefix", $"Invalid path prefix: {pathPrefix}");
+        }
+        catch (NotSupportedException)
+        {
+            throw new UserFacingException("invalid_path_prefix", $"Invalid path prefix: {pathPrefix}");
+        }
+    }
+
+    public string UriToRelativePath(string uri)
+    {
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed) || !parsed.IsFile)
+        {
+            throw new UserFacingException("invalid_lsp_uri", $"LSP returned a non-file URI: {uri}");
+        }
+
+        var fullPath = ResolveInsideRoot(Path.GetFullPath(parsed.LocalPath));
+        return ToRelativePath(fullPath);
+    }
 
     public bool IsInsideRoot(string fullPath)
     {
@@ -116,4 +155,7 @@ public sealed class PathGuard
         path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar)
             ? path
             : path + Path.DirectorySeparatorChar;
+
+    private static string TrimTrailingSlashes(string path) =>
+        path.TrimEnd('/', '\\');
 }

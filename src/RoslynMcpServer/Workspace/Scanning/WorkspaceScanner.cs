@@ -5,13 +5,13 @@ namespace RoslynMcpServer.Workspace;
 
 // Coordinates git-aware discovery with bounded filesystem fallback. An explicit
 // maxDepth skips git and uses filesystem BFS.
-public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IGitWorkspaceScanner? gitScanner = null)
+public sealed class WorkspaceScanner(CliOptions options, WorkspaceRoot workspaceRoot, IGitWorkspaceScanner? gitScanner = null)
 {
     private const int FallbackFileSystemMaxDepth = 3;
     private static readonly TimeSpan DefaultScanTimeout = TimeSpan.FromSeconds(30);
 
-    private readonly FileSystemWorkspaceScanner fileSystemScanner = new(options, pathGuard);
-    private readonly IGitWorkspaceScanner gitScanner = gitScanner ?? new GitWorkspaceScanner(options, pathGuard);
+    private readonly FileSystemWorkspaceScanner fileSystemScanner = new(options, workspaceRoot);
+    private readonly IGitWorkspaceScanner gitScanner = gitScanner ?? new GitWorkspaceScanner(options, workspaceRoot);
 
     public WorkspaceScanResult Scan(int? maxDepth = null, CancellationToken cancellationToken = default)
     {

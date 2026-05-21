@@ -9,7 +9,7 @@ namespace RoslynMcpServer.Mcp;
 internal static class CallHierarchyMapper
 {
     internal static IReadOnlyList<PreparedCallHierarchyItem> MapPreparedItems(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement response)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
@@ -25,7 +25,7 @@ internal static class CallHierarchyMapper
         var roots = new List<PreparedCallHierarchyItem>();
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = TryMapCallHierarchySymbol(pathMapper, item);
+            var symbol = TryMapCallHierarchySymbol(workspaceRoot, item);
             if (symbol is null)
             {
                 continue;
@@ -38,7 +38,7 @@ internal static class CallHierarchyMapper
     }
 
     internal static void AddEdges(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement response,
         CallHierarchySymbol root,
         CallHierarchyDirection direction,
@@ -63,7 +63,7 @@ internal static class CallHierarchyMapper
 
         foreach (var item in response.EnumerateArray())
         {
-            var edge = TryMapCallHierarchyEdge(pathMapper, item, root, direction);
+            var edge = TryMapCallHierarchyEdge(workspaceRoot, item, root, direction);
             if (edge is null)
             {
                 continue;
@@ -104,7 +104,7 @@ internal static class CallHierarchyMapper
         direction == CallHierarchyDirection.Incoming ? edge.From : edge.To;
 
     private static CallHierarchyEdge? TryMapCallHierarchyEdge(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         JsonElement item,
         CallHierarchySymbol root,
         CallHierarchyDirection direction)
@@ -121,7 +121,7 @@ internal static class CallHierarchyMapper
             throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned a malformed call hierarchy item.");
         }
 
-        var otherSymbol = TryMapCallHierarchySymbol(pathMapper, symbolElement);
+        var otherSymbol = TryMapCallHierarchySymbol(workspaceRoot, symbolElement);
         if (otherSymbol is null)
         {
             return null;
@@ -201,7 +201,7 @@ internal static class CallHierarchyMapper
         }
     }
 
-    private static CallHierarchySymbol? TryMapCallHierarchySymbol(DocumentPathMapper pathMapper, JsonElement item)
+    private static CallHierarchySymbol? TryMapCallHierarchySymbol(WorkspaceRoot workspaceRoot, JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object ||
             !item.TryGetProperty("name", out var nameElement) ||
@@ -219,7 +219,7 @@ internal static class CallHierarchyMapper
             return null;
         }
 
-        var location = TryMapCallHierarchySymbolLocation(pathMapper, item);
+        var location = TryMapCallHierarchySymbolLocation(workspaceRoot, item);
         if (location is null)
         {
             return null;
@@ -235,7 +235,7 @@ internal static class CallHierarchyMapper
             location);
     }
 
-    private static NavigationLocation? TryMapCallHierarchySymbolLocation(DocumentPathMapper pathMapper, JsonElement item)
+    private static NavigationLocation? TryMapCallHierarchySymbolLocation(WorkspaceRoot workspaceRoot, JsonElement item)
     {
         if (!item.TryGetProperty("uri", out var uriElement) ||
             uriElement.ValueKind != JsonValueKind.String)
@@ -252,7 +252,7 @@ internal static class CallHierarchyMapper
         string relativePath;
         try
         {
-            relativePath = pathMapper.UriToRelativePath(uri);
+            relativePath = workspaceRoot.UriToRelativePath(uri);
         }
         catch (UserFacingException ex) when (ex.Code is "path_outside_root" or "invalid_lsp_uri")
         {

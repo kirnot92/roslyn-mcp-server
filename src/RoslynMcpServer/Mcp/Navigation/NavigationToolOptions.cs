@@ -222,7 +222,7 @@ internal static class NavigationToolOptions
     }
 
     internal static IReadOnlyList<string>? ParseIncludePathPrefixes(
-        DocumentPathMapper pathMapper,
+        WorkspaceRoot workspaceRoot,
         IReadOnlyList<string>? includePathPrefixes)
     {
         if (includePathPrefixes is null)
@@ -247,7 +247,7 @@ internal static class NavigationToolOptions
                     "includePathPrefixes must not contain empty path prefixes.");
             }
 
-            prefixes.Add(pathMapper.NormalizePathPrefix(rawPrefix.Trim()));
+            prefixes.Add(workspaceRoot.NormalizePathPrefix(rawPrefix.Trim()));
         }
 
         return prefixes;

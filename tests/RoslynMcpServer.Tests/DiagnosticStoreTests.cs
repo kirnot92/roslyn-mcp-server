@@ -244,7 +244,7 @@ public sealed class DiagnosticStoreTests
         CreateStore(root, new FakeClock(DateTimeOffset.UtcNow));
 
     private static DiagnosticStore CreateStore(string root, IClock clock) =>
-        new(new DocumentPathMapper(new PathGuard(root)), clock);
+        new(new WorkspaceRoot(root), clock);
 
     private static JsonElement Publish(string root, string file, params object[] diagnostics) =>
         PublishUri(new Uri(Path.Combine(root, file)).AbsoluteUri, diagnostics);
