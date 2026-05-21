@@ -275,6 +275,104 @@ public sealed partial class NavigationToolsTests
     }
 
     [Fact]
+    public async Task DocumentSymbols_WithoutQueryOrdersSiblingsBySourceRange()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Earlier { } class Later { void EarlierChild() { } void LaterChild() { } }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new DocumentSymbol(
+                "Later",
+                SymbolKind.Class,
+                new Lsp.Range(new Position(10, 0), new Position(20, 1)),
+                new Lsp.Range(new Position(10, 6), new Position(10, 11)),
+                Children:
+                [
+                    new DocumentSymbol(
+                        "LaterChild",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(15, 4), new Position(17, 5)),
+                        new Lsp.Range(new Position(15, 9), new Position(15, 19))),
+                    new DocumentSymbol(
+                        "EarlierChild",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(12, 4), new Position(14, 5)),
+                        new Lsp.Range(new Position(12, 9), new Position(12, 21)))
+                ]),
+            new DocumentSymbol(
+                "Earlier",
+                SymbolKind.Class,
+                new Lsp.Range(new Position(0, 0), new Position(5, 1)),
+                new Lsp.Range(new Position(0, 6), new Position(0, 13)))
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs");
+
+        var symbols = Assert.IsType<DocumentSymbolsResult>(result);
+        Assert.Equal(["Earlier", "Later"], symbols.Items.Select(item => item.Name));
+        Assert.Equal(["EarlierChild", "LaterChild"], symbols.Items[1].Children.Select(child => child.Name));
+        Assert.Equal(4, symbols.TotalKnown);
+        Assert.Equal(4, symbols.Returned);
+    }
+
+    [Fact]
+    public async Task DocumentSymbols_QueryOrdersSiblingsByMatchRelevanceThenSourceRange()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class Container { void DoParse() { } void Parser() { } void parse() { } void Parse() { } }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(new[]
+        {
+            new DocumentSymbol(
+                "Container",
+                SymbolKind.Class,
+                new Lsp.Range(new Position(0, 0), new Position(10, 1)),
+                new Lsp.Range(new Position(0, 6), new Position(0, 15)),
+                Children:
+                [
+                    new DocumentSymbol(
+                        "DoParse",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(1, 4), new Position(2, 5)),
+                        new Lsp.Range(new Position(1, 9), new Position(1, 16))),
+                    new DocumentSymbol(
+                        "Parser",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(3, 4), new Position(4, 5)),
+                        new Lsp.Range(new Position(3, 9), new Position(3, 15))),
+                    new DocumentSymbol(
+                        "parse",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(5, 4), new Position(6, 5)),
+                        new Lsp.Range(new Position(5, 9), new Position(5, 14))),
+                    new DocumentSymbol(
+                        "Parse",
+                        SymbolKind.Method,
+                        new Lsp.Range(new Position(7, 4), new Position(8, 5)),
+                        new Lsp.Range(new Position(7, 9), new Position(7, 14)))
+                ])
+        });
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", kindFilter: ["method"], query: "Parse");
+
+        var symbols = Assert.IsType<DocumentSymbolsResult>(result);
+        var rootSymbol = Assert.Single(symbols.Items);
+        Assert.Equal("Container", rootSymbol.Name);
+        Assert.Equal(["Parse", "parse", "Parser", "DoParse"], rootSymbol.Children.Select(child => child.Name));
+        Assert.Equal(5, symbols.TotalKnown);
+        Assert.Equal(5, symbols.Returned);
+    }
+
+    [Fact]
     public async Task DocumentSymbols_BlankQueryIsIgnored()
     {
         using var root = TestRoot.Create();
