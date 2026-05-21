@@ -18,14 +18,14 @@ public sealed class RoslynWorkspaceLoaderTests
         File.WriteAllText(targetPath, string.Empty);
         var client = new FakeLspClient();
         client.EnqueueResponse(new { capabilities = new { } });
-        var process = new FakeLanguageServerProcess(client);
-        var loader = RoslynWorkspaceLoader.CreateForTest(CreateOptions(root.Path), process.Start);
+        var starter = new FakeLanguageServerStarter(client);
+        var loader = RoslynWorkspaceLoader.CreateForTest(CreateOptions(root.Path), starter);
         var target = CreateTarget(kind, targetPath, root.Path);
 
         await using var handle = await loader.LoadAsync(target, CancellationToken.None);
 
         Assert.Same(client, handle.Client);
-        Assert.Same(target, Assert.Single(process.StartedTargets));
+        Assert.Same(target, Assert.Single(starter.StartedTargets));
         var initializeRequest = Assert.Single(client.Requests);
         Assert.Equal("initialize", initializeRequest.Method);
         Assert.Equal("en-US", initializeRequest.Params.GetProperty("locale").GetString());
@@ -47,14 +47,14 @@ public sealed class RoslynWorkspaceLoaderTests
         File.WriteAllText(targetPath, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         var client = new FakeLspClient();
         client.EnqueueResponse(new { capabilities = new { } });
-        var process = new FakeLanguageServerProcess(client);
-        var loader = RoslynWorkspaceLoader.CreateForTest(CreateOptions(root.Path), process.Start);
+        var starter = new FakeLanguageServerStarter(client);
+        var loader = RoslynWorkspaceLoader.CreateForTest(CreateOptions(root.Path), starter);
         var target = CreateTarget(WorkspaceKind.Project, targetPath, root.Path);
 
         await using var handle = await loader.LoadAsync(target, CancellationToken.None);
 
         Assert.Same(client, handle.Client);
-        Assert.Same(target, Assert.Single(process.StartedTargets));
+        Assert.Same(target, Assert.Single(starter.StartedTargets));
         var initializeRequest = Assert.Single(client.Requests);
         Assert.Equal("initialize", initializeRequest.Method);
         Assert.Equal("en-US", initializeRequest.Params.GetProperty("locale").GetString());
@@ -70,11 +70,14 @@ public sealed class RoslynWorkspaceLoaderTests
             });
     }
 
-    private static WorkspaceTarget CreateTarget(WorkspaceKind kind, string fullPath, string root) =>
-        new(kind, fullPath, Path.GetFileName(fullPath), root, Path.GetDirectoryName(fullPath) ?? root);
+    private static WorkspaceTarget CreateTarget(WorkspaceKind kind, string fullPath, string root)
+    {
+        return new(kind, fullPath, Path.GetFileName(fullPath), root, Path.GetDirectoryName(fullPath) ?? root);
+    }
 
-    private static CliOptions CreateOptions(string root) =>
-        new(
+    private static CliOptions CreateOptions(string root)
+    {
+        return new(
             root,
             null,
             null,
@@ -88,10 +91,14 @@ public sealed class RoslynWorkspaceLoaderTests
             2 * 1024 * 1024,
             16,
             2);
+    }
 
-    private static string ToFileUri(string path) => new Uri(Path.GetFullPath(path)).AbsoluteUri;
+    private static string ToFileUri(string path)
+    {
+        return new Uri(Path.GetFullPath(path)).AbsoluteUri;
+    }
 
-    private sealed class FakeLanguageServerProcess(ILspClient client)
+    private sealed class FakeLanguageServerStarter(ILspClient client) : IRoslynLanguageServerStarter
     {
         public List<WorkspaceTarget> StartedTargets { get; } = [];
 
@@ -116,8 +123,10 @@ public sealed class RoslynWorkspaceLoaderTests
         public List<(string Method, JsonElement Params)> Notifications { get; } = [];
         public List<(string Method, JsonElement Params)> Requests { get; } = [];
 
-        public void EnqueueResponse(object? response) =>
+        public void EnqueueResponse(object? response)
+        {
             this.responses.Enqueue(JsonSerializer.SerializeToElement(response, JsonOptions.Default));
+        }
 
         public Task<JsonElement> RequestAsync(
             string method,
@@ -136,6 +145,9 @@ public sealed class RoslynWorkspaceLoaderTests
             return Task.CompletedTask;
         }
 
-        public Task ShutdownAsync(TimeSpan timeout, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ShutdownAsync(TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

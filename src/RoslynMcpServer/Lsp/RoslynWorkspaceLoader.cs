@@ -8,35 +8,35 @@ public sealed class RoslynWorkspaceLoader : IRoslynWorkspaceLoader
 {
     private const string LanguageServerLocale = "en-US";
     private readonly CliOptions options;
-    private readonly Func<WorkspaceTarget, RoslynWorkspaceHandle> startProcess;
+    private readonly IRoslynLanguageServerStarter languageServer;
 
     public static RoslynWorkspaceLoader CreateForServer(
         CliOptions options,
         ILogger<RoslynLanguageServerProcess> processLogger,
         ILoggerFactory loggerFactory)
     {
-        var process = new RoslynLanguageServerProcess(options, processLogger, loggerFactory);
-        return new RoslynWorkspaceLoader(options, process.Start);
+        var languageServer = new RoslynLanguageServerProcess(options, processLogger, loggerFactory);
+        return new RoslynWorkspaceLoader(options, languageServer);
     }
 
     public static RoslynWorkspaceLoader CreateForTest(
         CliOptions options,
-        Func<WorkspaceTarget, RoslynWorkspaceHandle> startProcess)
+        IRoslynLanguageServerStarter languageServer)
     {
-        return new RoslynWorkspaceLoader(options, startProcess);
+        return new RoslynWorkspaceLoader(options, languageServer);
     }
 
     private RoslynWorkspaceLoader(
         CliOptions options,
-        Func<WorkspaceTarget, RoslynWorkspaceHandle> startProcess)
+        IRoslynLanguageServerStarter languageServer)
     {
         this.options = options;
-        this.startProcess = startProcess;
+        this.languageServer = languageServer;
     }
 
     public async Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken)
     {
-        var handle = this.startProcess(target);
+        var handle = this.languageServer.Start(target);
 
         try
         {
@@ -89,10 +89,16 @@ public sealed class RoslynWorkspaceLoader : IRoslynWorkspaceLoader
     private static Task NotifyOpenTargetAsync(ILspClient client, WorkspaceTarget target, CancellationToken cancellationToken)
     {
         var targetUri = ToFileUri(target.FullPath);
-        return target.Kind is WorkspaceKind.Project
-            ? client.NotifyAsync("project/open", new { projects = new[] { targetUri } }, cancellationToken)
-            : client.NotifyAsync("solution/open", new { solution = targetUri }, cancellationToken);
+        if (target.Kind is WorkspaceKind.Project)
+        {
+            return client.NotifyAsync("project/open", new { projects = new[] { targetUri } }, cancellationToken);
+        }
+
+        return client.NotifyAsync("solution/open", new { solution = targetUri }, cancellationToken);
     }
 
-    private static string ToFileUri(string path) => new Uri(Path.GetFullPath(path)).AbsoluteUri;
+    private static string ToFileUri(string path)
+    {
+        return new Uri(Path.GetFullPath(path)).AbsoluteUri;
+    }
 }
