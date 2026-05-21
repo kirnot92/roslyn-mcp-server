@@ -37,10 +37,4 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
             FallbackFileSystemMaxDepth,
             cancellationToken);
     }
-
-    public static IReadOnlyList<WorkspaceCandidate> SortCandidates(IEnumerable<WorkspaceCandidate> candidates) =>
-        candidates
-            .OrderBy(candidate => candidate.RelativePath.Count(c => c == '/'))
-            .ThenBy(candidate => candidate.RelativePath, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
 }

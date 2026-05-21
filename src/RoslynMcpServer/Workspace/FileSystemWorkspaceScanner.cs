@@ -137,8 +137,8 @@ public sealed class FileSystemWorkspaceScanner(CliOptions options, PathGuard pat
 
         return new WorkspaceScanResult(
             pathGuard.Root,
-            WorkspaceScanner.SortCandidates(solutions),
-            WorkspaceScanner.SortCandidates(projects),
+            solutions,
+            projects,
             truncationReason is not null,
             truncationReason,
             sw.Elapsed);

@@ -32,13 +32,42 @@ public sealed record WorkspaceCandidate(
     string FullPath,
     string RelativePath);
 
-public sealed record WorkspaceScanResult(
-    string Root,
-    IReadOnlyList<WorkspaceCandidate> Solutions,
-    IReadOnlyList<WorkspaceCandidate> Projects,
-    bool Truncated,
-    string? TruncationReason,
-    TimeSpan Elapsed);
+public sealed record WorkspaceScanResult
+{
+    public WorkspaceScanResult(
+        string root,
+        IReadOnlyList<WorkspaceCandidate> solutions,
+        IReadOnlyList<WorkspaceCandidate> projects,
+        bool truncated,
+        string? truncationReason,
+        TimeSpan elapsed)
+    {
+        this.Root = root;
+        this.Solutions = SortCandidates(solutions);
+        this.Projects = SortCandidates(projects);
+        this.Truncated = truncated;
+        this.TruncationReason = truncationReason;
+        this.Elapsed = elapsed;
+    }
+
+    public string Root { get; }
+
+    public IReadOnlyList<WorkspaceCandidate> Solutions { get; }
+
+    public IReadOnlyList<WorkspaceCandidate> Projects { get; }
+
+    public bool Truncated { get; }
+
+    public string? TruncationReason { get; }
+
+    public TimeSpan Elapsed { get; }
+
+    private static IReadOnlyList<WorkspaceCandidate> SortCandidates(IEnumerable<WorkspaceCandidate> candidates) =>
+        candidates
+            .OrderBy(candidate => candidate.RelativePath.Count(c => c == '/'))
+            .ThenBy(candidate => candidate.RelativePath, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+}
 
 public sealed record WorkspaceStatus(
     string Root,

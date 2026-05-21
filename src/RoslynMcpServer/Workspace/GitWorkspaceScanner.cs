@@ -233,8 +233,8 @@ public sealed class GitWorkspaceScanner(
         public WorkspaceScanResult ToResult(TimeSpan elapsed) =>
             new(
                 this.pathGuard.Root,
-                WorkspaceScanner.SortCandidates(this.solutions),
-                WorkspaceScanner.SortCandidates(this.projects),
+                this.solutions,
+                this.projects,
                 this.truncationReason is not null,
                 this.truncationReason,
                 elapsed);
