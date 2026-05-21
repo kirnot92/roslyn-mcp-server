@@ -67,14 +67,16 @@ src/RoslynMcpServer/
   Workspace/
     DocumentPathMapper.cs
     DocumentStateManager.cs
-    FileSystemWorkspaceScanner.cs
-    GitWorkspaceScanner.cs
-    IGitWorkspaceScanner.cs
     PathGuard.cs
     StartupSolutionLoader.cs
     WorkspaceModels.cs
-    WorkspaceScanner.cs
     WorkspaceSession.cs
+    WorkspaceWarningCollector.cs
+    Scanning/
+      FileSystemWorkspaceScanner.cs
+      GitWorkspaceScanner.cs
+      IGitWorkspaceScanner.cs
+      WorkspaceScanner.cs
 tests/RoslynMcpServer.Tests/
 scripts/smoke-tests/
 ```
