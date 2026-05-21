@@ -65,35 +65,43 @@ public sealed class WorkspaceSessionTests
     }
 
     [Fact]
-    public async Task LoadStartupSolution_InvalidExtensionRecordsFailure()
+    public async Task StartupSolutionLoader_InvalidExtensionRecordsFailure()
     {
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         await using var session = CreateSession(root.Path, new ImmediateLoader(new NotificationRecordingClient()));
+        var service = new StartupSolutionLoader(
+            CreateOptions(root.Path, loadSolutionPath: "App.csproj"),
+            session,
+            NullLogger<StartupSolutionLoader>.Instance);
 
-        var ex = await Assert.ThrowsAsync<UserFacingException>(() => session.LoadStartupSolutionAsync("App.csproj"));
-        var status = await session.GetStatusAsync();
+        await service.StartAsync(CancellationToken.None);
+        var status = await WaitForStateAsync(session, WorkspaceLoadState.Failed);
 
-        Assert.Equal("invalid_workspace_file", ex.Code);
         Assert.Equal(WorkspaceLoadState.Failed, status.State);
         Assert.Equal("invalid_workspace_file", status.FailureCode);
+        await service.StopAsync(CancellationToken.None);
     }
 
     [Fact]
-    public async Task LoadStartupSolution_OutsideRootRecordsFailure()
+    public async Task StartupSolutionLoader_OutsideRootRecordsFailure()
     {
         using var root = TestRoot.Create();
         using var outside = TestRoot.Create();
         var solutionPath = Path.Combine(outside.Path, "Outside.sln");
         File.WriteAllText(solutionPath, string.Empty);
         await using var session = CreateSession(root.Path, new ImmediateLoader(new NotificationRecordingClient()));
+        var service = new StartupSolutionLoader(
+            CreateOptions(root.Path, loadSolutionPath: solutionPath),
+            session,
+            NullLogger<StartupSolutionLoader>.Instance);
 
-        var ex = await Assert.ThrowsAsync<UserFacingException>(() => session.LoadStartupSolutionAsync(solutionPath));
-        var status = await session.GetStatusAsync();
+        await service.StartAsync(CancellationToken.None);
+        var status = await WaitForStateAsync(session, WorkspaceLoadState.Failed);
 
-        Assert.Equal("path_outside_root", ex.Code);
         Assert.Equal(WorkspaceLoadState.Failed, status.State);
         Assert.Equal("path_outside_root", status.FailureCode);
+        await service.StopAsync(CancellationToken.None);
     }
 
     [Fact]

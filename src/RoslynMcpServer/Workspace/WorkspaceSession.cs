@@ -107,13 +107,10 @@ public sealed class WorkspaceSession : IAsyncDisposable
     }
 
     public Task<WorkspaceStatus> LoadSolutionAsync(string path, CancellationToken cancellationToken = default) =>
-        LoadAsync(path, [".sln", ".slnx"], WorkspaceKind.Solution, recordValidationFailure: false, cancellationToken);
-
-    public Task<WorkspaceStatus> LoadStartupSolutionAsync(string path, CancellationToken cancellationToken = default) =>
-        LoadAsync(path, [".sln", ".slnx"], WorkspaceKind.Solution, recordValidationFailure: true, cancellationToken);
+        LoadAsync(path, [".sln", ".slnx"], WorkspaceKind.Solution, cancellationToken);
 
     public Task<WorkspaceStatus> LoadProjectAsync(string path, CancellationToken cancellationToken = default) =>
-        LoadAsync(path, [".csproj"], WorkspaceKind.Project, recordValidationFailure: false, cancellationToken);
+        LoadAsync(path, [".csproj"], WorkspaceKind.Project, cancellationToken);
 
     public void MarkStartupLoadPending()
     {
@@ -125,6 +122,26 @@ public sealed class WorkspaceSession : IAsyncDisposable
         this.state = WorkspaceLoadState.StartingLanguageServer;
         this.failureCode = null;
         this.failureMessage = null;
+    }
+
+    public async Task MarkStartupLoadFailedAsync(UserFacingException exception)
+    {
+        await this.stateLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (this.state is not WorkspaceLoadState.StartingLanguageServer)
+            {
+                return;
+            }
+
+            this.state = WorkspaceLoadState.Failed;
+            this.failureCode = exception.Code;
+            this.failureMessage = exception.Message;
+        }
+        finally
+        {
+            this.stateLock.Release();
+        }
     }
 
     public async Task<ReadToolContext> PrepareReadToolAsync(CancellationToken cancellationToken = default)
@@ -212,25 +229,12 @@ public sealed class WorkspaceSession : IAsyncDisposable
         string path,
         string[] allowedExtensions,
         WorkspaceKind requestedKind,
-        bool recordValidationFailure,
         CancellationToken cancellationToken)
     {
         await this.stateLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            WorkspaceTarget target;
-            try
-            {
-                target = CreateTarget(path, allowedExtensions, requestedKind);
-            }
-            catch (UserFacingException ex) when (recordValidationFailure)
-            {
-                this.state = WorkspaceLoadState.Failed;
-                this.failureCode = ex.Code;
-                this.failureMessage = ex.Message;
-                throw;
-            }
-
+            var target = CreateTarget(path, allowedExtensions, requestedKind);
             await LoadTargetCoreAsync(target, cancellationToken).ConfigureAwait(false);
 
             return ToStatus(GetLastWorkspaceScanOrScan(cancellationToken));
