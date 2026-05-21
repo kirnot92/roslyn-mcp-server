@@ -36,7 +36,13 @@ public sealed class WorkspaceSession : IAsyncDisposable
         DocumentStateManager documents,
         DiagnosticStore diagnostics)
     {
-        var session = CreateForReadTools(scanner, pathGuard, loader, documents, diagnostics);
+        var session = new WorkspaceSession(
+            scanner,
+            pathGuard,
+            loader,
+            documents,
+            diagnostics,
+            new DiagnosticNotificationProcessor(diagnostics));
         if (!string.IsNullOrWhiteSpace(options.LoadSolutionPath))
         {
             session.MarkStartupLoadPending();
@@ -45,34 +51,30 @@ public sealed class WorkspaceSession : IAsyncDisposable
         return session;
     }
 
-    public static WorkspaceSession CreateForWorkspaceOnly(
-        WorkspaceScanner scanner,
-        PathGuard pathGuard,
-        IRoslynWorkspaceLoader loader) =>
-        new(scanner, pathGuard, loader, documents: null, diagnostics: null, diagnosticNotifications: null);
-
-    public static WorkspaceSession CreateForReadTools(
+    public static WorkspaceSession CreateForTest(
         WorkspaceScanner scanner,
         PathGuard pathGuard,
         IRoslynWorkspaceLoader loader,
-        DocumentStateManager documents,
-        DiagnosticStore diagnostics) =>
-        new(
+        CliOptions? options = null,
+        DocumentStateManager? documents = null,
+        DiagnosticStore? diagnostics = null,
+        DiagnosticNotificationProcessor? diagnosticNotifications = null)
+    {
+        var session = new WorkspaceSession(
             scanner,
             pathGuard,
             loader,
             documents,
             diagnostics,
-            new DiagnosticNotificationProcessor(diagnostics));
+            diagnosticNotifications ?? (diagnostics is null ? null : new DiagnosticNotificationProcessor(diagnostics)));
 
-    public static WorkspaceSession CreateForReadToolsWithDiagnosticProcessor(
-        WorkspaceScanner scanner,
-        PathGuard pathGuard,
-        IRoslynWorkspaceLoader loader,
-        DocumentStateManager documents,
-        DiagnosticStore diagnostics,
-        DiagnosticNotificationProcessor diagnosticNotifications) =>
-        new(scanner, pathGuard, loader, documents, diagnostics, diagnosticNotifications);
+        if (!string.IsNullOrWhiteSpace(options?.LoadSolutionPath))
+        {
+            session.MarkStartupLoadPending();
+        }
+
+        return session;
+    }
 
     private WorkspaceSession(
         WorkspaceScanner scanner,

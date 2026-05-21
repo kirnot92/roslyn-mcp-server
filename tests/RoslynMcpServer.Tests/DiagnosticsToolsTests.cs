@@ -353,12 +353,12 @@ public sealed class DiagnosticsToolsTests
         DiagnosticStore store)
     {
         var guard = new PathGuard(root);
-        return WorkspaceSession.CreateForReadTools(
+        return WorkspaceSession.CreateForTest(
             new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null),
             guard,
             loader,
-            documents,
-            store);
+            documents: documents,
+            diagnostics: store);
     }
 
     private static WorkspaceSession CreateSession(
@@ -369,13 +369,13 @@ public sealed class DiagnosticsToolsTests
         DiagnosticNotificationProcessor processor)
     {
         var guard = new PathGuard(root);
-        return WorkspaceSession.CreateForReadToolsWithDiagnosticProcessor(
+        return WorkspaceSession.CreateForTest(
             new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null),
             guard,
             loader,
-            documents,
-            store,
-            processor);
+            documents: documents,
+            diagnostics: store,
+            diagnosticNotifications: processor);
     }
 
     private static DocumentStateManager CreateDocumentState(string root)

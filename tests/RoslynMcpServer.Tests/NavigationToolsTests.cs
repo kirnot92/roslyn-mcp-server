@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RoslynMcpServer.Cli;
-using RoslynMcpServer.Infrastructure;
 using RoslynMcpServer.Lsp;
 using RoslynMcpServer.Mcp;
 using RoslynMcpServer.Workspace;
@@ -3820,7 +3819,7 @@ public sealed class NavigationToolsTests
     private static WorkspaceSession CreateSession(string root, IRoslynWorkspaceLoader loader)
     {
         var guard = new PathGuard(root);
-        return WorkspaceSession.CreateForWorkspaceOnly(
+        return WorkspaceSession.CreateForTest(
             new WorkspaceScanner(CreateOptions(root), guard, gitScanner: null),
             guard,
             loader);
@@ -3833,14 +3832,11 @@ public sealed class NavigationToolsTests
     {
         var guard = new PathGuard(root);
         var options = CreateOptions(root) with { LoadSolutionPath = loadSolutionPath };
-        var mapper = new DocumentPathMapper(guard);
-        return WorkspaceSession.CreateForServer(
+        return WorkspaceSession.CreateForTest(
             new WorkspaceScanner(options, guard, gitScanner: null),
             guard,
             loader,
-            options,
-            new DocumentStateManager(options, mapper),
-            new DiagnosticStore(mapper, new SystemClock()));
+            options);
     }
 
     private static CliOptions CreateOptions(string root, long maxDocumentBytes = 2 * 1024 * 1024) =>

@@ -239,7 +239,7 @@ public sealed class WorkspaceSessionTests
     {
         var options = CreateOptions(root, loadSolutionPath: null);
         var guard = new PathGuard(root);
-        return WorkspaceSession.CreateForWorkspaceOnly(
+        return WorkspaceSession.CreateForTest(
             new WorkspaceScanner(options, guard, gitScanner: null),
             guard,
             loader);
