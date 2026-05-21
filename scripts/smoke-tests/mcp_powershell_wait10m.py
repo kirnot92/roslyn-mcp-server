@@ -47,7 +47,7 @@ def main():
         client.notify("notifications/initialized")
         raw["tools"] = client.request("tools/list", timeout=30)
 
-        rows.append(smoke.call_tool(client, "list_workspaces", {"refresh": True}, timeout=30))
+        rows.append(smoke.call_tool(client, "list_workspaces", timeout=30))
         rows.append(smoke.call_tool(client, "load_solution", {"path": "PowerShell.sln"}, timeout=120, note="selected top-level solution"))
         rows.append(smoke.call_tool(client, "get_workspace_status", timeout=30, note="immediate"))
 

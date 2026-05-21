@@ -6,7 +6,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from smoke_paths import local_path, project_root, repo_root
+from smoke_paths import local_path, project_root, repo_root, server_command
 
 
 ROOT = project_root()
@@ -23,18 +23,13 @@ class McpClient:
         self.messages = queue.Queue()
         self.stderr_lines = []
         self.proc = subprocess.Popen(
-            [
-                "dotnet",
-                "run",
-                "--project",
-                os.path.join(ROOT, "src", "RoslynMcpServer"),
-                "--",
+            server_command(
                 "--root",
                 POWERSHELL_ROOT,
                 "--log-file",
                 LOG_FILE,
                 *EXTRA_SERVER_ARGS,
-            ],
+            ),
             cwd=ROOT,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -213,7 +208,7 @@ def main():
         tools = client.request("tools/list", timeout=30)
         raw["tools"] = tools
 
-        rows.append(call_tool(client, "list_workspaces", {"refresh": True}, timeout=30))
+        rows.append(call_tool(client, "list_workspaces", timeout=30))
 
         selected = "PowerShell.sln"
         rows.append(call_tool(client, "load_solution", {"path": selected}, timeout=120, note="selected top-level solution"))

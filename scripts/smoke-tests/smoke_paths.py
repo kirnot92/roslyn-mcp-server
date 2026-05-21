@@ -24,3 +24,16 @@ def local_dir(*parts: str) -> str:
 
 def repo_root(environment_variable: str, default_directory_name: str) -> str:
     return str(Path(os.environ.get(environment_variable, REAL_REPOS_DIR / default_directory_name)).resolve())
+
+
+def server_command(*server_args: str) -> list[str]:
+    return [
+        "dotnet",
+        "run",
+        "--project",
+        str(PROJECT_ROOT / "src" / "RoslynMcpServer" / "RoslynMcpServer.csproj"),
+        "-p:UseAppHost=false",
+        f"-p:OutDir={local_path('smoke-run-out')}{os.sep}",
+        "--",
+        *server_args,
+    ]

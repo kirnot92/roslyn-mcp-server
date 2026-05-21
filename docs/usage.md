@@ -25,8 +25,8 @@ requirements may change before a stable release.
 
 ## Install `roslyn-mcp-server`
 
-On Windows x64, download `roslyn-mcp-server-v0.1.0-win-x64.zip` from the
-[v0.1.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.1.0)
+On Windows x64, download `roslyn-mcp-server-v0.2.0-win-x64.zip` from the
+[v0.2.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.2.0)
 or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest).
 Extract the whole zip and point your MCP client at the extracted
 `roslyn-mcp-server.exe`.

@@ -126,8 +126,8 @@ NuGet/.NET global tool.
 
 ### Windows Release Zip
 
-Download `roslyn-mcp-server-v0.1.0-win-x64.zip` from the
-[v0.1.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.1.0)
+Download `roslyn-mcp-server-v0.2.0-win-x64.zip` from the
+[v0.2.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.2.0)
 or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest),
 then extract the whole zip to a folder.
 

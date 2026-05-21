@@ -6,7 +6,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from smoke_paths import local_dir, local_path, project_root, repo_root
+from smoke_paths import local_dir, local_path, project_root, repo_root, server_command
 
 
 ROOT = project_root()
@@ -36,12 +36,7 @@ class McpClient:
         self.messages = queue.Queue()
         self.stderr_file = open(STDERR_FILE, "w", encoding="utf-8")
         self.proc = subprocess.Popen(
-            [
-                "dotnet",
-                "run",
-                "--project",
-                os.path.join(ROOT, "src", "RoslynMcpServer"),
-                "--",
+            server_command(
                 "--root",
                 REPO_ROOT,
                 "--log-file",
@@ -50,7 +45,7 @@ class McpClient:
                 LS_LOG_DIR,
                 "--log-level",
                 "trace",
-            ],
+            ),
             cwd=ROOT,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -245,7 +240,7 @@ def main():
         raw["tools"] = client.request("tools/list", timeout=30)
 
         for row in [
-            call_tool(client, "list_workspaces", {"refresh": True}, timeout=45),
+            call_tool(client, "list_workspaces", timeout=45),
             call_tool(client, "load_solution", {"path": "AspNetCore.slnx"}, timeout=120, note="selected top-level solution"),
         ]:
             rows.append(row)

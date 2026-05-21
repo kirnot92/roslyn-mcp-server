@@ -6,7 +6,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from smoke_paths import local_path, project_root, repo_root
+from smoke_paths import local_path, project_root, repo_root, server_command
 
 
 ROOT = project_root()
@@ -22,17 +22,12 @@ class McpClient:
         self.stderr_lines = []
         self.messages = queue.Queue()
         self.proc = subprocess.Popen(
-            [
-                "dotnet",
-                "run",
-                "--project",
-                os.path.join(ROOT, "src", "RoslynMcpServer"),
-                "--",
+            server_command(
                 "--root",
                 REPO_ROOT,
                 "--log-file",
                 LOG_FILE,
-            ],
+            ),
             cwd=ROOT,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -184,7 +179,7 @@ def main():
         client.notify("notifications/initialized")
         raw["tools"] = client.request("tools/list", timeout=30)
 
-        rows.append(call_tool(client, "list_workspaces", {"refresh": True}, timeout=45))
+        rows.append(call_tool(client, "list_workspaces", timeout=45))
         rows.append(call_tool(client, "load_solution", {"path": r"dotnet\SK-dotnet.slnx"}, timeout=120, note="selected top-level .NET solution"))
         rows.append(call_tool(client, "get_workspace_status", timeout=30, note="immediate"))
         time.sleep(3)
