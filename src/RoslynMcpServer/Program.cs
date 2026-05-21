@@ -35,7 +35,6 @@ builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<DocumentPathMapper>();
 builder.Services.AddSingleton<DocumentStateManager>();
 builder.Services.AddSingleton<DiagnosticStore>();
-builder.Services.AddSingleton<IGitWorkspaceScanner, GitWorkspaceScanner>();
 builder.Services.AddSingleton<WorkspaceScanner>();
 builder.Services.AddSingleton<RoslynLanguageServerLocator>();
 builder.Services.AddSingleton<IRoslynLanguageServerProcess, RoslynLanguageServerProcess>();
