@@ -316,7 +316,7 @@ public sealed class WorkspaceSessionTests
     private sealed class FailingLoader : IRoslynWorkspaceLoader
     {
         public Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken) =>
-            throw new UserFacingException("roslyn_language_server_not_found", RoslynLanguageServerLocator.InstallMessage);
+            throw new UserFacingException("roslyn_language_server_not_found", RoslynLanguageServerProcess.InstallMessage);
     }
 
     private sealed class ImmediateLoader(ILspClient client) : IRoslynWorkspaceLoader

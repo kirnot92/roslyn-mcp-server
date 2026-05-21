@@ -54,14 +54,13 @@ public sealed class RoslynLanguageServerIntegrationTests
             """);
 
         var options = CreateOptions(root.Path);
-        var locator = new RoslynLanguageServerLocator(options);
         try
         {
-            _ = locator.Locate();
+            _ = RoslynLanguageServerProcess.LocateExecutable(options);
         }
         catch (UserFacingException ex) when (ex.Code == "roslyn_language_server_not_found")
         {
-            throw SkipException.ForSkip(RoslynLanguageServerLocator.InstallMessage);
+            throw SkipException.ForSkip(RoslynLanguageServerProcess.InstallMessage);
         }
 
         var workspaceRoot = new WorkspaceRoot(root.Path);
@@ -74,7 +73,6 @@ public sealed class RoslynLanguageServerIntegrationTests
                 options,
                 new RoslynLanguageServerProcess(
                     options,
-                    locator,
                     NullLogger<RoslynLanguageServerProcess>.Instance,
                     NullLoggerFactory.Instance)),
             documents: documents,

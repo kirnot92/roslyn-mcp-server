@@ -5,17 +5,17 @@ using RoslynMcpServer.Lsp;
 
 namespace RoslynMcpServer.Tests;
 
-public sealed class RoslynLanguageServerLocatorTests
+public sealed class RoslynLanguageServerProcessTests
 {
     [Fact]
     public void InstallMessage_IncludesNextActionsAndRuntimeRisk()
     {
-        Assert.Contains("dotnet tool install --global roslyn-language-server --prerelease", RoslynLanguageServerLocator.InstallMessage);
-        Assert.Contains("does not bundle roslyn-language-server", RoslynLanguageServerLocator.InstallMessage);
-        Assert.Contains("PATH", RoslynLanguageServerLocator.InstallMessage);
-        Assert.Contains("--roslyn-language-server <path>", RoslynLanguageServerLocator.InstallMessage);
-        Assert.Contains(".NET 10", RoslynLanguageServerLocator.InstallMessage);
-        Assert.Contains("prerelease", RoslynLanguageServerLocator.InstallMessage);
+        Assert.Contains("dotnet tool install --global roslyn-language-server --prerelease", RoslynLanguageServerProcess.InstallMessage);
+        Assert.Contains("does not bundle roslyn-language-server", RoslynLanguageServerProcess.InstallMessage);
+        Assert.Contains("PATH", RoslynLanguageServerProcess.InstallMessage);
+        Assert.Contains("--roslyn-language-server <path>", RoslynLanguageServerProcess.InstallMessage);
+        Assert.Contains(".NET 10", RoslynLanguageServerProcess.InstallMessage);
+        Assert.Contains("prerelease", RoslynLanguageServerProcess.InstallMessage);
     }
 
     [Fact]
@@ -23,9 +23,9 @@ public sealed class RoslynLanguageServerLocatorTests
     {
         using var root = TestRoot.Create();
         var missingPath = Path.Combine(root.Path, "missing", "roslyn-language-server.exe");
-        var locator = new RoslynLanguageServerLocator(CreateOptions(root.Path, missingPath));
+        var options = CreateOptions(root.Path, missingPath);
 
-        var ex = Assert.Throws<UserFacingException>(() => locator.Locate());
+        var ex = Assert.Throws<UserFacingException>(() => RoslynLanguageServerProcess.LocateExecutable(options));
 
         Assert.Equal("roslyn_language_server_not_found", ex.Code);
         Assert.Contains(Path.GetFullPath(missingPath), ex.Message);

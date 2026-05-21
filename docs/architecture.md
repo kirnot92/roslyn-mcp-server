@@ -53,7 +53,6 @@ src/RoslynMcpServer/
     LspClient.cs
     LspFraming.cs
     LspModels.cs
-    RoslynLanguageServerLocator.cs
     RoslynLanguageServerProcess.cs
     RoslynWorkspaceLoader.cs
   Mcp/
@@ -150,7 +149,7 @@ Failed
 
 ## LSP Client
 
-`RoslynLanguageServerProcess`는 Roslyn LS process start/stop을 담당한다. Locator는 `--roslyn-language-server`가 있으면 그 경로를 우선하고, 없으면 PATH에서 `roslyn-language-server`를 찾는다.
+`RoslynLanguageServerProcess`는 Roslyn LS executable lookup과 process start/stop을 담당한다. `--roslyn-language-server`가 있으면 그 경로를 우선하고, 없으면 PATH에서 `roslyn-language-server`를 찾는다.
 
 `LspClient` 책임:
 
