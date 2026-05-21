@@ -9,7 +9,7 @@ internal static class SourceSnippetReader
 {
     internal static async Task<SourceSnippetReadResult> ReadAsync(
         WorkspaceRoot workspaceRoot,
-        DocumentStateManager documents,
+        OpenDocumentManager documents,
         NavigationLocation location,
         int contextLines,
         string rangeDescription,

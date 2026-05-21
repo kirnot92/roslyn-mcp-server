@@ -4,7 +4,7 @@ using RoslynMcpServer.Lsp;
 
 namespace RoslynMcpServer.Workspace;
 
-public sealed class DocumentStateManager(CliOptions options, WorkspaceRoot workspaceRoot)
+public sealed class OpenDocumentManager(CliOptions options, WorkspaceRoot workspaceRoot)
 {
     private readonly Dictionary<string, OpenDocumentState> documents = new(PathComparer);
     private readonly SemaphoreSlim syncLock = new(1, 1);

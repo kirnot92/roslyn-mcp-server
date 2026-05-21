@@ -211,8 +211,8 @@ public sealed class DiagnosticsToolsTests
         using var root = TestRoot.Create();
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         var loader = new BlockingLoader();
-        var session = CreateSession(root.Path, loader, CreateDocumentState(root.Path), CreateStore(root.Path));
-        var tools = CreateTools(root.Path, session, CreateDocumentState(root.Path), CreateStore(root.Path));
+        var session = CreateSession(root.Path, loader, CreateOpenDocumentManager(root.Path), CreateStore(root.Path));
+        var tools = CreateTools(root.Path, session, CreateOpenDocumentManager(root.Path), CreateStore(root.Path));
 
         var loadTask = session.LoadProjectAsync("App.csproj");
         await loader.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -251,7 +251,7 @@ public sealed class DiagnosticsToolsTests
         File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
         var client = new FakeLspClient();
-        var documents = CreateDocumentState(root.Path);
+        var documents = CreateOpenDocumentManager(root.Path);
         var store = CreateStore(root.Path);
         var processor = DiagnosticNotificationProcessor.CreateForTest(store, capacity: 10, startAutomatically: false);
         var session = CreateSession(root.Path, new ImmediateLoader(client), documents, store, processor);
@@ -299,7 +299,7 @@ public sealed class DiagnosticsToolsTests
         File.WriteAllText(Path.Combine(root.Path, "New.cs"), "class New { }");
         var oldClient = new CapturingLspClient();
         var newClient = new CapturingLspClient();
-        var documents = CreateDocumentState(root.Path);
+        var documents = CreateOpenDocumentManager(root.Path);
         var store = CreateStore(root.Path);
         var processor = DiagnosticNotificationProcessor.CreateForServer(store);
         var session = CreateSession(root.Path, new SequentialLoader(oldClient, newClient), documents, store, processor);
@@ -329,7 +329,7 @@ public sealed class DiagnosticsToolsTests
         string root,
         FakeLspClient client)
     {
-        var documents = CreateDocumentState(root);
+        var documents = CreateOpenDocumentManager(root);
         var store = CreateStore(root);
         var session = CreateSession(root, new ImmediateLoader(client), documents, store);
         session.LoadProjectAsync("App.csproj").GetAwaiter().GetResult();
@@ -339,7 +339,7 @@ public sealed class DiagnosticsToolsTests
     private static DiagnosticsTools CreateTools(
         string root,
         WorkspaceSession session,
-        DocumentStateManager documents,
+        OpenDocumentManager documents,
         DiagnosticStore store)
     {
         var workspaceRoot = new WorkspaceRoot(root);
@@ -349,7 +349,7 @@ public sealed class DiagnosticsToolsTests
     private static WorkspaceSession CreateSession(
         string root,
         IRoslynWorkspaceLoader loader,
-        DocumentStateManager documents,
+        OpenDocumentManager documents,
         DiagnosticStore store)
     {
         var workspaceRoot = new WorkspaceRoot(root);
@@ -364,7 +364,7 @@ public sealed class DiagnosticsToolsTests
     private static WorkspaceSession CreateSession(
         string root,
         IRoslynWorkspaceLoader loader,
-        DocumentStateManager documents,
+        OpenDocumentManager documents,
         DiagnosticStore store,
         DiagnosticNotificationProcessor processor)
     {
@@ -378,10 +378,10 @@ public sealed class DiagnosticsToolsTests
             diagnosticNotifications: processor);
     }
 
-    private static DocumentStateManager CreateDocumentState(string root)
+    private static OpenDocumentManager CreateOpenDocumentManager(string root)
     {
         var workspaceRoot = new WorkspaceRoot(root);
-        return new DocumentStateManager(CreateOptions(root), workspaceRoot);
+        return new OpenDocumentManager(CreateOptions(root), workspaceRoot);
     }
 
     private static DiagnosticStore CreateStore(string root)

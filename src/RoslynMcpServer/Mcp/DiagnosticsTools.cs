@@ -9,7 +9,7 @@ namespace RoslynMcpServer.Mcp;
 [McpServerToolType]
 public sealed class DiagnosticsTools(
     WorkspaceSession session,
-    DocumentStateManager documents,
+    OpenDocumentManager documents,
     WorkspaceRoot workspaceRoot,
     DiagnosticStore diagnostics)
 {

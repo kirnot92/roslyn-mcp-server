@@ -34,7 +34,7 @@ builder.Services.AddSingleton(options);
 builder.Services.AddSingleton(workspaceRoot);
 
 builder.Services.AddSingleton<IClock, SystemClock>();
-builder.Services.AddSingleton<DocumentStateManager>();
+builder.Services.AddSingleton<OpenDocumentManager>();
 builder.Services.AddSingleton<DiagnosticStore>();
 builder.Services.AddSingleton<IRoslynWorkspaceLoader>(serviceProvider =>
 {
@@ -49,7 +49,7 @@ builder.Services.AddSingleton(serviceProvider =>
         serviceProvider.GetRequiredService<WorkspaceRoot>(),
         serviceProvider.GetRequiredService<IRoslynWorkspaceLoader>(),
         serviceProvider.GetRequiredService<CliOptions>(),
-        serviceProvider.GetRequiredService<DocumentStateManager>(),
+        serviceProvider.GetRequiredService<OpenDocumentManager>(),
         serviceProvider.GetRequiredService<DiagnosticStore>());
 });
 builder.Services.AddHostedService<StartupSolutionLoader>();

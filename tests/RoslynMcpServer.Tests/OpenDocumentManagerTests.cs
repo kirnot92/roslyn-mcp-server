@@ -7,7 +7,7 @@ using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Tests;
 
-public sealed class DocumentStateManagerTests
+public sealed class OpenDocumentManagerTests
 {
     [Fact]
     public async Task EnsureOpenAsync_SendsDidOpenOnFirstAccess()
@@ -102,7 +102,7 @@ public sealed class DocumentStateManagerTests
         Assert.Equal("textDocument/didOpen", client.Notifications[0].Method);
     }
 
-    private static DocumentStateManager CreateManager(
+    private static OpenDocumentManager CreateManager(
         string root,
         int maxOpenDocuments = 200,
         long maxDocumentBytes = 2 * 1024 * 1024)
@@ -122,7 +122,7 @@ public sealed class DocumentStateManagerTests
             16,
             2);
         var workspaceRoot = new WorkspaceRoot(root);
-        return new DocumentStateManager(options, workspaceRoot);
+        return new OpenDocumentManager(options, workspaceRoot);
     }
 
     private sealed class FakeLspClient : ILspClient

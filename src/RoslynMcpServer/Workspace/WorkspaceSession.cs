@@ -13,7 +13,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
     private readonly WorkspaceScanner scanner;
     private readonly WorkspaceRoot workspaceRoot;
     private readonly IRoslynWorkspaceLoader loader;
-    private readonly DocumentStateManager? documents;
+    private readonly OpenDocumentManager? documents;
     private readonly DiagnosticStore? diagnostics;
     private readonly DiagnosticNotificationProcessor? diagnosticNotifications;
     private readonly WorkspaceWarningCollector warningCollector;
@@ -29,7 +29,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
         WorkspaceRoot workspaceRoot,
         IRoslynWorkspaceLoader loader,
         CliOptions options,
-        DocumentStateManager documents,
+        OpenDocumentManager documents,
         DiagnosticStore diagnostics)
     {
         var scanner = new WorkspaceScanner(options, workspaceRoot);
@@ -54,7 +54,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
         WorkspaceRoot workspaceRoot,
         IRoslynWorkspaceLoader loader,
         CliOptions? options = null,
-        DocumentStateManager? documents = null,
+        OpenDocumentManager? documents = null,
         DiagnosticStore? diagnostics = null,
         DiagnosticNotificationProcessor? diagnosticNotifications = null)
     {
@@ -78,7 +78,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
         WorkspaceScanner scanner,
         WorkspaceRoot workspaceRoot,
         IRoslynWorkspaceLoader loader,
-        DocumentStateManager? documents,
+        OpenDocumentManager? documents,
         DiagnosticStore? diagnostics,
         DiagnosticNotificationProcessor? diagnosticNotifications)
     {

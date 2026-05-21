@@ -9,7 +9,7 @@ internal static class NavigationPositionRequests
 {
     internal static async Task<PositionRequestContext> PrepareAsync(
         WorkspaceSession session,
-        DocumentStateManager documents,
+        OpenDocumentManager documents,
         string file,
         int line,
         int column,

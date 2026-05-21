@@ -64,7 +64,7 @@ public sealed class RoslynLanguageServerIntegrationTests
         }
 
         var workspaceRoot = new WorkspaceRoot(root.Path);
-        var documents = new DocumentStateManager(options, workspaceRoot);
+        var documents = new OpenDocumentManager(options, workspaceRoot);
         var diagnosticStore = new DiagnosticStore(workspaceRoot, new SystemClock());
         var session = WorkspaceSession.CreateForTest(
             new WorkspaceScanner(options, workspaceRoot, new GitWorkspaceScanner(options, workspaceRoot)),

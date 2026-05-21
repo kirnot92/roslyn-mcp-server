@@ -64,7 +64,7 @@ src/RoslynMcpServer/
     Navigation/
       NavigationTools.*.cs
   Workspace/
-    DocumentStateManager.cs
+    OpenDocumentManager.cs
     StartupSolutionLoader.cs
     WorkspaceRoot.cs
     WorkspaceModels.cs
@@ -176,7 +176,7 @@ Navigation tool은 file path를 LSP document URI로 변환하고, 필요하면 `
 관련 component:
 
 - `WorkspaceRoot`: root 내부 path 검증과 LSP URI 변환
-- `DocumentStateManager`: open document LRU, 큰 파일 제한, didOpen/didClose 관리
+- `OpenDocumentManager`: open document LRU, 큰 파일 제한, didOpen/didClose 관리
 - `PositionMapper`: MCP 1-based line/column과 LSP 0-based position 변환
 
 큰 파일은 `--max-document-bytes`보다 크면 열지 않는다. 열려 있는 문서 수는 `--max-open-documents`로 제한한다.

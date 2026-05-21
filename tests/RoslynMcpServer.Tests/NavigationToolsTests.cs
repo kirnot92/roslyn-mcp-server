@@ -3884,7 +3884,7 @@ public sealed class NavigationToolsTests
     private static NavigationTools CreateTools(string root, WorkspaceSession session, long maxDocumentBytes = 2 * 1024 * 1024)
     {
         var workspaceRoot = new WorkspaceRoot(root);
-        return new NavigationTools(session, new DocumentStateManager(CreateOptions(root, maxDocumentBytes: maxDocumentBytes), workspaceRoot), workspaceRoot);
+        return new NavigationTools(session, new OpenDocumentManager(CreateOptions(root, maxDocumentBytes: maxDocumentBytes), workspaceRoot), workspaceRoot);
     }
 
     private static WorkspaceSession CreateSession(string root, IRoslynWorkspaceLoader loader)

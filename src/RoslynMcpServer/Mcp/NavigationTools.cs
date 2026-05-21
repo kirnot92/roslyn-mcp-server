@@ -10,7 +10,7 @@ namespace RoslynMcpServer.Mcp;
 [McpServerToolType]
 public sealed partial class NavigationTools(
     WorkspaceSession session,
-    DocumentStateManager documents,
+    OpenDocumentManager documents,
     WorkspaceRoot workspaceRoot)
 {
     [McpServerTool(Name = "document_symbols")]
