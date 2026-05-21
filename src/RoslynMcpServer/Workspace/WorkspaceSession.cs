@@ -33,7 +33,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
         DiagnosticStore diagnostics)
     {
         var scanner = new WorkspaceScanner(options, workspaceRoot);
-        var diagnosticNotifications = new DiagnosticNotificationProcessor(diagnostics);
+        var diagnosticNotifications = DiagnosticNotificationProcessor.CreateForServer(diagnostics);
         var session = new WorkspaceSession(
             scanner,
             workspaceRoot,
@@ -64,7 +64,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
             loader,
             documents,
             diagnostics,
-            diagnosticNotifications ?? (diagnostics is null ? null : new DiagnosticNotificationProcessor(diagnostics)));
+            diagnosticNotifications ?? (diagnostics is null ? null : DiagnosticNotificationProcessor.CreateForServer(diagnostics)));
 
         if (!string.IsNullOrWhiteSpace(options?.LoadSolutionPath))
         {

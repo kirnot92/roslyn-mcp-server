@@ -253,7 +253,7 @@ public sealed class DiagnosticsToolsTests
         var client = new FakeLspClient();
         var documents = CreateDocumentState(root.Path);
         var store = CreateStore(root.Path);
-        var processor = new DiagnosticNotificationProcessor(store, capacity: 10, startAutomatically: false);
+        var processor = DiagnosticNotificationProcessor.CreateForTest(store, capacity: 10, startAutomatically: false);
         var session = CreateSession(root.Path, new ImmediateLoader(client), documents, store, processor);
         await session.LoadProjectAsync("App.csproj");
 
@@ -301,7 +301,7 @@ public sealed class DiagnosticsToolsTests
         var newClient = new CapturingLspClient();
         var documents = CreateDocumentState(root.Path);
         var store = CreateStore(root.Path);
-        var processor = new DiagnosticNotificationProcessor(store, capacity: 10, startAutomatically: true);
+        var processor = DiagnosticNotificationProcessor.CreateForServer(store);
         var session = CreateSession(root.Path, new SequentialLoader(oldClient, newClient), documents, store, processor);
 
         await session.LoadProjectAsync("App.csproj");

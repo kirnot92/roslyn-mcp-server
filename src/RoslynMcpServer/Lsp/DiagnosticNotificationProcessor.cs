@@ -22,12 +22,16 @@ public sealed class DiagnosticNotificationProcessor : IAsyncDisposable
     private long stale;
     private volatile bool disposed;
 
-    public DiagnosticNotificationProcessor(DiagnosticStore store)
-        : this(store, DefaultQueueCapacity, startAutomatically: true)
-    {
-    }
+    public static DiagnosticNotificationProcessor CreateForServer(DiagnosticStore store) =>
+        new(store, DefaultQueueCapacity, startAutomatically: true);
 
-    public DiagnosticNotificationProcessor(DiagnosticStore store, int capacity, bool startAutomatically)
+    public static DiagnosticNotificationProcessor CreateForTest(
+        DiagnosticStore store,
+        int capacity,
+        bool startAutomatically) =>
+        new(store, capacity, startAutomatically);
+
+    private DiagnosticNotificationProcessor(DiagnosticStore store, int capacity, bool startAutomatically)
     {
         this.store = store;
         this.capacity = Math.Max(1, capacity);
