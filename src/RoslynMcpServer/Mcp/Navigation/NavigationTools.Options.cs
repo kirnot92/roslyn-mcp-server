@@ -45,6 +45,21 @@ public sealed partial class NavigationTools
         return Math.Min(maxResults.Value, MaxReferencesMaxResults);
     }
 
+    private static TimeSpan NormalizeConfigurableTimeout(int? timeoutSec)
+    {
+        if (timeoutSec is null)
+        {
+            return TimeSpan.FromSeconds(DefaultConfigurableTimeoutSeconds);
+        }
+
+        if (timeoutSec.Value < 1)
+        {
+            throw new UserFacingException("invalid_timeout", "timeoutSec must be a positive integer number of seconds.");
+        }
+
+        return TimeSpan.FromSeconds(Math.Min(timeoutSec.Value, MaxConfigurableTimeoutSeconds));
+    }
+
     private static int NormalizeImplementationMaxResults(int? maxResults)
     {
         if (maxResults is null)

@@ -118,7 +118,9 @@ public sealed class NavigationToolsTests
         Assert.Equal(1, symbols.Items[0].Range.StartColumn);
         Assert.Equal(7, symbols.Items[0].SelectionRange.StartColumn);
         Assert.Equal(["textDocument/didOpen"], client.Notifications.Select(n => n.Method));
-        Assert.Equal("textDocument/documentSymbol", Assert.Single(client.Requests).Method);
+        var request = Assert.Single(client.Requests);
+        Assert.Equal("textDocument/documentSymbol", request.Method);
+        Assert.Equal(TimeSpan.FromSeconds(10), request.Timeout);
     }
 
     [Fact]
@@ -365,6 +367,38 @@ public sealed class NavigationToolsTests
 
         var error = Assert.IsType<ToolError>(result);
         Assert.Equal("invalid_max_results", error.Error);
+    }
+
+    [Fact]
+    public async Task DocumentSymbols_UsesCustomTimeout()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<DocumentSymbol>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", timeoutSec: 45);
+
+        Assert.IsType<DocumentSymbolsResult>(result);
+        Assert.Equal(TimeSpan.FromSeconds(45), Assert.Single(client.Requests).Timeout);
+    }
+
+    [Fact]
+    public async Task DocumentSymbols_InvalidTimeoutReturnsToolError()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        await using var session = CreateSession(root.Path, new ThrowingLoader());
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.DocumentSymbols("Program.cs", timeoutSec: 0);
+
+        var error = Assert.IsType<ToolError>(result);
+        Assert.Equal("invalid_timeout", error.Error);
     }
 
     [Fact]
@@ -824,7 +858,26 @@ public sealed class NavigationToolsTests
         var request = Assert.Single(client.Requests);
         Assert.Equal("textDocument/references", request.Method);
         Assert.True(request.IsExpensive);
+        Assert.Equal(TimeSpan.FromSeconds(10), request.Timeout);
         Assert.False(request.Params.GetProperty("context").GetProperty("includeDeclaration").GetBoolean());
+    }
+
+    [Fact]
+    public async Task FindReferences_UsesCustomTimeout()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.FindReferences("Program.cs", line: 1, column: 7, timeoutSec: 45);
+
+        Assert.IsType<ReferencesResult>(result);
+        Assert.Equal(TimeSpan.FromSeconds(45), Assert.Single(client.Requests).Timeout);
     }
 
     [Fact]
@@ -1105,7 +1158,26 @@ public sealed class NavigationToolsTests
         var request = Assert.Single(client.Requests);
         Assert.Equal("textDocument/references", request.Method);
         Assert.True(request.IsExpensive);
+        Assert.Equal(TimeSpan.FromSeconds(10), request.Timeout);
         Assert.False(request.Params.GetProperty("context").GetProperty("includeDeclaration").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PeekReferences_UsesCustomTimeout()
+    {
+        using var root = TestRoot.Create();
+        File.WriteAllText(Path.Combine(root.Path, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(root.Path, "Program.cs"), "class C { void M() { } }");
+        var client = new FakeLspClient();
+        client.EnqueueResponse(Array.Empty<Lsp.Location>());
+        await using var session = CreateSession(root.Path, new ImmediateLoader(client));
+        await session.LoadProjectAsync("App.csproj");
+        var tools = CreateTools(root.Path, session);
+
+        var result = await tools.PeekReferences("Program.cs", line: 1, column: 16, timeoutSec: 45);
+
+        Assert.IsType<PeekReferencesResult>(result);
+        Assert.Equal(TimeSpan.FromSeconds(45), Assert.Single(client.Requests).Timeout);
     }
 
     [Fact]
@@ -3895,7 +3967,7 @@ public sealed class NavigationToolsTests
         public event Action<string, JsonElement?>? NotificationReceived;
 
         public List<(string Method, JsonElement Params)> Notifications { get; } = [];
-        public List<(string Method, JsonElement Params, bool IsExpensive)> Requests { get; } = [];
+        public List<(string Method, JsonElement Params, TimeSpan Timeout, bool IsExpensive)> Requests { get; } = [];
         public List<string> Events { get; } = [];
         public int PendingRequestCount => 0;
         public TaskCompletionSource? ShutdownStarted { get; init; }
@@ -3912,7 +3984,7 @@ public sealed class NavigationToolsTests
             bool isExpensive = false)
         {
             Events.Add($"request:{method}");
-            Requests.Add((method, JsonSerializer.SerializeToElement(parameters, JsonOptions.Default), isExpensive));
+            Requests.Add((method, JsonSerializer.SerializeToElement(parameters, JsonOptions.Default), timeout, isExpensive));
             return Task.FromResult(this.responses.Dequeue());
         }
 

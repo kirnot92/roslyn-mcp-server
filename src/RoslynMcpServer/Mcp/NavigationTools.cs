@@ -23,6 +23,8 @@ public sealed partial class NavigationTools(
         string? query = null,
         [Description("Positive result node cap; defaults to 1000 and is capped by the server.")]
         int? maxResults = null,
+        [Description("Positive LSP request timeout in seconds; defaults to 10 and is capped by the server.")]
+        int? timeoutSec = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -30,6 +32,7 @@ public sealed partial class NavigationTools(
             var parsedKindFilter = ParseSymbolKindFilter(kindFilter);
             var normalizedQuery = NormalizeDocumentSymbolQuery(query);
             var effectiveMaxResults = NormalizeDocumentSymbolMaxResults(maxResults);
+            var effectiveTimeout = NormalizeConfigurableTimeout(timeoutSec);
             var context = await session.PrepareReadToolAsync(cancellationToken).ConfigureAwait(false);
             var document = await documents.EnsureOpenAsync(file, context.Handle.Client, cancellationToken).ConfigureAwait(false);
             var response = await context.Handle.Client.RequestAsync(
@@ -38,7 +41,7 @@ public sealed partial class NavigationTools(
                 {
                     textDocument = new TextDocumentIdentifier(document.Uri)
                 },
-                NavigationTimeout,
+                effectiveTimeout,
                 cancellationToken).ConfigureAwait(false);
 
             var mappedSymbols = MapDocumentSymbols(response, parsedKindFilter, normalizedQuery, effectiveMaxResults);
@@ -219,12 +222,15 @@ public sealed partial class NavigationTools(
         int? maxResults = null,
         [Description("Optional root-relative path prefixes used to keep only reference locations at or under those paths; use . for the repository root. This is MCP-side filtering after Roslyn LS responds.")]
         string[]? includePathPrefixes = null,
+        [Description("Positive LSP request timeout in seconds; defaults to 10 and is capped by the server.")]
+        int? timeoutSec = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var effectiveMaxResults = NormalizeReferenceMaxResults(maxResults);
             var parsedIncludePathPrefixes = ParseIncludePathPrefixes(includePathPrefixes);
+            var effectiveTimeout = NormalizeConfigurableTimeout(timeoutSec);
             var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/references",
@@ -232,7 +238,7 @@ public sealed partial class NavigationTools(
                     new TextDocumentIdentifier(request.Document.Uri),
                     request.Position,
                     new ReferenceContext(includeDeclaration)),
-                ReferencesTimeout,
+                effectiveTimeout,
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
@@ -272,6 +278,8 @@ public sealed partial class NavigationTools(
         int? contextLines = null,
         [Description("Optional root-relative path prefixes used to keep only reference locations at or under those paths; use . for the repository root. This is MCP-side filtering after Roslyn LS responds.")]
         string[]? includePathPrefixes = null,
+        [Description("Positive LSP request timeout in seconds; defaults to 10 and is capped by the server.")]
+        int? timeoutSec = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -279,6 +287,7 @@ public sealed partial class NavigationTools(
             var effectiveMaxResults = NormalizeReferenceMaxResults(maxResults);
             var effectiveContextLines = NormalizePeekContextLines(contextLines);
             var parsedIncludePathPrefixes = ParseIncludePathPrefixes(includePathPrefixes);
+            var effectiveTimeout = NormalizeConfigurableTimeout(timeoutSec);
             var request = await PreparePositionRequestAsync(file, line, column, cancellationToken).ConfigureAwait(false);
             var response = await request.Context.Handle.Client.RequestAsync(
                 "textDocument/references",
@@ -286,7 +295,7 @@ public sealed partial class NavigationTools(
                     new TextDocumentIdentifier(request.Document.Uri),
                     request.Position,
                     new ReferenceContext(includeDeclaration)),
-                ReferencesTimeout,
+                effectiveTimeout,
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 

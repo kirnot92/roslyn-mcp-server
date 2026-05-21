@@ -31,6 +31,8 @@ public sealed partial class NavigationTools
     private const int DefaultSymbolMaxResults = 300;
     private const int MaxSymbolMaxResults = 1000;
     private const int MinSymbolQueryLength = 2;
+    private const int DefaultConfigurableTimeoutSeconds = 10;
+    private const int MaxConfigurableTimeoutSeconds = 120;
     private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DefinitionTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ReferencesTimeout = TimeSpan.FromSeconds(30);

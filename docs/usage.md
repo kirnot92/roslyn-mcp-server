@@ -165,6 +165,9 @@ filtered descendant matches, ancestor symbols are retained as context, but
 non-matching child branches are pruned. `totalUnfilteredKnown` reports mappable
 document symbols before filtering; `totalKnown`, `returned`, and `truncated`
 describe the filtered response tree including retained context ancestors.
+`document_symbols`, `find_references`, and `peek_references` accept optional
+`timeoutSec`. It defaults to 10 seconds and is capped by the server; increase it
+only for known large files or expensive reference searches.
 
 `find_implementations` is position-based, not a symbol-name search. To discover
 all implementations, call it on the interface, abstract member, or base contract
