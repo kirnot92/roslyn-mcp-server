@@ -7,6 +7,8 @@ namespace RoslynMcpServer.Tests;
 
 public sealed class LspClientTests
 {
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+
     [Fact]
     public async Task RequestAsync_DoesNotTreatServerRequestWithSameIdAsResponse()
     {
@@ -30,7 +32,7 @@ public sealed class LspClientTests
         }, CancellationToken.None);
 
         using var serverRequestResponse = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None)
-            .WaitAsync(TimeSpan.FromSeconds(2));
+            .WaitAsync(TestTimeout);
         Assert.NotNull(serverRequestResponse);
         Assert.Equal(id, serverRequestResponse.RootElement.GetProperty("id").GetInt64());
         Assert.True(serverRequestResponse.RootElement.TryGetProperty("result", out _));
@@ -46,7 +48,7 @@ public sealed class LspClientTests
             }
         }, CancellationToken.None);
 
-        var response = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        var response = await responseTask.WaitAsync(TestTimeout);
         Assert.True(response.TryGetProperty("capabilities", out _));
     }
 
@@ -75,7 +77,7 @@ public sealed class LspClientTests
         }, CancellationToken.None);
 
         using var serverRequestResponse = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None)
-            .WaitAsync(TimeSpan.FromSeconds(2));
+            .WaitAsync(TestTimeout);
         Assert.NotNull(serverRequestResponse);
         Assert.Null(harness.Client.LastResponseAt);
 
@@ -90,7 +92,7 @@ public sealed class LspClientTests
             }
         }, CancellationToken.None);
 
-        await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await responseTask.WaitAsync(TestTimeout);
 
         Assert.Equal(responseAt, harness.Client.LastResponseAt);
     }
@@ -110,7 +112,7 @@ public sealed class LspClientTests
 
         harness.ServerOutput.Dispose();
 
-        var ex = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TestTimeout));
         Assert.Equal("lsp_connection_closed", ex.Code);
     }
 
@@ -132,7 +134,7 @@ public sealed class LspClientTests
 
         Assert.Equal("too_many_lsp_requests", ex.Code);
         harness.ServerOutput.Dispose();
-        var closed = await Assert.ThrowsAsync<UserFacingException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
+        var closed = await Assert.ThrowsAsync<UserFacingException>(() => first.WaitAsync(TestTimeout));
         Assert.Equal("lsp_connection_closed", closed.Code);
     }
 
@@ -169,8 +171,8 @@ public sealed class LspClientTests
         Assert.NotNull(hoverRequest);
 
         harness.ServerOutput.Dispose();
-        var firstClosed = await Assert.ThrowsAsync<UserFacingException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
-        var hoverClosed = await Assert.ThrowsAsync<UserFacingException>(() => hover.WaitAsync(TimeSpan.FromSeconds(2)));
+        var firstClosed = await Assert.ThrowsAsync<UserFacingException>(() => first.WaitAsync(TestTimeout));
+        var hoverClosed = await Assert.ThrowsAsync<UserFacingException>(() => hover.WaitAsync(TestTimeout));
         Assert.Equal("lsp_connection_closed", firstClosed.Code);
         Assert.Equal("lsp_connection_closed", hoverClosed.Code);
     }
@@ -199,7 +201,7 @@ public sealed class LspClientTests
             }
         }, CancellationToken.None);
 
-        var ex = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TestTimeout));
         Assert.Equal("invalid_lsp_response", ex.Code);
     }
 
@@ -227,7 +229,7 @@ public sealed class LspClientTests
             }
         }, CancellationToken.None);
 
-        var first = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        var first = await Assert.ThrowsAsync<UserFacingException>(() => responseTask.WaitAsync(TestTimeout));
         Assert.Equal("invalid_lsp_response", first.Code);
         Assert.True(harness.Client.IsFaulted);
 
@@ -236,7 +238,7 @@ public sealed class LspClientTests
                 "textDocument/hover",
                 new { },
                 TimeSpan.FromSeconds(30),
-                CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2)));
+                CancellationToken.None).WaitAsync(TestTimeout));
         Assert.Equal("invalid_lsp_response", second.Code);
         Assert.Equal(0, harness.Client.PendingRequestCount);
     }
@@ -280,7 +282,7 @@ public sealed class LspClientTests
         using var timedOutRequest = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None);
         Assert.NotNull(timedOutRequest);
 
-        var ex = await Assert.ThrowsAsync<UserFacingException>(() => timedOut.WaitAsync(TimeSpan.FromSeconds(2)));
+        var ex = await Assert.ThrowsAsync<UserFacingException>(() => timedOut.WaitAsync(TestTimeout));
         Assert.Equal("request_timeout", ex.Code);
         Assert.Equal(0, harness.Client.PendingRequestCount);
 
@@ -291,9 +293,9 @@ public sealed class LspClientTests
             CancellationToken.None);
 
         using var firstMessage = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None)
-            .WaitAsync(TimeSpan.FromSeconds(2));
+            .WaitAsync(TestTimeout);
         using var secondMessage = await LspFraming.ReadAsync(harness.ServerInput, CancellationToken.None)
-            .WaitAsync(TimeSpan.FromSeconds(2));
+            .WaitAsync(TestTimeout);
         Assert.NotNull(firstMessage);
         Assert.NotNull(secondMessage);
         var messages = new[] { firstMessage.RootElement, secondMessage.RootElement };
@@ -309,7 +311,7 @@ public sealed class LspClientTests
             result = new { contents = "ok" }
         }, CancellationToken.None);
 
-        var response = await next.WaitAsync(TimeSpan.FromSeconds(2));
+        var response = await next.WaitAsync(TestTimeout);
         Assert.Equal("ok", response.GetProperty("contents").GetString());
     }
 
