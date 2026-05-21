@@ -175,7 +175,8 @@ Tuning 판단 기준:
 
 최근 tuning 근거:
 
-- `scan_timeout`은 실사용에서 간헐적으로 발생할 수 있고, 원인은 주로 cold git index, 느린/네트워크 디스크, antivirus, 대량 untracked file, git 사용 불가로 인한 filesystem fallback, root를 너무 넓게 잡은 경우다.
+- `scan_timeout`은 실사용에서 간헐적으로 발생할 수 있고, 원인은 주로 non-cooperative git scanner, 느린/네트워크 디스크, antivirus, 대량 untracked file, git 사용 불가로 인한 filesystem fallback, root를 너무 넓게 잡은 경우다.
+- Git scan은 전체 scan timeout 중 bounded portion만 사용하고, 실패 또는 timeout 시 남은 budget으로 filesystem fallback을 시도한다.
 - `list_workspaces`는 session 초기에 명시적으로 실행하는 bounded discovery 호출이므로, false timeout을 줄이기 위해 기본 `--scan-timeout`은 10초로 조정한다.
 - 2026-05-18 MAUI `Microsoft.Maui.sln` 기준 기본 scanner 설정은 6 solution, 134 project를 0.157초에 찾았고 truncated `false`였다.
 - 같은 MAUI repo에서 기본 `--max-expensive-lsp-requests 2`는 병렬 `find_symbols` 4개 중 2개를 거절했다.

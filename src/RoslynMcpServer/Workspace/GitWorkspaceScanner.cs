@@ -15,23 +15,24 @@ public sealed class GitWorkspaceScanner(
     PathGuard pathGuard,
     ILogger<GitWorkspaceScanner>? logger = null) : IGitWorkspaceScanner
 {
-    public WorkspaceScanResult? TryScan(CancellationToken cancellationToken = default)
+    public GitWorkspaceScanAttempt TryScan(CancellationToken cancellationToken = default)
     {
         return TryScan(options.ScanTimeout, cancellationToken);
     }
 
-    public WorkspaceScanResult? TryScan(TimeSpan budget, CancellationToken cancellationToken = default)
+    public GitWorkspaceScanAttempt TryScan(TimeSpan budget, CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
-        if (!IsInsideGitWorkTree(budget, cancellationToken))
+        var workTreeStatus = GetWorkTreeStatus(budget, cancellationToken);
+        if (workTreeStatus is not GitWorkspaceScanStatus.Succeeded)
         {
-            return null;
+            return new GitWorkspaceScanAttempt(workTreeStatus, Result: null, sw.Elapsed);
         }
 
         var remaining = budget - sw.Elapsed;
         if (remaining <= TimeSpan.Zero)
         {
-            return null;
+            return GitWorkspaceScanAttempt.TimedOut(sw.Elapsed);
         }
 
         using var timeoutCts = new CancellationTokenSource(remaining);
@@ -54,7 +55,7 @@ public sealed class GitWorkspaceScanner(
             if (process is null)
             {
                 logger?.LogDebug("Git workspace scan could not start git ls-files.");
-                return null;
+                return GitWorkspaceScanAttempt.Failed(sw.Elapsed);
             }
 
             CloseStandardInput(process);
@@ -78,14 +79,14 @@ public sealed class GitWorkspaceScanner(
             {
                 KillProcess(process);
                 logger?.LogDebug("Git workspace scan timed out after {Elapsed}.", sw.Elapsed);
-                return null;
+                return GitWorkspaceScanAttempt.TimedOut(sw.Elapsed);
             }
 
             if (process.ExitCode != 0 && !builder.StoppedAfterCandidateLimit)
             {
                 var error = errorTask.GetAwaiter().GetResult();
                 logger?.LogDebug("Git workspace scan failed with exit code {ExitCode}: {Error}", process.ExitCode, error);
-                return null;
+                return GitWorkspaceScanAttempt.Failed(sw.Elapsed);
             }
 
             sw.Stop();
@@ -97,16 +98,16 @@ public sealed class GitWorkspaceScanner(
                 result.Truncated,
                 result.TruncationReason);
 
-            return result;
+            return GitWorkspaceScanAttempt.Succeeded(result);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger?.LogDebug(ex, "Git workspace scan failed before filesystem fallback.");
-            return null;
+            return GitWorkspaceScanAttempt.Failed(sw.Elapsed);
         }
     }
 
-    private bool IsInsideGitWorkTree(TimeSpan budget, CancellationToken cancellationToken)
+    private GitWorkspaceScanStatus GetWorkTreeStatus(TimeSpan budget, CancellationToken cancellationToken)
     {
         try
         {
@@ -114,7 +115,7 @@ public sealed class GitWorkspaceScanner(
             if (process is null)
             {
                 logger?.LogDebug("Git workspace scan could not start git rev-parse.");
-                return false;
+                return GitWorkspaceScanStatus.Failed;
             }
 
             CloseStandardInput(process);
@@ -124,7 +125,7 @@ public sealed class GitWorkspaceScanner(
             {
                 KillProcess(process);
                 logger?.LogDebug("Git workspace scan rev-parse timed out after {TimeoutMs}ms.", timeoutMs);
-                return false;
+                return GitWorkspaceScanStatus.TimedOut;
             }
 
             var output = process.StandardOutput.ReadToEnd().Trim();
@@ -138,7 +139,9 @@ public sealed class GitWorkspaceScanner(
                     output);
             }
 
-            return isInsideWorkTree;
+            return isInsideWorkTree
+                ? GitWorkspaceScanStatus.Succeeded
+                : GitWorkspaceScanStatus.Skipped;
         }
         catch (Exception ex)
         {
@@ -148,7 +151,7 @@ public sealed class GitWorkspaceScanner(
             }
 
             logger?.LogDebug(ex, "Git workspace scan rev-parse failed.");
-            return false;
+            return GitWorkspaceScanStatus.Failed;
         }
     }
 

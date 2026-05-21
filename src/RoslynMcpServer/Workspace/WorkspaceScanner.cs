@@ -5,10 +5,11 @@ namespace RoslynMcpServer.Workspace;
 
 // Git-aware scanning is preferred when available because git already applies
 // repository ignore rules. This scanner owns the bounded filesystem fallback
-// for non-git roots or environments where git probing fails before consuming
-// the scan budget.
+// for non-git roots or environments where git probing fails. Git gets only a
+// bounded portion of the scan budget so fallback can still run when git is slow.
 public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IGitWorkspaceScanner? gitScanner)
 {
+    private static readonly TimeSpan MaxGitScanBudget = TimeSpan.FromSeconds(3);
     private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git",
@@ -34,14 +35,14 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
         var sw = Stopwatch.StartNew();
         // Try git first so .gitignore, .git/info/exclude, and global excludes
         // shape workspace discovery without reimplementing those rules here.
-        var gitResult = gitScanner?.TryScan(options.ScanTimeout, cancellationToken);
-        if (gitResult is not null)
+        var gitAttempt = gitScanner?.TryScan(GetGitScanBudget(options.ScanTimeout), cancellationToken);
+        if (gitAttempt?.Result is not null)
         {
-            return gitResult;
+            return gitAttempt.Result;
         }
 
-        // If git used the whole budget, return a timeout instead of starting a
-        // second full tree walk that is likely to be just as expensive.
+        // Non-cooperative scanners or very small timeouts can still exhaust the
+        // whole budget before fallback has a chance to run.
         var remaining = options.ScanTimeout - sw.Elapsed;
         if (remaining <= TimeSpan.Zero)
         {
@@ -209,4 +210,10 @@ public sealed class WorkspaceScanner(CliOptions options, PathGuard pathGuard, IG
         IReadOnlyCollection<WorkspaceCandidate> projects) =>
         solutions.Count >= options.MaxSolutionCandidates &&
         projects.Count >= options.MaxProjectCandidates;
+
+    private static TimeSpan GetGitScanBudget(TimeSpan scanTimeout)
+    {
+        var halfBudget = TimeSpan.FromTicks(Math.Max(1, scanTimeout.Ticks / 2));
+        return halfBudget < MaxGitScanBudget ? halfBudget : MaxGitScanBudget;
+    }
 }
