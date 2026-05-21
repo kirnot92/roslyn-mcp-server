@@ -34,12 +34,10 @@ builder.Services.AddSingleton(new WorkspaceRoot(options.Root));
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<DocumentStateManager>();
 builder.Services.AddSingleton<DiagnosticStore>();
-builder.Services.AddSingleton<WorkspaceScanner>();
 builder.Services.AddSingleton<RoslynLanguageServerLocator>();
 builder.Services.AddSingleton<IRoslynLanguageServerProcess, RoslynLanguageServerProcess>();
 builder.Services.AddSingleton<IRoslynWorkspaceLoader, RoslynWorkspaceLoader>();
 builder.Services.AddSingleton(serviceProvider => WorkspaceSession.CreateForServer(
-    serviceProvider.GetRequiredService<WorkspaceScanner>(),
     serviceProvider.GetRequiredService<WorkspaceRoot>(),
     serviceProvider.GetRequiredService<IRoslynWorkspaceLoader>(),
     serviceProvider.GetRequiredService<CliOptions>(),

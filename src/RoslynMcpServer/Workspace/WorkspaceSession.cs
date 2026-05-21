@@ -26,20 +26,21 @@ public sealed class WorkspaceSession : IAsyncDisposable
     private string? failureMessage;
 
     public static WorkspaceSession CreateForServer(
-        WorkspaceScanner scanner,
         WorkspaceRoot workspaceRoot,
         IRoslynWorkspaceLoader loader,
         CliOptions options,
         DocumentStateManager documents,
         DiagnosticStore diagnostics)
     {
+        var scanner = new WorkspaceScanner(options, workspaceRoot);
+        var diagnosticNotifications = new DiagnosticNotificationProcessor(diagnostics);
         var session = new WorkspaceSession(
             scanner,
             workspaceRoot,
             loader,
             documents,
             diagnostics,
-            new DiagnosticNotificationProcessor(diagnostics));
+            diagnosticNotifications);
         if (!string.IsNullOrWhiteSpace(options.LoadSolutionPath))
         {
             session.MarkStartupLoadPending();
