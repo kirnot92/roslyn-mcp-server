@@ -17,110 +17,71 @@ internal static class NavigationToolOptions
         return query.Trim();
     }
 
-    internal static int NormalizeDocumentSymbolMaxResults(int? maxResults)
-    {
-        if (maxResults is null)
-        {
-            return DefaultDocumentSymbolMaxResults;
-        }
+    internal static int NormalizeDocumentSymbolMaxResults(int? maxResults) =>
+        NormalizeBoundedInt(
+            value: maxResults,
+            defaultValue: DefaultDocumentSymbolMaxResults,
+            minimumValue: 1,
+            maximumValue: MaxDocumentSymbolMaxResults,
+            errorCode: "invalid_max_results",
+            errorMessage: "maxResults must be a positive integer.");
 
-        if (maxResults.Value < 1)
-        {
-            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
-        }
-
-        return Math.Min(maxResults.Value, MaxDocumentSymbolMaxResults);
-    }
-
-    internal static int NormalizeReferenceMaxResults(int? maxResults)
-    {
-        if (maxResults is null)
-        {
-            return DefaultReferencesMaxResults;
-        }
-
-        if (maxResults.Value < 1)
-        {
-            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
-        }
-
-        return Math.Min(maxResults.Value, MaxReferencesMaxResults);
-    }
+    internal static int NormalizeReferenceMaxResults(int? maxResults) =>
+        NormalizeBoundedInt(
+            value: maxResults,
+            defaultValue: DefaultReferencesMaxResults,
+            minimumValue: 1,
+            maximumValue: MaxReferencesMaxResults,
+            errorCode: "invalid_max_results",
+            errorMessage: "maxResults must be a positive integer.");
 
     internal static TimeSpan NormalizeConfigurableTimeout(int? timeoutSec)
     {
-        if (timeoutSec is null)
-        {
-            return TimeSpan.FromSeconds(DefaultConfigurableTimeoutSeconds);
-        }
-
-        if (timeoutSec.Value < 1)
-        {
-            throw new UserFacingException("invalid_timeout", "timeoutSec must be a positive integer number of seconds.");
-        }
-
-        return TimeSpan.FromSeconds(Math.Min(timeoutSec.Value, MaxConfigurableTimeoutSeconds));
+        var seconds = NormalizeBoundedInt(
+            value: timeoutSec,
+            defaultValue: DefaultConfigurableTimeoutSeconds,
+            minimumValue: 1,
+            maximumValue: MaxConfigurableTimeoutSeconds,
+            errorCode: "invalid_timeout",
+            errorMessage: "timeoutSec must be a positive integer number of seconds.");
+        return TimeSpan.FromSeconds(seconds);
     }
 
-    internal static int NormalizeImplementationMaxResults(int? maxResults)
-    {
-        if (maxResults is null)
-        {
-            return DefaultImplementationsMaxResults;
-        }
+    internal static int NormalizeImplementationMaxResults(int? maxResults) =>
+        NormalizeBoundedInt(
+            value: maxResults,
+            defaultValue: DefaultImplementationsMaxResults,
+            minimumValue: 1,
+            maximumValue: MaxImplementationsMaxResults,
+            errorCode: "invalid_max_results",
+            errorMessage: "maxResults must be a positive integer.");
 
-        if (maxResults.Value < 1)
-        {
-            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
-        }
+    internal static int NormalizeCallHierarchyMaxResults(int? maxResults) =>
+        NormalizeBoundedInt(
+            value: maxResults,
+            defaultValue: DefaultCallHierarchyMaxResults,
+            minimumValue: 1,
+            maximumValue: MaxCallHierarchyMaxResults,
+            errorCode: "invalid_max_results",
+            errorMessage: "maxResults must be a positive integer.");
 
-        return Math.Min(maxResults.Value, MaxImplementationsMaxResults);
-    }
+    internal static int NormalizeTypeHierarchyMaxDepth(int? maxDepth) =>
+        NormalizeBoundedInt(
+            value: maxDepth,
+            defaultValue: DefaultTypeHierarchyMaxDepth,
+            minimumValue: 1,
+            maximumValue: MaxTypeHierarchyMaxDepth,
+            errorCode: "invalid_max_depth",
+            errorMessage: "maxDepth must be a positive integer.");
 
-    internal static int NormalizeCallHierarchyMaxResults(int? maxResults)
-    {
-        if (maxResults is null)
-        {
-            return DefaultCallHierarchyMaxResults;
-        }
-
-        if (maxResults.Value < 1)
-        {
-            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
-        }
-
-        return Math.Min(maxResults.Value, MaxCallHierarchyMaxResults);
-    }
-
-    internal static int NormalizeTypeHierarchyMaxDepth(int? maxDepth)
-    {
-        if (maxDepth is null)
-        {
-            return DefaultTypeHierarchyMaxDepth;
-        }
-
-        if (maxDepth.Value < 1)
-        {
-            throw new UserFacingException("invalid_max_depth", "maxDepth must be a positive integer.");
-        }
-
-        return Math.Min(maxDepth.Value, MaxTypeHierarchyMaxDepth);
-    }
-
-    internal static int NormalizeTypeHierarchyMaxResults(int? maxResults)
-    {
-        if (maxResults is null)
-        {
-            return DefaultTypeHierarchyMaxResults;
-        }
-
-        if (maxResults.Value < 1)
-        {
-            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
-        }
-
-        return Math.Min(maxResults.Value, MaxTypeHierarchyMaxResults);
-    }
+    internal static int NormalizeTypeHierarchyMaxResults(int? maxResults) =>
+        NormalizeBoundedInt(
+            value: maxResults,
+            defaultValue: DefaultTypeHierarchyMaxResults,
+            minimumValue: 1,
+            maximumValue: MaxTypeHierarchyMaxResults,
+            errorCode: "invalid_max_results",
+            errorMessage: "maxResults must be a positive integer.");
 
     internal static CallHierarchyDirection ParseCallHierarchyDirection(string direction)
     {
@@ -177,35 +138,23 @@ internal static class NavigationToolOptions
             _ => []
         };
 
-    internal static int NormalizePeekContextLines(int? contextLines)
-    {
-        if (contextLines is null)
-        {
-            return DefaultPeekContextLines;
-        }
+    internal static int NormalizePeekContextLines(int? contextLines) =>
+        NormalizeBoundedInt(
+            value: contextLines,
+            defaultValue: DefaultPeekContextLines,
+            minimumValue: 0,
+            maximumValue: MaxPeekContextLines,
+            errorCode: "invalid_context_lines",
+            errorMessage: "contextLines must be a non-negative integer.");
 
-        if (contextLines.Value < 0)
-        {
-            throw new UserFacingException("invalid_context_lines", "contextLines must be a non-negative integer.");
-        }
-
-        return Math.Min(contextLines.Value, MaxPeekContextLines);
-    }
-
-    internal static int NormalizePeekMaxDefinitions(int? maxDefinitions)
-    {
-        if (maxDefinitions is null)
-        {
-            return DefaultPeekMaxDefinitions;
-        }
-
-        if (maxDefinitions.Value < 1)
-        {
-            throw new UserFacingException("invalid_max_results", "maxDefinitions must be a positive integer.");
-        }
-
-        return Math.Min(maxDefinitions.Value, MaxPeekMaxDefinitions);
-    }
+    internal static int NormalizePeekMaxDefinitions(int? maxDefinitions) =>
+        NormalizeBoundedInt(
+            value: maxDefinitions,
+            defaultValue: DefaultPeekMaxDefinitions,
+            minimumValue: 1,
+            maximumValue: MaxPeekMaxDefinitions,
+            errorCode: "invalid_max_results",
+            errorMessage: "maxDefinitions must be a positive integer.");
 
     internal static string ValidateSymbolQuery(string query)
     {
@@ -227,20 +176,14 @@ internal static class NavigationToolOptions
         return normalizedQuery;
     }
 
-    internal static int NormalizeSymbolMaxResults(int? maxResults)
-    {
-        if (maxResults is null)
-        {
-            return DefaultSymbolMaxResults;
-        }
-
-        if (maxResults.Value < 1)
-        {
-            throw new UserFacingException("invalid_max_results", "maxResults must be a positive integer.");
-        }
-
-        return Math.Min(maxResults.Value, MaxSymbolMaxResults);
-    }
+    internal static int NormalizeSymbolMaxResults(int? maxResults) =>
+        NormalizeBoundedInt(
+            value: maxResults,
+            defaultValue: DefaultSymbolMaxResults,
+            minimumValue: 1,
+            maximumValue: MaxSymbolMaxResults,
+            errorCode: "invalid_max_results",
+            errorMessage: "maxResults must be a positive integer.");
 
     internal static IReadOnlySet<SymbolKind>? ParseSymbolKindFilter(IReadOnlyList<string>? kindFilter) =>
         ParseKindFilter(kindFilter, SymbolKindFilterValues, AllowedSymbolKindFilterValues);
@@ -353,6 +296,27 @@ internal static class NavigationToolOptions
         }
 
         return parsedKinds;
+    }
+
+    private static int NormalizeBoundedInt(
+        int? value,
+        int defaultValue,
+        int minimumValue,
+        int maximumValue,
+        string errorCode,
+        string errorMessage)
+    {
+        if (value is null)
+        {
+            return defaultValue;
+        }
+
+        if (value.Value < minimumValue)
+        {
+            throw new UserFacingException(errorCode, errorMessage);
+        }
+
+        return Math.Min(value.Value, maximumValue);
     }
 
     private static string FormatInvalidKindName(string? kindName) =>
