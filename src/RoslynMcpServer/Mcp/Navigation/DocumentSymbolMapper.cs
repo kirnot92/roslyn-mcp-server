@@ -4,9 +4,9 @@ using RoslynMcpServer.Lsp;
 
 namespace RoslynMcpServer.Mcp;
 
-public sealed partial class NavigationTools
+internal static class DocumentSymbolMapper
 {
-    private static DocumentSymbolMapResult MapDocumentSymbols(
+    internal static DocumentSymbolMapResult Map(
         JsonElement response,
         IReadOnlySet<SymbolKind>? kindFilter,
         string? query,

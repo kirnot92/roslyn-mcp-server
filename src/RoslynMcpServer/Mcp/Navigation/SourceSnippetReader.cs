@@ -1,11 +1,15 @@
 using System.Text;
 using RoslynMcpServer.Infrastructure;
+using RoslynMcpServer.Workspace;
+using static RoslynMcpServer.Mcp.NavigationToolLimits;
 
 namespace RoslynMcpServer.Mcp;
 
-public sealed partial class NavigationTools
+internal static class SourceSnippetReader
 {
-    private async Task<SourceSnippetReadResult> ReadSourceSnippetAsync(
+    internal static async Task<SourceSnippetReadResult> ReadAsync(
+        DocumentPathMapper pathMapper,
+        DocumentStateManager documents,
         NavigationLocation location,
         int contextLines,
         string rangeDescription,

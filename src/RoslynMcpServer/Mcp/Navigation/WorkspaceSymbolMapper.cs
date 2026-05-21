@@ -1,12 +1,14 @@
 using System.Text.Json;
 using RoslynMcpServer.Infrastructure;
 using RoslynMcpServer.Lsp;
+using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Mcp;
 
-public sealed partial class NavigationTools
+internal static class WorkspaceSymbolMapper
 {
-    private WorkspaceSymbolMapResult MapWorkspaceSymbols(
+    internal static WorkspaceSymbolMapResult Map(
+        DocumentPathMapper pathMapper,
         JsonElement response,
         int maxResults,
         IReadOnlySet<SymbolKind>? kindFilter,
@@ -30,7 +32,7 @@ public sealed partial class NavigationTools
         var returned = 0;
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = TryMapWorkspaceSymbol(item);
+            var symbol = TryMapWorkspaceSymbol(pathMapper, item);
             if (symbol is null)
             {
                 continue;
@@ -47,7 +49,7 @@ public sealed partial class NavigationTools
                 continue;
             }
 
-            if (!IsIncludedByPathPrefixes(symbol.Location?.File, includePathPrefixes))
+            if (!NavigationPathFilters.IsIncludedByPathPrefixes(symbol.Location?.File, includePathPrefixes))
             {
                 continue;
             }
@@ -75,37 +77,7 @@ public sealed partial class NavigationTools
             _ => false
         };
 
-    private static bool IsIncludedByPathPrefixes(string? file, IReadOnlyList<string>? includePathPrefixes)
-    {
-        if (includePathPrefixes is null)
-        {
-            return true;
-        }
-
-        if (file is null)
-        {
-            return false;
-        }
-
-        return includePathPrefixes.Any(prefix => MatchesPathPrefix(file, prefix));
-    }
-
-    private static bool MatchesPathPrefix(string file, string prefix)
-    {
-        if (prefix == ".")
-        {
-            return true;
-        }
-
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-
-        return string.Equals(file, prefix, comparison) ||
-            file.StartsWith(prefix + "/", comparison);
-    }
-
-    private WorkspaceSymbolItem? TryMapWorkspaceSymbol(JsonElement item)
+    private static WorkspaceSymbolItem? TryMapWorkspaceSymbol(DocumentPathMapper pathMapper, JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object ||
             !item.TryGetProperty("name", out var nameElement) ||
@@ -123,7 +95,7 @@ public sealed partial class NavigationTools
             return null;
         }
 
-        var location = TryMapWorkspaceSymbolLocation(item, out var shouldInclude);
+        var location = TryMapWorkspaceSymbolLocation(pathMapper, item, out var shouldInclude);
         if (!shouldInclude)
         {
             return null;
@@ -138,7 +110,10 @@ public sealed partial class NavigationTools
             location);
     }
 
-    private NavigationLocation? TryMapWorkspaceSymbolLocation(JsonElement item, out bool shouldInclude)
+    private static NavigationLocation? TryMapWorkspaceSymbolLocation(
+        DocumentPathMapper pathMapper,
+        JsonElement item,
+        out bool shouldInclude)
     {
         shouldInclude = true;
         if (!item.TryGetProperty("location", out var locationElement) ||
@@ -206,4 +181,9 @@ public sealed partial class NavigationTools
             return null;
         }
     }
+
+    private static string? TryGetOptionalString(JsonElement item, string propertyName) =>
+        item.TryGetProperty(propertyName, out var element) && element.ValueKind == JsonValueKind.String
+            ? element.GetString()
+            : null;
 }

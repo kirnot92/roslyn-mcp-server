@@ -2,9 +2,9 @@ using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Mcp;
 
-public sealed partial class NavigationTools
+internal static class NavigationToolMetadata
 {
-    private static ReadToolMetadata CreateMetadata(WorkspaceLoadState state, ToolKind toolKind, bool truncated) =>
+    internal static ReadToolMetadata Create(WorkspaceLoadState state, ToolKind toolKind, bool truncated) =>
         state switch
         {
             WorkspaceLoadState.Ready => new ReadToolMetadata(

@@ -1,11 +1,13 @@
 using RoslynMcpServer.Infrastructure;
 using RoslynMcpServer.Lsp;
+using RoslynMcpServer.Workspace;
+using static RoslynMcpServer.Mcp.NavigationToolLimits;
 
 namespace RoslynMcpServer.Mcp;
 
-public sealed partial class NavigationTools
+internal static class NavigationToolOptions
 {
-    private static string? NormalizeDocumentSymbolQuery(string? query)
+    internal static string? NormalizeDocumentSymbolQuery(string? query)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -15,7 +17,7 @@ public sealed partial class NavigationTools
         return query.Trim();
     }
 
-    private static int NormalizeDocumentSymbolMaxResults(int? maxResults)
+    internal static int NormalizeDocumentSymbolMaxResults(int? maxResults)
     {
         if (maxResults is null)
         {
@@ -30,7 +32,7 @@ public sealed partial class NavigationTools
         return Math.Min(maxResults.Value, MaxDocumentSymbolMaxResults);
     }
 
-    private static int NormalizeReferenceMaxResults(int? maxResults)
+    internal static int NormalizeReferenceMaxResults(int? maxResults)
     {
         if (maxResults is null)
         {
@@ -45,7 +47,7 @@ public sealed partial class NavigationTools
         return Math.Min(maxResults.Value, MaxReferencesMaxResults);
     }
 
-    private static TimeSpan NormalizeConfigurableTimeout(int? timeoutSec)
+    internal static TimeSpan NormalizeConfigurableTimeout(int? timeoutSec)
     {
         if (timeoutSec is null)
         {
@@ -60,7 +62,7 @@ public sealed partial class NavigationTools
         return TimeSpan.FromSeconds(Math.Min(timeoutSec.Value, MaxConfigurableTimeoutSeconds));
     }
 
-    private static int NormalizeImplementationMaxResults(int? maxResults)
+    internal static int NormalizeImplementationMaxResults(int? maxResults)
     {
         if (maxResults is null)
         {
@@ -75,7 +77,7 @@ public sealed partial class NavigationTools
         return Math.Min(maxResults.Value, MaxImplementationsMaxResults);
     }
 
-    private static int NormalizeCallHierarchyMaxResults(int? maxResults)
+    internal static int NormalizeCallHierarchyMaxResults(int? maxResults)
     {
         if (maxResults is null)
         {
@@ -90,7 +92,7 @@ public sealed partial class NavigationTools
         return Math.Min(maxResults.Value, MaxCallHierarchyMaxResults);
     }
 
-    private static int NormalizeTypeHierarchyMaxDepth(int? maxDepth)
+    internal static int NormalizeTypeHierarchyMaxDepth(int? maxDepth)
     {
         if (maxDepth is null)
         {
@@ -105,7 +107,7 @@ public sealed partial class NavigationTools
         return Math.Min(maxDepth.Value, MaxTypeHierarchyMaxDepth);
     }
 
-    private static int NormalizeTypeHierarchyMaxResults(int? maxResults)
+    internal static int NormalizeTypeHierarchyMaxResults(int? maxResults)
     {
         if (maxResults is null)
         {
@@ -120,7 +122,7 @@ public sealed partial class NavigationTools
         return Math.Min(maxResults.Value, MaxTypeHierarchyMaxResults);
     }
 
-    private static CallHierarchyDirection ParseCallHierarchyDirection(string direction)
+    internal static CallHierarchyDirection ParseCallHierarchyDirection(string direction)
     {
         var normalized = direction?.Trim();
         if (string.Equals(normalized, "incoming", StringComparison.OrdinalIgnoreCase))
@@ -143,7 +145,7 @@ public sealed partial class NavigationTools
             "direction must be one of: incoming, outgoing, both.");
     }
 
-    private static TypeHierarchyDirection ParseTypeHierarchyDirection(string direction)
+    internal static TypeHierarchyDirection ParseTypeHierarchyDirection(string direction)
     {
         var normalized = direction?.Trim();
         if (string.Equals(normalized, "supertypes", StringComparison.OrdinalIgnoreCase))
@@ -166,7 +168,7 @@ public sealed partial class NavigationTools
             "direction must be one of: supertypes, subtypes, both.");
     }
 
-    private static IReadOnlyList<TypeHierarchyDirection> GetTypeHierarchyTraversalDirections(TypeHierarchyDirection direction) =>
+    internal static IReadOnlyList<TypeHierarchyDirection> GetTypeHierarchyTraversalDirections(TypeHierarchyDirection direction) =>
         direction switch
         {
             TypeHierarchyDirection.Supertypes => [TypeHierarchyDirection.Supertypes],
@@ -175,7 +177,7 @@ public sealed partial class NavigationTools
             _ => []
         };
 
-    private static int NormalizePeekContextLines(int? contextLines)
+    internal static int NormalizePeekContextLines(int? contextLines)
     {
         if (contextLines is null)
         {
@@ -190,7 +192,7 @@ public sealed partial class NavigationTools
         return Math.Min(contextLines.Value, MaxPeekContextLines);
     }
 
-    private static int NormalizePeekMaxDefinitions(int? maxDefinitions)
+    internal static int NormalizePeekMaxDefinitions(int? maxDefinitions)
     {
         if (maxDefinitions is null)
         {
@@ -205,7 +207,7 @@ public sealed partial class NavigationTools
         return Math.Min(maxDefinitions.Value, MaxPeekMaxDefinitions);
     }
 
-    private static string ValidateSymbolQuery(string query)
+    internal static string ValidateSymbolQuery(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -225,7 +227,7 @@ public sealed partial class NavigationTools
         return normalizedQuery;
     }
 
-    private static int NormalizeSymbolMaxResults(int? maxResults)
+    internal static int NormalizeSymbolMaxResults(int? maxResults)
     {
         if (maxResults is null)
         {
@@ -240,10 +242,10 @@ public sealed partial class NavigationTools
         return Math.Min(maxResults.Value, MaxSymbolMaxResults);
     }
 
-    private static IReadOnlySet<SymbolKind>? ParseSymbolKindFilter(IReadOnlyList<string>? kindFilter) =>
+    internal static IReadOnlySet<SymbolKind>? ParseSymbolKindFilter(IReadOnlyList<string>? kindFilter) =>
         ParseKindFilter(kindFilter, SymbolKindFilterValues, AllowedSymbolKindFilterValues);
 
-    private static SymbolMatchMode ParseSymbolMatchMode(string? matchMode)
+    internal static SymbolMatchMode ParseSymbolMatchMode(string? matchMode)
     {
         if (matchMode is null)
         {
@@ -276,7 +278,9 @@ public sealed partial class NavigationTools
             "matchMode must be one of: default, exact, prefix, contains.");
     }
 
-    private IReadOnlyList<string>? ParseIncludePathPrefixes(IReadOnlyList<string>? includePathPrefixes)
+    internal static IReadOnlyList<string>? ParseIncludePathPrefixes(
+        DocumentPathMapper pathMapper,
+        IReadOnlyList<string>? includePathPrefixes)
     {
         if (includePathPrefixes is null)
         {
@@ -306,7 +310,7 @@ public sealed partial class NavigationTools
         return prefixes;
     }
 
-    private static IReadOnlySet<SymbolKind>? ParseCallHierarchyKindFilter(IReadOnlyList<string>? kindFilter) =>
+    internal static IReadOnlySet<SymbolKind>? ParseCallHierarchyKindFilter(IReadOnlyList<string>? kindFilter) =>
         ParseKindFilter(kindFilter, CallHierarchyKindFilterValues, AllowedCallHierarchyKindFilterValues);
 
     private static IReadOnlySet<SymbolKind>? ParseKindFilter(

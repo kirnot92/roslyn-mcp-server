@@ -1,12 +1,16 @@
 using System.Text.Json;
 using RoslynMcpServer.Infrastructure;
 using RoslynMcpServer.Lsp;
+using RoslynMcpServer.Workspace;
+using static RoslynMcpServer.Mcp.NavigationToolLimits;
 
 namespace RoslynMcpServer.Mcp;
 
-public sealed partial class NavigationTools
+internal static class CallHierarchyMapper
 {
-    private IReadOnlyList<PreparedCallHierarchyItem> MapPreparedCallHierarchyItems(JsonElement response)
+    internal static IReadOnlyList<PreparedCallHierarchyItem> MapPreparedItems(
+        DocumentPathMapper pathMapper,
+        JsonElement response)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
@@ -21,7 +25,7 @@ public sealed partial class NavigationTools
         var roots = new List<PreparedCallHierarchyItem>();
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = TryMapCallHierarchySymbol(item);
+            var symbol = TryMapCallHierarchySymbol(pathMapper, item);
             if (symbol is null)
             {
                 continue;
@@ -33,7 +37,8 @@ public sealed partial class NavigationTools
         return roots;
     }
 
-    private void AddCallHierarchyEdges(
+    internal static void AddEdges(
+        DocumentPathMapper pathMapper,
         JsonElement response,
         CallHierarchySymbol root,
         CallHierarchyDirection direction,
@@ -58,7 +63,7 @@ public sealed partial class NavigationTools
 
         foreach (var item in response.EnumerateArray())
         {
-            var edge = TryMapCallHierarchyEdge(item, root, direction);
+            var edge = TryMapCallHierarchyEdge(pathMapper, item, root, direction);
             if (edge is null)
             {
                 continue;
@@ -71,7 +76,7 @@ public sealed partial class NavigationTools
             }
 
             var counterpart = GetCallHierarchyCounterpart(edge, direction);
-            if (!IsIncludedByPathPrefixes(counterpart.Location?.File, includePathPrefixes))
+            if (!NavigationPathFilters.IsIncludedByPathPrefixes(counterpart.Location?.File, includePathPrefixes))
             {
                 continue;
             }
@@ -98,7 +103,8 @@ public sealed partial class NavigationTools
     private static CallHierarchySymbol GetCallHierarchyCounterpart(CallHierarchyEdge edge, CallHierarchyDirection direction) =>
         direction == CallHierarchyDirection.Incoming ? edge.From : edge.To;
 
-    private CallHierarchyEdge? TryMapCallHierarchyEdge(
+    private static CallHierarchyEdge? TryMapCallHierarchyEdge(
+        DocumentPathMapper pathMapper,
         JsonElement item,
         CallHierarchySymbol root,
         CallHierarchyDirection direction)
@@ -115,7 +121,7 @@ public sealed partial class NavigationTools
             throw new UserFacingException("invalid_lsp_response", $"{CallHierarchyMethodName(direction)} returned a malformed call hierarchy item.");
         }
 
-        var otherSymbol = TryMapCallHierarchySymbol(symbolElement);
+        var otherSymbol = TryMapCallHierarchySymbol(pathMapper, symbolElement);
         if (otherSymbol is null)
         {
             return null;
@@ -140,7 +146,7 @@ public sealed partial class NavigationTools
             callSites.Truncated);
     }
 
-    private CallHierarchyCallSiteMapResult MapCallHierarchyCallSites(
+    private static CallHierarchyCallSiteMapResult MapCallHierarchyCallSites(
         JsonElement item,
         string callerFile,
         CallHierarchyDirection direction)
@@ -195,7 +201,7 @@ public sealed partial class NavigationTools
         }
     }
 
-    private CallHierarchySymbol? TryMapCallHierarchySymbol(JsonElement item)
+    private static CallHierarchySymbol? TryMapCallHierarchySymbol(DocumentPathMapper pathMapper, JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object ||
             !item.TryGetProperty("name", out var nameElement) ||
@@ -213,7 +219,7 @@ public sealed partial class NavigationTools
             return null;
         }
 
-        var location = TryMapCallHierarchySymbolLocation(item);
+        var location = TryMapCallHierarchySymbolLocation(pathMapper, item);
         if (location is null)
         {
             return null;
@@ -229,7 +235,7 @@ public sealed partial class NavigationTools
             location);
     }
 
-    private NavigationLocation? TryMapCallHierarchySymbolLocation(JsonElement item)
+    private static NavigationLocation? TryMapCallHierarchySymbolLocation(DocumentPathMapper pathMapper, JsonElement item)
     {
         if (!item.TryGetProperty("uri", out var uriElement) ||
             uriElement.ValueKind != JsonValueKind.String)
@@ -273,5 +279,32 @@ public sealed partial class NavigationTools
 
     private static string CallHierarchyDirectionName(CallHierarchyDirection direction) =>
         direction == CallHierarchyDirection.Incoming ? "incoming" : "outgoing";
+
+    private static Lsp.Range? TryGetRangeOrNull(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var rangeElement) ||
+            rangeElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        try
+        {
+            return rangeElement.Deserialize<Lsp.Range>(JsonOptions.Default);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryGetOptionalString(JsonElement item, string propertyName) =>
+        item.TryGetProperty(propertyName, out var element) && element.ValueKind == JsonValueKind.String
+            ? element.GetString()
+            : null;
 
 }

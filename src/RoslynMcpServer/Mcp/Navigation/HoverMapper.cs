@@ -2,12 +2,13 @@ using System.Text;
 using System.Text.Json;
 using RoslynMcpServer.Infrastructure;
 using RoslynMcpServer.Lsp;
+using static RoslynMcpServer.Mcp.NavigationToolLimits;
 
 namespace RoslynMcpServer.Mcp;
 
-public sealed partial class NavigationTools
+internal static class HoverMapper
 {
-    private static HoverMapResult MapHover(JsonElement response)
+    internal static HoverMapResult Map(JsonElement response)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {

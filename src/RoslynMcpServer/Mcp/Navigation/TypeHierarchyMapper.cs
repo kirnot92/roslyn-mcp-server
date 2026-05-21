@@ -1,12 +1,16 @@
 using System.Text.Json;
 using RoslynMcpServer.Infrastructure;
 using RoslynMcpServer.Lsp;
+using RoslynMcpServer.Workspace;
+using static RoslynMcpServer.Mcp.NavigationToolLimits;
 
 namespace RoslynMcpServer.Mcp;
 
-public sealed partial class NavigationTools
+internal static class TypeHierarchyMapper
 {
-    private IReadOnlyList<PreparedTypeHierarchyItem> MapPreparedTypeHierarchyItems(JsonElement response)
+    internal static IReadOnlyList<PreparedTypeHierarchyItem> MapPreparedItems(
+        DocumentPathMapper pathMapper,
+        JsonElement response)
     {
         if (response.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
@@ -21,7 +25,7 @@ public sealed partial class NavigationTools
         var roots = new List<PreparedTypeHierarchyItem>();
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = MapTypeHierarchySymbol(item, "textDocument/prepareTypeHierarchy");
+            var symbol = MapTypeHierarchySymbol(pathMapper, item, "textDocument/prepareTypeHierarchy");
             if (symbol is null)
             {
                 continue;
@@ -33,7 +37,8 @@ public sealed partial class NavigationTools
         return roots;
     }
 
-    private async Task TraverseTypeHierarchyAsync(
+    internal static async Task TraverseAsync(
+        DocumentPathMapper pathMapper,
         ILspClient client,
         PreparedTypeHierarchyItem root,
         TypeHierarchyDirection direction,
@@ -73,7 +78,7 @@ public sealed partial class NavigationTools
                 cancellationToken,
                 isExpensive: true).ConfigureAwait(false);
 
-            var nextItems = MapTypeHierarchyFollowUpItems(response, direction);
+            var nextItems = MapTypeHierarchyFollowUpItems(pathMapper, response, direction);
             foreach (var next in nextItems)
             {
                 var edge = CreateTypeHierarchyEdge(root.Symbol, current.Symbol, next.Symbol, direction, current.Depth + 1);
@@ -83,7 +88,7 @@ public sealed partial class NavigationTools
                 }
 
                 state.TotalUnfilteredKnown++;
-                if (!IsIncludedByPathPrefixes(next.Symbol.Location.File, includePathPrefixes))
+                if (!NavigationPathFilters.IsIncludedByPathPrefixes(next.Symbol.Location.File, includePathPrefixes))
                 {
                     continue;
                 }
@@ -114,7 +119,8 @@ public sealed partial class NavigationTools
         }
     }
 
-    private IReadOnlyList<PreparedTypeHierarchyItem> MapTypeHierarchyFollowUpItems(
+    private static IReadOnlyList<PreparedTypeHierarchyItem> MapTypeHierarchyFollowUpItems(
+        DocumentPathMapper pathMapper,
         JsonElement response,
         TypeHierarchyDirection direction)
     {
@@ -131,7 +137,7 @@ public sealed partial class NavigationTools
         var items = new List<PreparedTypeHierarchyItem>();
         foreach (var item in response.EnumerateArray())
         {
-            var symbol = MapTypeHierarchySymbol(item, TypeHierarchyMethodName(direction));
+            var symbol = MapTypeHierarchySymbol(pathMapper, item, TypeHierarchyMethodName(direction));
             if (symbol is null)
             {
                 continue;
@@ -143,7 +149,10 @@ public sealed partial class NavigationTools
         return items;
     }
 
-    private TypeHierarchySymbol? MapTypeHierarchySymbol(JsonElement item, string method)
+    private static TypeHierarchySymbol? MapTypeHierarchySymbol(
+        DocumentPathMapper pathMapper,
+        JsonElement item,
+        string method)
     {
         if (item.ValueKind != JsonValueKind.Object ||
             !item.TryGetProperty("name", out var nameElement) ||
@@ -221,4 +230,31 @@ public sealed partial class NavigationTools
 
     private static string TypeHierarchyDirectionName(TypeHierarchyDirection direction) =>
         direction == TypeHierarchyDirection.Supertypes ? "supertypes" : "subtypes";
+
+    private static Lsp.Range? TryGetRangeOrNull(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var rangeElement) ||
+            rangeElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        try
+        {
+            return rangeElement.Deserialize<Lsp.Range>(JsonOptions.Default);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryGetOptionalString(JsonElement item, string propertyName) =>
+        item.TryGetProperty(propertyName, out var element) && element.ValueKind == JsonValueKind.String
+            ? element.GetString()
+            : null;
 }

@@ -5,9 +5,11 @@ using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Mcp;
 
-public sealed partial class NavigationTools
+internal static class NavigationPositionRequests
 {
-    private async Task<PositionRequestContext> PreparePositionRequestAsync(
+    internal static async Task<PositionRequestContext> PrepareAsync(
+        WorkspaceSession session,
+        DocumentStateManager documents,
         string file,
         int line,
         int column,
@@ -20,8 +22,12 @@ public sealed partial class NavigationTools
 
         return new PositionRequestContext(context, document, position);
     }
+}
 
-    private LocationMapResult MapLocations(
+internal static class NavigationLocationMapper
+{
+    internal static LocationMapResult Map(
+        DocumentPathMapper pathMapper,
         JsonElement response,
         string method,
         int? maxResults,
@@ -42,6 +48,7 @@ public sealed partial class NavigationTools
             foreach (var element in response.EnumerateArray())
             {
                 AddLocationIfMappable(
+                    pathMapper,
                     element,
                     method,
                     maxResults,
@@ -58,6 +65,7 @@ public sealed partial class NavigationTools
         if (response.ValueKind == JsonValueKind.Object)
         {
             AddLocationIfMappable(
+                pathMapper,
                 response,
                 method,
                 maxResults,
@@ -72,7 +80,8 @@ public sealed partial class NavigationTools
         throw new UserFacingException("invalid_lsp_response", $"{method} returned an unexpected response shape.");
     }
 
-    private void AddLocationIfMappable(
+    private static void AddLocationIfMappable(
+        DocumentPathMapper pathMapper,
         JsonElement element,
         string method,
         int? maxResults,
@@ -82,14 +91,14 @@ public sealed partial class NavigationTools
         ref int totalKnown,
         ref int returned)
     {
-        var location = TryMapLocation(element, method);
+        var location = TryMapLocation(pathMapper, element, method);
         if (location is null)
         {
             return;
         }
 
         totalUnfilteredKnown++;
-        if (!IsIncludedByPathPrefixes(location.File, includePathPrefixes))
+        if (!NavigationPathFilters.IsIncludedByPathPrefixes(location.File, includePathPrefixes))
         {
             return;
         }
@@ -104,7 +113,7 @@ public sealed partial class NavigationTools
         returned++;
     }
 
-    private NavigationLocation? TryMapLocation(JsonElement element, string method)
+    private static NavigationLocation? TryMapLocation(DocumentPathMapper pathMapper, JsonElement element, string method)
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
@@ -147,4 +156,59 @@ public sealed partial class NavigationTools
         return new NavigationLocation(relativePath, mcpRange.StartLine, mcpRange.StartColumn, mcpRange);
     }
 
+    private static Lsp.Range? TryGetRange(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var rangeElement) ||
+            rangeElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        try
+        {
+            return rangeElement.Deserialize<Lsp.Range>(JsonOptions.Default);
+        }
+        catch (JsonException ex)
+        {
+            throw new UserFacingException("invalid_lsp_response", "LSP returned a malformed range.", ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new UserFacingException("invalid_lsp_response", "LSP returned a malformed range.", ex);
+        }
+    }
+
+}
+
+internal static class NavigationPathFilters
+{
+    internal static bool IsIncludedByPathPrefixes(string? file, IReadOnlyList<string>? includePathPrefixes)
+    {
+        if (includePathPrefixes is null)
+        {
+            return true;
+        }
+
+        if (file is null)
+        {
+            return false;
+        }
+
+        return includePathPrefixes.Any(prefix => MatchesPathPrefix(file, prefix));
+    }
+
+    private static bool MatchesPathPrefix(string file, string prefix)
+    {
+        if (prefix == ".")
+        {
+            return true;
+        }
+
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(file, prefix, comparison) ||
+            file.StartsWith(prefix + "/", comparison);
+    }
 }
