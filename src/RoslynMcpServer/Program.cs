@@ -40,7 +40,13 @@ builder.Services.AddSingleton<WorkspaceScanner>();
 builder.Services.AddSingleton<RoslynLanguageServerLocator>();
 builder.Services.AddSingleton<IRoslynLanguageServerProcess, RoslynLanguageServerProcess>();
 builder.Services.AddSingleton<IRoslynWorkspaceLoader, RoslynWorkspaceLoader>();
-builder.Services.AddSingleton<WorkspaceSession>();
+builder.Services.AddSingleton(serviceProvider => WorkspaceSession.CreateForServer(
+    serviceProvider.GetRequiredService<WorkspaceScanner>(),
+    serviceProvider.GetRequiredService<PathGuard>(),
+    serviceProvider.GetRequiredService<IRoslynWorkspaceLoader>(),
+    serviceProvider.GetRequiredService<CliOptions>(),
+    serviceProvider.GetRequiredService<DocumentStateManager>(),
+    serviceProvider.GetRequiredService<DiagnosticStore>()));
 builder.Services.AddHostedService<StartupSolutionLoader>();
 
 builder.Services

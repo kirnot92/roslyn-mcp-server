@@ -68,7 +68,7 @@ public sealed class RoslynLanguageServerIntegrationTests
         var mapper = new DocumentPathMapper(guard);
         var documents = new DocumentStateManager(options, mapper);
         var diagnosticStore = new DiagnosticStore(mapper, new SystemClock());
-        var session = new WorkspaceSession(
+        var session = WorkspaceSession.CreateForReadTools(
             new WorkspaceScanner(options, guard, new GitWorkspaceScanner(options, guard)),
             guard,
             new RoslynWorkspaceLoader(

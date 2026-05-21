@@ -28,38 +28,53 @@ public sealed class WorkspaceSession : IAsyncDisposable
     private string? failureCode;
     private string? failureMessage;
 
-    public WorkspaceSession(
+    public static WorkspaceSession CreateForServer(
         WorkspaceScanner scanner,
         PathGuard pathGuard,
         IRoslynWorkspaceLoader loader,
         CliOptions options,
-        DocumentStateManager? documents,
-        DiagnosticStore? diagnostics)
-        : this(scanner, pathGuard, loader, documents, diagnostics)
+        DocumentStateManager documents,
+        DiagnosticStore diagnostics)
     {
+        var session = CreateForReadTools(scanner, pathGuard, loader, documents, diagnostics);
         if (!string.IsNullOrWhiteSpace(options.LoadSolutionPath))
         {
-            MarkStartupLoadPending();
+            session.MarkStartupLoadPending();
         }
+
+        return session;
     }
 
-    public WorkspaceSession(
+    public static WorkspaceSession CreateForWorkspaceOnly(
+        WorkspaceScanner scanner,
+        PathGuard pathGuard,
+        IRoslynWorkspaceLoader loader) =>
+        new(scanner, pathGuard, loader, documents: null, diagnostics: null, diagnosticNotifications: null);
+
+    public static WorkspaceSession CreateForReadTools(
         WorkspaceScanner scanner,
         PathGuard pathGuard,
         IRoslynWorkspaceLoader loader,
-        DocumentStateManager? documents,
-        DiagnosticStore? diagnostics)
-        : this(
+        DocumentStateManager documents,
+        DiagnosticStore diagnostics) =>
+        new(
             scanner,
             pathGuard,
             loader,
             documents,
             diagnostics,
-            diagnostics is null ? null : new DiagnosticNotificationProcessor(diagnostics))
-    {
-    }
+            new DiagnosticNotificationProcessor(diagnostics));
 
-    public WorkspaceSession(
+    public static WorkspaceSession CreateForReadToolsWithDiagnosticProcessor(
+        WorkspaceScanner scanner,
+        PathGuard pathGuard,
+        IRoslynWorkspaceLoader loader,
+        DocumentStateManager documents,
+        DiagnosticStore diagnostics,
+        DiagnosticNotificationProcessor diagnosticNotifications) =>
+        new(scanner, pathGuard, loader, documents, diagnostics, diagnosticNotifications);
+
+    private WorkspaceSession(
         WorkspaceScanner scanner,
         PathGuard pathGuard,
         IRoslynWorkspaceLoader loader,
@@ -73,14 +88,6 @@ public sealed class WorkspaceSession : IAsyncDisposable
         this.documents = documents;
         this.diagnostics = diagnostics;
         this.diagnosticNotifications = diagnosticNotifications;
-    }
-
-    public WorkspaceSession(
-        WorkspaceScanner scanner,
-        PathGuard pathGuard,
-        IRoslynWorkspaceLoader loader)
-        : this(scanner, pathGuard, loader, documents: null, diagnostics: null)
-    {
     }
 
     public WorkspaceLoadState State => this.state;
