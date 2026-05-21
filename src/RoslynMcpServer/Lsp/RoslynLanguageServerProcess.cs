@@ -6,15 +6,10 @@ using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Lsp;
 
-public interface IRoslynLanguageServerProcess
-{
-    RoslynWorkspaceHandle Start(WorkspaceTarget target);
-}
-
 public sealed class RoslynLanguageServerProcess(
     CliOptions options,
     ILogger<RoslynLanguageServerProcess> logger,
-    ILoggerFactory loggerFactory) : IRoslynLanguageServerProcess
+    ILoggerFactory loggerFactory)
 {
     public const string InstallMessage =
         """

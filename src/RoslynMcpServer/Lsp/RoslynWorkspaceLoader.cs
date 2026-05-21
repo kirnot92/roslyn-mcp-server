@@ -1,18 +1,42 @@
+using Microsoft.Extensions.Logging;
 using RoslynMcpServer.Cli;
 using RoslynMcpServer.Workspace;
 
 namespace RoslynMcpServer.Lsp;
 
-public sealed class RoslynWorkspaceLoader(
-    CliOptions options,
-    IRoslynLanguageServerProcess process)
-    : IRoslynWorkspaceLoader
+public sealed class RoslynWorkspaceLoader : IRoslynWorkspaceLoader
 {
     private const string LanguageServerLocale = "en-US";
+    private readonly CliOptions options;
+    private readonly Func<WorkspaceTarget, RoslynWorkspaceHandle> startProcess;
+
+    public static RoslynWorkspaceLoader CreateForServer(
+        CliOptions options,
+        ILogger<RoslynLanguageServerProcess> processLogger,
+        ILoggerFactory loggerFactory)
+    {
+        var process = new RoslynLanguageServerProcess(options, processLogger, loggerFactory);
+        return new RoslynWorkspaceLoader(options, process.Start);
+    }
+
+    public static RoslynWorkspaceLoader CreateForTest(
+        CliOptions options,
+        Func<WorkspaceTarget, RoslynWorkspaceHandle> startProcess)
+    {
+        return new RoslynWorkspaceLoader(options, startProcess);
+    }
+
+    private RoslynWorkspaceLoader(
+        CliOptions options,
+        Func<WorkspaceTarget, RoslynWorkspaceHandle> startProcess)
+    {
+        this.options = options;
+        this.startProcess = startProcess;
+    }
 
     public async Task<RoslynWorkspaceHandle> LoadAsync(WorkspaceTarget target, CancellationToken cancellationToken)
     {
-        var handle = process.Start(target);
+        var handle = this.startProcess(target);
 
         try
         {

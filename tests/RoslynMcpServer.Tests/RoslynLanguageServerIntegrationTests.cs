@@ -69,12 +69,10 @@ public sealed class RoslynLanguageServerIntegrationTests
         var session = WorkspaceSession.CreateForTest(
             new WorkspaceScanner(options, workspaceRoot, new GitWorkspaceScanner(options, workspaceRoot)),
             workspaceRoot,
-            new RoslynWorkspaceLoader(
+            RoslynWorkspaceLoader.CreateForServer(
                 options,
-                new RoslynLanguageServerProcess(
-                    options,
-                    NullLogger<RoslynLanguageServerProcess>.Instance,
-                    NullLoggerFactory.Instance)),
+                NullLogger<RoslynLanguageServerProcess>.Instance,
+                NullLoggerFactory.Instance),
             documents: documents,
             diagnostics: diagnosticStore);
         await using var disposeSession = session;

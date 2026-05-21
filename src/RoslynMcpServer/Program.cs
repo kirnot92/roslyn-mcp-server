@@ -34,8 +34,10 @@ builder.Services.AddSingleton(new WorkspaceRoot(options.Root));
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<DocumentStateManager>();
 builder.Services.AddSingleton<DiagnosticStore>();
-builder.Services.AddSingleton<IRoslynLanguageServerProcess, RoslynLanguageServerProcess>();
-builder.Services.AddSingleton<IRoslynWorkspaceLoader, RoslynWorkspaceLoader>();
+builder.Services.AddSingleton<IRoslynWorkspaceLoader>(serviceProvider => RoslynWorkspaceLoader.CreateForServer(
+    serviceProvider.GetRequiredService<CliOptions>(),
+    serviceProvider.GetRequiredService<ILogger<RoslynLanguageServerProcess>>(),
+    serviceProvider.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton(serviceProvider => WorkspaceSession.CreateForServer(
     serviceProvider.GetRequiredService<WorkspaceRoot>(),
     serviceProvider.GetRequiredService<IRoslynWorkspaceLoader>(),

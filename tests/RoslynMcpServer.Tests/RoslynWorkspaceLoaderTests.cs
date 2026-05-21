@@ -19,7 +19,7 @@ public sealed class RoslynWorkspaceLoaderTests
         var client = new FakeLspClient();
         client.EnqueueResponse(new { capabilities = new { } });
         var process = new FakeLanguageServerProcess(client);
-        var loader = new RoslynWorkspaceLoader(CreateOptions(root.Path), process);
+        var loader = RoslynWorkspaceLoader.CreateForTest(CreateOptions(root.Path), process.Start);
         var target = CreateTarget(kind, targetPath, root.Path);
 
         await using var handle = await loader.LoadAsync(target, CancellationToken.None);
@@ -48,7 +48,7 @@ public sealed class RoslynWorkspaceLoaderTests
         var client = new FakeLspClient();
         client.EnqueueResponse(new { capabilities = new { } });
         var process = new FakeLanguageServerProcess(client);
-        var loader = new RoslynWorkspaceLoader(CreateOptions(root.Path), process);
+        var loader = RoslynWorkspaceLoader.CreateForTest(CreateOptions(root.Path), process.Start);
         var target = CreateTarget(WorkspaceKind.Project, targetPath, root.Path);
 
         await using var handle = await loader.LoadAsync(target, CancellationToken.None);
@@ -91,7 +91,7 @@ public sealed class RoslynWorkspaceLoaderTests
 
     private static string ToFileUri(string path) => new Uri(Path.GetFullPath(path)).AbsoluteUri;
 
-    private sealed class FakeLanguageServerProcess(ILspClient client) : IRoslynLanguageServerProcess
+    private sealed class FakeLanguageServerProcess(ILspClient client)
     {
         public List<WorkspaceTarget> StartedTargets { get; } = [];
 
