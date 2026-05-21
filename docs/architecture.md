@@ -58,11 +58,20 @@ src/RoslynMcpServer/
   Mcp/
     DiagnosticsTools.cs
     NavigationTools.cs
+    NavigationTools.Definitions.cs
+    NavigationTools.Hierarchy.cs
+    NavigationTools.Symbols.cs
+    NavigationTools.Usage.cs
+    NavigationToolModels.cs
     ServerResources.cs
     ToolModels.cs
     WorkspaceTools.cs
     Navigation/
-      NavigationTools.*.cs
+      *Mapper.cs
+      NavigationToolLimits.cs
+      NavigationToolMetadata.cs
+      NavigationToolOptions.cs
+      SourceSnippetReader.cs
   Workspace/
     OpenDocumentManager.cs
     StartupSolutionLoader.cs
@@ -121,7 +130,7 @@ Failed
 
 - `NotLoaded`: 아직 Roslyn LS를 시작하지 않은 상태다.
 - `StartingLanguageServer`: process start 또는 initialize 중이다. read tool은 오래 대기하지 않고 `workspace_loading`을 반환한다.
-- `LspReady`: LSP initialize는 끝났지만 workspace open 완료 신호 전이다.
+- `LspReady`: LSP initialize는 끝났지만 workspace open 완료 신호 전인 중간 상태다. 현재 load 경로는 initialize 뒤 workspace open notification을 보낸 다음 곧바로 `WorkspaceWarming`으로 전환하므로 일반 status에는 보통 노출되지 않는다.
 - `WorkspaceWarming`: Roslyn LS가 workspace를 열었고 indexing/loading이 진행 중이다. read tool은 best-effort로 실행한다.
 - `LoadedWithErrors`: load 경고나 오류가 있지만 read tool 호출은 가능하다.
 - `Ready`: workspace initialization complete 신호를 받았고 알려진 fatal failure가 없다.
@@ -291,17 +300,35 @@ returned
 
 사용자가 바로 이해할 수 있는 오류는 `UserFacingException`과 code/message로 반환한다.
 
-대표 code:
+현재 자주 노출되는 대표 code:
 
 - `workspace_loading`
 - `workspace_not_loaded`
-- `workspace_ambiguous`
-- `workspace_not_found`
+- `workspace_failed`
+- `root_not_found`
+- `root_not_directory`
 - `invalid_path`
+- `path_outside_root`
+- `path_reparse_point`
+- `file_not_found`
 - `invalid_position`
-- `invalid_option`
-- `language_server_not_found`
-- `language_server_failed`
+- `position_out_of_range`
+- `invalid_max_results`
+- `invalid_timeout`
+- `invalid_direction`
+- `invalid_query`
+- `invalid_match_mode`
+- `invalid_kind_filter`
+- `invalid_path_prefix`
+- `invalid_scope`
+- `invalid_severity`
+- `roslyn_language_server_not_found`
+- `lsp_connection_closed`
+- `lsp_connection_failed`
+- `too_many_lsp_requests`
+- `too_many_expensive_lsp_requests`
+- `request_timeout`
+- `invalid_lsp_response`
 
 Tool 구현은 예외 stack trace를 MCP stdout에 흘리지 않는다. Debugging 정보는 log channel에 남긴다.
 
