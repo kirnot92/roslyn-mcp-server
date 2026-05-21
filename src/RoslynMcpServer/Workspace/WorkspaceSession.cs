@@ -10,17 +10,14 @@ public sealed class WorkspaceSession : IAsyncDisposable
     private const string ProjectInitializationCompleteMethod = "workspace/projectInitializationComplete";
     private const string PublishDiagnosticsMethod = "textDocument/publishDiagnostics";
     private const string WindowLogMessageMethod = "window/logMessage";
-    private const string ProjectLoaderErrorToken = "[LanguageServerProjectLoader] Error while loading ";
-    private const int MaxWorkspaceWarnings = 50;
     private readonly WorkspaceScanner scanner;
     private readonly PathGuard pathGuard;
     private readonly IRoslynWorkspaceLoader loader;
     private readonly DocumentStateManager? documents;
     private readonly DiagnosticStore? diagnostics;
     private readonly DiagnosticNotificationProcessor? diagnosticNotifications;
+    private readonly WorkspaceWarningCollector warningCollector;
     private readonly SemaphoreSlim stateLock = new(1, 1);
-    private readonly object warningsLock = new();
-    private readonly List<WorkspaceWarning> workspaceWarnings = [];
     private WorkspaceScanResult? lastWorkspaceScan;
     private RoslynWorkspaceHandle? handle;
     private Action<string, JsonElement?>? notificationHandler;
@@ -90,6 +87,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
         this.documents = documents;
         this.diagnostics = diagnostics;
         this.diagnosticNotifications = diagnosticNotifications;
+        this.warningCollector = new WorkspaceWarningCollector(pathGuard);
     }
 
     public WorkspaceLoadState State => this.state;
@@ -305,7 +303,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
             this.diagnostics?.Clear();
         }
 
-        ClearWorkspaceWarnings();
+        this.warningCollector.Clear();
         this.state = WorkspaceLoadState.StartingLanguageServer;
         this.failureCode = null;
         this.failureMessage = null;
@@ -409,7 +407,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
         if (string.Equals(method, ProjectInitializationCompleteMethod, StringComparison.Ordinal))
         {
-            this.state = HasWorkspaceWarnings()
+            this.state = this.warningCollector.HasWarnings()
                 ? WorkspaceLoadState.LoadedWithErrors
                 : WorkspaceLoadState.Ready;
             return;
@@ -423,7 +421,11 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
         if (string.Equals(method, WindowLogMessageMethod, StringComparison.Ordinal))
         {
-            TryRecordWorkspaceLoadWarning(parameters);
+            if (this.warningCollector.TryRecordWorkspaceLoadWarning(parameters) &&
+                this.state is WorkspaceLoadState.Ready)
+            {
+                this.state = WorkspaceLoadState.LoadedWithErrors;
+            }
         }
     }
 
@@ -431,7 +433,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
     {
         if (client.HasReceivedNotification(ProjectInitializationCompleteMethod))
         {
-            this.state = HasWorkspaceWarnings()
+            this.state = this.warningCollector.HasWarnings()
                 ? WorkspaceLoadState.LoadedWithErrors
                 : WorkspaceLoadState.Ready;
         }
@@ -496,163 +498,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
             diagnosticQueueStatistics?.Dropped ?? 0,
             diagnosticQueueStatistics?.Stale ?? 0,
             diagnosticQueueStatistics?.OverflowPolicy,
-            GetWorkspaceWarnings());
-    }
-
-    private void TryRecordWorkspaceLoadWarning(JsonElement? parameters)
-    {
-        if (parameters is null ||
-            parameters.Value.ValueKind != JsonValueKind.Object ||
-            !parameters.Value.TryGetProperty("message", out var messageElement) ||
-            messageElement.ValueKind != JsonValueKind.String)
-        {
-            return;
-        }
-
-        var message = messageElement.GetString();
-        if (string.IsNullOrWhiteSpace(message) ||
-            !message.Contains(ProjectLoaderErrorToken, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        var relatedPaths = TryGetLoadErrorRelativePath(message) is { } path
-            ? new[] { path }
-            : [];
-        var warning = new WorkspaceWarning(
-            "workspace_project_load_failed",
-            BuildWorkspaceLoadWarningMessage(message),
-            relatedPaths);
-
-        AddWorkspaceWarning(warning);
-        if (this.state is WorkspaceLoadState.Ready)
-        {
-            this.state = WorkspaceLoadState.LoadedWithErrors;
-        }
-    }
-
-    private void AddWorkspaceWarning(WorkspaceWarning warning)
-    {
-        lock (this.warningsLock)
-        {
-            if (this.workspaceWarnings.Any(existing =>
-                string.Equals(existing.Code, warning.Code, StringComparison.Ordinal) &&
-                existing.RelatedPaths.SequenceEqual(warning.RelatedPaths, StringComparer.OrdinalIgnoreCase)))
-            {
-                return;
-            }
-
-            if (this.workspaceWarnings.Count >= MaxWorkspaceWarnings)
-            {
-                return;
-            }
-
-            this.workspaceWarnings.Add(warning);
-        }
-    }
-
-    private bool HasWorkspaceWarnings()
-    {
-        lock (this.warningsLock)
-        {
-            return this.workspaceWarnings.Count > 0;
-        }
-    }
-
-    private IReadOnlyList<WorkspaceWarning> GetWorkspaceWarnings()
-    {
-        lock (this.warningsLock)
-        {
-            return this.workspaceWarnings.ToArray();
-        }
-    }
-
-    private void ClearWorkspaceWarnings()
-    {
-        lock (this.warningsLock)
-        {
-            this.workspaceWarnings.Clear();
-        }
-    }
-
-    private string? TryGetLoadErrorRelativePath(string message)
-    {
-        var tokenIndex = message.IndexOf(ProjectLoaderErrorToken, StringComparison.Ordinal);
-        if (tokenIndex < 0)
-        {
-            return null;
-        }
-
-        var start = tokenIndex + ProjectLoaderErrorToken.Length;
-        var suffix = message[start..];
-        string[] extensions = [".csproj", ".slnx", ".sln"];
-        foreach (var extension in extensions)
-        {
-            var extensionIndex = suffix.IndexOf(extension, StringComparison.OrdinalIgnoreCase);
-            if (extensionIndex < 0)
-            {
-                continue;
-            }
-
-            var path = suffix[..(extensionIndex + extension.Length)];
-            try
-            {
-                var fullPath = Path.GetFullPath(path);
-                return this.pathGuard.IsInsideRoot(fullPath)
-                    ? this.pathGuard.ToRelativePath(fullPath)
-                    : path;
-            }
-            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-            {
-                return path;
-            }
-        }
-
-        return null;
-    }
-
-    private static string BuildWorkspaceLoadWarningMessage(string message)
-    {
-        const string sdkMissing = "A compatible .NET SDK was not found.";
-        if (message.Contains(sdkMissing, StringComparison.OrdinalIgnoreCase))
-        {
-            var requestedSdk = TryExtractLineValue(message, "Requested SDK version:");
-            var globalJson = TryExtractLineValue(message, "global.json file:");
-            var details = new List<string>
-            {
-                "Roslyn LS failed to load a project because a compatible .NET SDK was not found."
-            };
-
-            if (!string.IsNullOrWhiteSpace(requestedSdk))
-            {
-                details.Add($"Requested SDK version: {requestedSdk}.");
-            }
-
-            if (!string.IsNullOrWhiteSpace(globalJson))
-            {
-                details.Add($"global.json: {globalJson}.");
-            }
-
-            return string.Join(' ', details);
-        }
-
-        return "Roslyn LS reported a project load error. Read-tool results may be incomplete; inspect server logs for the full load error.";
-    }
-
-    private static string? TryExtractLineValue(string message, string prefix)
-    {
-        using var reader = new StringReader(message);
-        string? line;
-        while ((line = reader.ReadLine()) is not null)
-        {
-            line = line.Trim();
-            if (line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return line[prefix.Length..].Trim();
-            }
-        }
-
-        return null;
+            this.warningCollector.GetWarnings());
     }
 
     private static UserFacingException WorkspaceLoading() =>
