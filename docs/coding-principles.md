@@ -41,7 +41,7 @@
 
 현재 코드에서 허용하는 예외:
 
-- MCP tool method의 optional 입력값. 예: `refresh = false`, `maxResults = null`
+- MCP tool method의 optional 입력값. 예: `maxResults = null`
 - .NET async API의 `CancellationToken cancellationToken = default`
 - framework 또는 외부 SDK가 관용적으로 기대하는 signature
 

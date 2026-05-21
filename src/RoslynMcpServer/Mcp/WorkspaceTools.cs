@@ -10,13 +10,11 @@ public sealed class WorkspaceTools(WorkspaceSession session)
 {
     [McpServerTool(Name = "list_workspaces")]
     [Description("Use when you need to discover .sln, .slnx, or .csproj candidates under the configured root, especially before load_solution/load_project or when no workspace is loaded.")]
-    public object ListWorkspaces(
-        [Description("Use true to re-scan the filesystem instead of returning cached workspace candidates.")]
-        bool refresh = false)
+    public object ListWorkspaces()
     {
         try
         {
-            return session.ListWorkspaces(refresh);
+            return session.ListWorkspaces();
         }
         catch (UserFacingException ex)
         {

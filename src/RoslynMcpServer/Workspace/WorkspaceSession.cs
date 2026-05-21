@@ -21,7 +21,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
     private readonly SemaphoreSlim stateLock = new(1, 1);
     private readonly object warningsLock = new();
     private readonly List<WorkspaceWarning> workspaceWarnings = [];
-    private WorkspaceScanResult? scanCache;
+    private WorkspaceScanResult? lastWorkspaceScan;
     private RoslynWorkspaceHandle? handle;
     private Action<string, JsonElement?>? notificationHandler;
     private WorkspaceLoadState state = WorkspaceLoadState.NotLoaded;
@@ -94,20 +94,15 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
     public WorkspaceLoadState State => this.state;
 
-    public WorkspaceScanResult ListWorkspaces(bool refresh = false, CancellationToken cancellationToken = default)
+    public WorkspaceScanResult ListWorkspaces(CancellationToken cancellationToken = default)
     {
-        if (!refresh && this.scanCache is not null)
-        {
-            return this.scanCache;
-        }
-
-        this.scanCache = this.scanner.Scan(cancellationToken);
-        return this.scanCache;
+        this.lastWorkspaceScan = this.scanner.Scan(cancellationToken);
+        return this.lastWorkspaceScan;
     }
 
     public Task<WorkspaceStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        var scan = ListWorkspaces(refresh: false, cancellationToken);
+        var scan = GetLastWorkspaceScanOrScan(cancellationToken);
         return Task.FromResult(ToStatus(scan));
     }
 
@@ -187,7 +182,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
                     this.failureMessage ?? "Workspace failed to load. Call load_solution or load_project to retry.");
             }
 
-            var target = SelectAutoLoadTarget(ListWorkspaces(refresh: false, cancellationToken));
+            var target = SelectAutoLoadTarget(GetLastWorkspaceScanOrScan(cancellationToken));
             await LoadTargetCoreAsync(target, cancellationToken).ConfigureAwait(false);
             return new ReadToolContext(this.handle!, this.state);
         }
@@ -238,7 +233,7 @@ public sealed class WorkspaceSession : IAsyncDisposable
 
             await LoadTargetCoreAsync(target, cancellationToken).ConfigureAwait(false);
 
-            return ToStatus(ListWorkspaces(refresh: false, cancellationToken));
+            return ToStatus(GetLastWorkspaceScanOrScan(cancellationToken));
         }
         finally
         {
@@ -327,6 +322,17 @@ public sealed class WorkspaceSession : IAsyncDisposable
             this.pathGuard.ToRelativePath(fullPath),
             this.pathGuard.Root,
             Path.GetDirectoryName(fullPath) ?? this.pathGuard.Root);
+    }
+
+    private WorkspaceScanResult GetLastWorkspaceScanOrScan(CancellationToken cancellationToken)
+    {
+        if (this.lastWorkspaceScan is not null)
+        {
+            return this.lastWorkspaceScan;
+        }
+
+        this.lastWorkspaceScan = this.scanner.Scan(cancellationToken);
+        return this.lastWorkspaceScan;
     }
 
     private WorkspaceTarget SelectAutoLoadTarget(WorkspaceScanResult scan)
