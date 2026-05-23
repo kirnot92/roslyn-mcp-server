@@ -24,7 +24,7 @@ public sealed class WorkspaceRootTests
         using var root = TestRoot.Create();
         var workspaceRoot = new WorkspaceRoot(root.Path);
 
-        var ex = Assert.Throws<UserFacingException>(() => workspaceRoot.ResolveInsideRoot("..\\outside.sln"));
+        var ex = Assert.Throws<UserFacingException>(() => workspaceRoot.ResolveInsideRoot(Path.Combine("..", "outside.sln")));
 
         Assert.Equal("path_outside_root", ex.Code);
     }

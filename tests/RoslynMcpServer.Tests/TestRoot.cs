@@ -4,7 +4,7 @@ internal sealed class TestRoot : IDisposable
 {
     private TestRoot(string path)
     {
-        Path = path;
+        this.Path = path;
     }
 
     public string Path { get; }
@@ -18,9 +18,26 @@ internal sealed class TestRoot : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(Path))
+        if (!Directory.Exists(this.Path))
         {
-            Directory.Delete(Path, recursive: true);
+            return;
+        }
+
+        const int maxAttempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(this.Path, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (attempt < maxAttempts && IsTransientDeleteFailure(ex))
+            {
+                Thread.Sleep(TimeSpan.FromMilliseconds(100 * attempt));
+            }
         }
     }
+
+    private static bool IsTransientDeleteFailure(Exception exception) =>
+        exception is IOException or UnauthorizedAccessException;
 }

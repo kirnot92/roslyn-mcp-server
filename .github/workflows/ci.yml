@@ -58,7 +58,7 @@ jobs:
         run: dotnet format roslyn-mcp-server.sln --verify-no-changes --no-restore
 
       - name: Build
-        run: dotnet build roslyn-mcp-server.sln --no-restore -p:UseAppHost=false
+        run: dotnet build roslyn-mcp-server.sln --no-restore -p:UseAppHost=false -p:OutDir=.local/build-out/
 
       - name: Test
-        run: dotnet test tests/RoslynMcpServer.Tests/RoslynMcpServer.Tests.csproj --no-restore -p:UseAppHost=false
+        run: dotnet test tests/RoslynMcpServer.Tests/RoslynMcpServer.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=.local/test-out/
