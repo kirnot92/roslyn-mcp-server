@@ -62,3 +62,41 @@ jobs:
 
       - name: Test
         run: dotnet test tests/RoslynMcpServer.Tests/RoslynMcpServer.Tests.csproj --no-restore
+
+  self-smoke:
+    name: MCP self smoke (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Roslyn language server
+        run: dotnet tool install --global roslyn-language-server --prerelease
+
+      - name: Add .NET tools to PATH
+        shell: bash
+        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Restore
+        run: dotnet restore roslyn-mcp-server.sln
+
+      - name: Run MCP self smoke
+        run: python3 -B scripts/smoke-tests/mcp_self_smoke.py
+
+      - name: Upload smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mcp-self-smoke-artifacts
+          path: |
+            .local/self-smoke-raw.json
+            .local/self-smoke.log
+            .local/self-smoke-ls-logs/**
+          if-no-files-found: ignore
