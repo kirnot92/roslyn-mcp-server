@@ -14,12 +14,12 @@
 - 필요한 경우 `--load-solution <path>`로 MCP 서버 시작 직후 지정 solution을 background로 로드한다.
 - 대규모 repository를 고려해 탐색 제한, timeout, 결과 제한, warming 중 best-effort 동작을 지원한다.
 - 제품 방향은 best-effort read-only Roslyn context provider다.
+- NuGet/.NET global tool package ID는 `Kirnot.RoslynMcpServer`로 사용하고, tool command name은 `roslyn-mcp-server`로 유지한다.
 
 ## 하지 않을 것
 
-- NuGet/.NET global tool로 게시하지 않는다.
 - `roslyn-language-server`를 번들하지 않는다.
-- GitHub Release artifact는 workflow로 만들 수 있지만, NuGet/.NET global tool 게시 자동화는 추가하지 않는다.
+- NuGet/.NET global tool 게시 자동화는 명시 요청 없이 추가하지 않는다.
 - rename, code action, formatting, apply edit 같은 write/refactoring tool을 구현하지 않는다.
 
 ## 외부 요구사항
