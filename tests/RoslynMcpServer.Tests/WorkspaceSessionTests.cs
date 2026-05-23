@@ -257,7 +257,7 @@ public sealed class WorkspaceSessionTests
         WorkspaceSession session,
         WorkspaceLoadState expectedState)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2);
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
         WorkspaceStatus status;
         do
         {

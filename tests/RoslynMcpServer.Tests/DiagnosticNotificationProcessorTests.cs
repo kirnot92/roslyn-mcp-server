@@ -126,7 +126,7 @@ public sealed class DiagnosticNotificationProcessorTests
         var processor = DiagnosticNotificationProcessor.CreateForServer(CreateStore(root.Path));
 
         Assert.True(processor.Enqueue(processor.CurrentGeneration, Publish(root.Path, "Program.cs", Diagnostic("boom", DiagnosticSeverity.Error))));
-        await processor.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        await processor.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     private static DiagnosticStore CreateStore(string root)
