@@ -121,8 +121,9 @@ Install `roslyn-language-server` separately:
 dotnet tool install --global roslyn-language-server --prerelease
 ```
 
-`roslyn-mcp-server` does not bundle Roslyn LS. The .NET tool package ID is
-`Kirnot.RoslynMcpServer`; the installed command remains `roslyn-mcp-server`.
+`roslyn-mcp-server` does not bundle Roslyn LS. Starting with v0.4.0, the .NET
+tool package ID is `Kirnot.RoslynMcpServer`; the installed command remains
+`roslyn-mcp-server`.
 
 ### .NET Tool
 
@@ -154,13 +155,13 @@ $HOME/.dotnet/tools/roslyn-mcp-server
 ### Release Artifacts
 
 Alternatively, download the self-contained artifact for your OS from the
-[v0.3.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.3.0)
+[v0.4.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.4.0)
 or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest):
 
-- `roslyn-mcp-server-v0.3.0-win-x64.zip`
-- `roslyn-mcp-server-v0.3.0-linux-x64.tar.gz`
-- `roslyn-mcp-server-v0.3.0-osx-x64.tar.gz`
-- `roslyn-mcp-server-v0.3.0-osx-arm64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-win-x64.zip`
+- `roslyn-mcp-server-v0.4.0-linux-x64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-osx-x64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-osx-arm64.tar.gz`
 
 The release artifacts are self-contained and single-file. The server executable
 does not require a separate .NET runtime installation, though `roslyn-language-server`

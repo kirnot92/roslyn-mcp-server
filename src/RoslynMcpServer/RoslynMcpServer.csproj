@@ -7,10 +7,10 @@
     <PackageId>Kirnot.RoslynMcpServer</PackageId>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>roslyn-mcp-server</ToolCommandName>
-    <Version>0.3.0</Version>
-    <AssemblyVersion>0.3.0.0</AssemblyVersion>
-    <FileVersion>0.3.0.0</FileVersion>
-    <InformationalVersion>0.3.0</InformationalVersion>
+    <Version>0.4.0</Version>
+    <AssemblyVersion>0.4.0.0</AssemblyVersion>
+    <FileVersion>0.4.0.0</FileVersion>
+    <InformationalVersion>0.4.0</InformationalVersion>
     <Authors>kirnot92</Authors>
     <Description>Unofficial C# semantic context MCP server for coding agents, powered by Roslyn language server.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

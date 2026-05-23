@@ -28,8 +28,8 @@ requirements may change before a stable release.
 
 ## Install `roslyn-mcp-server`
 
-The .NET tool package ID is `Kirnot.RoslynMcpServer`. The installed command is
-`roslyn-mcp-server`:
+Starting with v0.4.0, the .NET tool package ID is `Kirnot.RoslynMcpServer`.
+The installed command is `roslyn-mcp-server`:
 
 ```text
 dotnet tool install --global Kirnot.RoslynMcpServer
@@ -55,13 +55,13 @@ $HOME/.dotnet/tools/roslyn-mcp-server
 ```
 
 As an alternative, download the self-contained artifact for your OS from the
-[v0.3.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.3.0)
+[v0.4.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.4.0)
 or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest):
 
-- `roslyn-mcp-server-v0.3.0-win-x64.zip`
-- `roslyn-mcp-server-v0.3.0-linux-x64.tar.gz`
-- `roslyn-mcp-server-v0.3.0-osx-x64.tar.gz`
-- `roslyn-mcp-server-v0.3.0-osx-arm64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-win-x64.zip`
+- `roslyn-mcp-server-v0.4.0-linux-x64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-osx-x64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-osx-arm64.tar.gz`
 
 Extract the archive and point your MCP client at the extracted executable:
 `roslyn-mcp-server.exe` on Windows or `roslyn-mcp-server` on macOS/Linux.
