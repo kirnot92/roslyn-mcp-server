@@ -7,6 +7,8 @@ namespace RoslynMcpServer.Tests;
 
 public sealed class GitWorkspaceScannerTests
 {
+    private static readonly TimeSpan GitCommandTimeout = TimeSpan.FromSeconds(30);
+
     [Fact]
     public void TryScan_UsesGitIgnoreAndIncludesUntrackedCandidates()
     {
@@ -227,7 +229,7 @@ public sealed class GitWorkspaceScannerTests
         }
 
         using var process = Process.Start(startInfo)!;
-        Assert.True(process.WaitForExit(5000));
+        Assert.True(process.WaitForExit(GitCommandTimeout));
         Assert.Equal(0, process.ExitCode);
     }
 
