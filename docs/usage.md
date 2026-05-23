@@ -5,6 +5,9 @@ for agents and maintainers remain in `AGENTS.md` and `docs/implementation-notes.
 
 ## Prerequisites
 
+Install the .NET 10 SDK. It is used for .NET tool installation and is also
+needed by typical C# repository workflows.
+
 Install `roslyn-language-server` separately:
 
 ```text
@@ -25,14 +28,40 @@ requirements may change before a stable release.
 
 ## Install `roslyn-mcp-server`
 
-Download the artifact for your OS from the
-[v0.3.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.3.0)
+Starting with v0.4.0, the .NET tool package ID is `Kirnot.RoslynMcpServer`.
+The installed command is `roslyn-mcp-server`:
+
+```text
+dotnet tool install --global Kirnot.RoslynMcpServer
+```
+
+Verify the command:
+
+```text
+roslyn-mcp-server --help
+```
+
+If your MCP client does not inherit the .NET global tools directory on `PATH`,
+use the full tool shim path instead:
+
+```text
+%USERPROFILE%\.dotnet\tools\roslyn-mcp-server.exe
+```
+
+On macOS or Linux:
+
+```text
+$HOME/.dotnet/tools/roslyn-mcp-server
+```
+
+As an alternative, download the self-contained artifact for your OS from the
+[v0.4.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.4.0)
 or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest):
 
-- `roslyn-mcp-server-v0.3.0-win-x64.zip`
-- `roslyn-mcp-server-v0.3.0-linux-x64.tar.gz`
-- `roslyn-mcp-server-v0.3.0-osx-x64.tar.gz`
-- `roslyn-mcp-server-v0.3.0-osx-arm64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-win-x64.zip`
+- `roslyn-mcp-server-v0.4.0-linux-x64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-osx-x64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-osx-arm64.tar.gz`
 
 Extract the archive and point your MCP client at the extracted executable:
 `roslyn-mcp-server.exe` on Windows or `roslyn-mcp-server` on macOS/Linux.
@@ -70,13 +99,13 @@ specified once.
 ## Client Configuration
 
 Windows example, assuming the client starts the server with the target repository
-as the working directory:
+as the working directory and can resolve the .NET global tool command:
 
 ```json
 {
   "mcpServers": {
     "roslyn": {
-      "command": "C:\\Tools\\roslyn-mcp-server\\roslyn-mcp-server.exe"
+      "command": "roslyn-mcp-server"
     }
   }
 }
@@ -88,7 +117,7 @@ Unix example:
 {
   "mcpServers": {
     "roslyn": {
-      "command": "/home/me/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/net10.0/roslyn-mcp-server"
+      "command": "roslyn-mcp-server"
     }
   }
 }
@@ -100,7 +129,7 @@ If the client cannot set the working directory, use `--root`:
 {
   "mcpServers": {
     "roslyn": {
-      "command": "C:\\Tools\\roslyn-mcp-server\\roslyn-mcp-server.exe",
+      "command": "roslyn-mcp-server",
       "args": ["--root", "D:\\Workspace\\my-csharp-repo"]
     }
   }
@@ -113,7 +142,7 @@ If the Roslyn language server is installed outside `PATH`, add the explicit path
 {
   "mcpServers": {
     "roslyn": {
-      "command": "/home/me/roslyn-mcp-server/src/RoslynMcpServer/bin/Release/net10.0/roslyn-mcp-server",
+      "command": "roslyn-mcp-server",
       "args": ["--roslyn-language-server", "/home/me/.dotnet/tools/roslyn-language-server"]
     }
   }
@@ -126,7 +155,7 @@ To preload a solution during server startup, add `--load-solution`:
 {
   "mcpServers": {
     "roslyn": {
-      "command": "C:\\Tools\\roslyn-mcp-server\\roslyn-mcp-server.exe",
+      "command": "roslyn-mcp-server",
       "args": ["--root", "D:\\Workspace\\my-csharp-repo", "--load-solution", "Server.sln"]
     }
   }

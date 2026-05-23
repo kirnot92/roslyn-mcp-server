@@ -1,7 +1,7 @@
 # roslyn-mcp-server
 
-`roslyn-mcp-server` is a C# MCP server that lets AI agents use Roslyn language
-features through `roslyn-language-server`.
+`roslyn-mcp-server` is an unofficial C# MCP server that lets AI agents use
+Roslyn language features through `roslyn-language-server`.
 
 The server is meant for Agent CLI-style tools working inside real C# repositories,
 including large mono-repos. It runs as an MCP stdio server, starts
@@ -112,7 +112,7 @@ understand the code.
 
 Prerequisites:
 
-- .NET 10 SDK for installing `roslyn-language-server` as a global tool
+- .NET 10 SDK for installing .NET tools
 - `roslyn-language-server`
 
 Install `roslyn-language-server` separately:
@@ -121,19 +121,47 @@ Install `roslyn-language-server` separately:
 dotnet tool install --global roslyn-language-server --prerelease
 ```
 
-`roslyn-mcp-server` does not bundle Roslyn LS and is not currently published as a
-NuGet/.NET global tool.
+`roslyn-mcp-server` does not bundle Roslyn LS. Starting with v0.4.0, the .NET
+tool package ID is `Kirnot.RoslynMcpServer`; the installed command remains
+`roslyn-mcp-server`.
+
+### .NET Tool
+
+Install the MCP server as a .NET global tool:
+
+```text
+dotnet tool install --global Kirnot.RoslynMcpServer
+```
+
+Run the installed command:
+
+```text
+roslyn-mcp-server --help
+```
+
+If your MCP client does not inherit the .NET global tools directory on `PATH`,
+point it at the tool shim directly:
+
+```text
+%USERPROFILE%\.dotnet\tools\roslyn-mcp-server.exe
+```
+
+On macOS or Linux:
+
+```text
+$HOME/.dotnet/tools/roslyn-mcp-server
+```
 
 ### Release Artifacts
 
-Download the artifact for your OS from the
-[v0.3.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.3.0)
+Alternatively, download the self-contained artifact for your OS from the
+[v0.4.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.4.0)
 or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest):
 
-- `roslyn-mcp-server-v0.3.0-win-x64.zip`
-- `roslyn-mcp-server-v0.3.0-linux-x64.tar.gz`
-- `roslyn-mcp-server-v0.3.0-osx-x64.tar.gz`
-- `roslyn-mcp-server-v0.3.0-osx-arm64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-win-x64.zip`
+- `roslyn-mcp-server-v0.4.0-linux-x64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-osx-x64.tar.gz`
+- `roslyn-mcp-server-v0.4.0-osx-arm64.tar.gz`
 
 The release artifacts are self-contained and single-file. The server executable
 does not require a separate .NET runtime installation, though `roslyn-language-server`
@@ -151,7 +179,7 @@ the executable bit, run `chmod +x roslyn-mcp-server`.
 
 ### Build From Source
 
-Use source builds for non-Windows platforms, local development, or if you want to
+Use source builds for local development, unsupported platforms, or if you want to
 run the server directly from this repository. Source builds require Git and the
 .NET 10 SDK.
 
@@ -179,8 +207,9 @@ On macOS or Linux, the executable is typically:
 src/RoslynMcpServer/bin/Release/net10.0/roslyn-mcp-server
 ```
 
-After downloading or building the server, configure your MCP client to run the
-server executable from the repository root you want to inspect.
+After installing, downloading, or building the server, configure your MCP client
+to run `roslyn-mcp-server` or the server executable from the repository root you
+want to inspect.
 
 If you prefer a self-built release-style layout, publish instead of building.
 Use the runtime identifier for your target platform, such as `win-x64`,
@@ -215,9 +244,9 @@ the diff while Roslyn LS warms in the background.
 
 ## MCP Client Setup
 
-Download or build the server first, then point your MCP client at the server
-executable. Use `cwd` or `--root <repo-root>` so the server knows which
-repository to inspect.
+Install, download, or build the server first, then point your MCP client at
+`roslyn-mcp-server` or the server executable. Use `cwd` or `--root <repo-root>`
+so the server knows which repository to inspect.
 Solution paths passed to `--load-solution` must be the exact root-relative path,
 such as `Sources/Server.sln`, or an absolute path inside the root. The server
 does not recursively search for a matching file name from this option.
@@ -228,7 +257,7 @@ Local setup with `claude mcp add`:
 
 ```powershell
 claude mcp add --transport stdio roslyn -- `
-  <path-to-roslyn-mcp-server.exe> `
+  roslyn-mcp-server `
   --root <repo-root> `
   --load-solution Server.sln
 ```
@@ -239,7 +268,7 @@ Project-scoped `.mcp.json`:
 {
   "mcpServers": {
     "roslyn": {
-      "command": "<path-to-roslyn-mcp-server.exe>",
+      "command": "roslyn-mcp-server",
       "args": ["--root", ".", "--load-solution", "Server.sln"]
     }
   }
@@ -254,7 +283,7 @@ Project `.gemini/settings.json`:
 {
   "mcpServers": {
     "roslyn": {
-      "command": "<path-to-roslyn-mcp-server.exe>",
+      "command": "roslyn-mcp-server",
       "args": ["--load-solution", "Server.sln"],
       "cwd": "<repo-root>",
       "timeout": 30000
@@ -270,7 +299,7 @@ trusted project:
 
 ```toml
 [mcp_servers.roslyn]
-command = "<path-to-roslyn-mcp-server.exe>"
+command = "roslyn-mcp-server"
 args = ["--root", "<repo-root>", "--load-solution", "Server.sln"]
 ```
 
@@ -279,7 +308,7 @@ can usually be `.`:
 
 ```toml
 [mcp_servers.roslyn]
-command = "<path-to-roslyn-mcp-server.exe>"
+command = "roslyn-mcp-server"
 args = ["--root", ".", "--load-solution", "Server.sln"]
 ```
 
@@ -292,12 +321,12 @@ example, a Unity project can expose both server and client solutions:
 {
   "mcpServers": {
     "roslyn-server": {
-      "command": "<path-to-roslyn-mcp-server.exe>",
+      "command": "roslyn-mcp-server",
       "args": ["--load-solution", "Server.sln"],
       "cwd": "<repo-root>"
     },
     "roslyn-unity": {
-      "command": "<path-to-roslyn-mcp-server.exe>",
+      "command": "roslyn-mcp-server",
       "args": ["--load-solution", "UnityClient.sln"],
       "cwd": "<repo-root>"
     }

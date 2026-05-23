@@ -10,4 +10,5 @@ TestResults/
 *.log
 .tmp-spike/
 .local/
+nuget_key.txt
 docs/reviews/

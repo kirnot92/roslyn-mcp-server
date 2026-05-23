@@ -2,15 +2,17 @@
 
 이 문서는 `roslyn-mcp-server`의 릴리즈 절차를 고정한다. 현재 릴리즈는
 GitHub Release와 GitHub Actions `publish.yml`이 생성하는 platform별 artifact를
-기준으로 하며, NuGet/.NET global tool 배포는 아직 하지 않는다.
+기준으로 한다. NuGet/.NET global tool package는 `Kirnot.RoslynMcpServer`
+패키지 ID와 `roslyn-mcp-server` command name으로 별도 준비한다.
 
 ## 릴리즈 기준
 
 - 기본 브랜치: `main`
 - 태그 형식: `v0.x.y`
 - 첫 릴리즈 버전: `v0.1.0`
-- 릴리즈 위치: GitHub Releases
-- 릴리즈 산출물: platform별 self-contained single-file `dotnet publish` 결과 archive
+- 릴리즈 위치: GitHub Releases, NuGet.org
+- 릴리즈 산출물: platform별 self-contained single-file `dotnet publish` 결과 archive,
+  NuGet/.NET global tool package
 - 필수 검증: format, build, test, 실제 MCP client/repo smoke test
 
 `roslyn-language-server`는 릴리즈 zip에 번들하지 않는다. 사용자는 계속 별도로
@@ -52,6 +54,7 @@ dotnet tool install --global roslyn-language-server --prerelease
 0.1.2  문서 또는 smoke script 보완
 0.2.0  tool option 추가 또는 응답 metadata 변경
 0.3.0  multi-OS release artifact 구성 변경
+0.4.0  NuGet/.NET global tool package 첫 배포
 ```
 
 이미 push된 태그는 움직이지 않는다. 릴리즈 후 수정이 필요하면 새 patch 버전을
@@ -84,6 +87,24 @@ archive에는 MCP 서버 실행 파일, `LICENSE`, 그리고 .NET publish 출력
 
 Unix 계열 artifact는 실행 권한이 중요하므로 대상 OS runner에서 만들고 압축한다.
 release note와 설치 문서에는 필요 시 `chmod +x roslyn-mcp-server` 안내를 포함한다.
+
+## NuGet tool package 정책
+
+NuGet package ID는 `Kirnot.RoslynMcpServer`로 고정한다. .NET tool command name은
+기존 executable 이름과 같은 `roslyn-mcp-server`로 유지한다.
+
+```text
+dotnet tool install --global Kirnot.RoslynMcpServer
+roslyn-mcp-server --help
+```
+
+NuGet tool package는 framework-dependent package다. platform별 GitHub Release
+artifact처럼 self-contained native archive가 아니므로, 사용자는 .NET 10
+runtime/SDK 환경을 갖추고 있어야 한다. `roslyn-language-server`는 NuGet tool
+package에도 번들하지 않으며 계속 별도로 설치한다.
+
+NuGet API key나 local package output은 repository에 commit하지 않는다. NuGet
+publish 자동화는 별도 작업으로 명시적으로 결정하기 전까지 추가하지 않는다.
 
 ## 릴리즈 전 준비
 
@@ -147,10 +168,17 @@ git status --short
 릴리즈 태그를 만들기 전에 다음 검증을 모두 통과해야 한다.
 
 ```powershell
+$Version = "0.4.0"
 dotnet format roslyn-mcp-server.sln --verify-no-changes
 dotnet build roslyn-mcp-server.sln -p:UseAppHost=false -p:OutDir=.local\build-out\
 dotnet test tests\RoslynMcpServer.Tests\RoslynMcpServer.Tests.csproj -p:UseAppHost=false -p:OutDir=.local\test-out\
+dotnet pack src\RoslynMcpServer\RoslynMcpServer.csproj -c Release -o .local\nuget-pack -p:Version=$Version -p:InformationalVersion=$Version
+dotnet tool install --tool-path .local\tool-check --add-source .local\nuget-pack Kirnot.RoslynMcpServer --version $Version
+.local\tool-check\roslyn-mcp-server.exe --help
 ```
+
+Unix 환경에서 local tool을 검증한다면 마지막 명령은
+`.local/tool-check/roslyn-mcp-server --help`를 사용한다.
 
 실제 MCP client/repo smoke test도 필수다. 실행 방식은
 `docs/smoke-test-guide.md`를 따른다. 릴리즈마다 최소 하나의 실제 repository와
@@ -177,12 +205,22 @@ artifact는 GitHub Actions `Publish` workflow로 생성한다. 태그 없이 art
 검증하려면 수동 실행을 사용한다.
 
 ```powershell
-gh workflow run publish.yml --ref main -f version=0.3.0
+gh workflow run publish.yml --ref main -f version=0.4.0
 ```
 
 수동 실행은 GitHub Actions artifact만 업로드하고 GitHub Release를 만들지 않는다.
 workflow가 각 artifact에서 `roslyn-mcp-server --help`를 실행해 기본 실행 가능성을
 확인한다.
+
+NuGet tool package는 현재 로컬 `dotnet pack`으로 검증한다. NuGet.org에 배포할
+때는 GitHub Release 생성과 artifact 확인이 끝난 뒤 같은 버전의 `.nupkg`를
+수동으로 push한다.
+
+```powershell
+$Version = "0.4.0"
+dotnet pack src\RoslynMcpServer\RoslynMcpServer.csproj -c Release -o .local\nuget-pack -p:Version=$Version -p:InformationalVersion=$Version
+dotnet nuget push ".local\nuget-pack\Kirnot.RoslynMcpServer.$Version.nupkg" --source https://api.nuget.org/v3/index.json --api-key <NUGET_API_KEY>
+```
 
 ## 태그 생성
 
