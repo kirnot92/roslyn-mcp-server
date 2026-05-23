@@ -1,8 +1,8 @@
 # 릴리즈 프로세스
 
-이 문서는 `roslyn-mcp-server`의 수동 릴리즈 절차를 고정한다. 현재 릴리즈는
-GitHub Release와 zip artifact를 기준으로 하며, NuGet/.NET global tool 배포와
-release 자동화는 아직 하지 않는다.
+이 문서는 `roslyn-mcp-server`의 릴리즈 절차를 고정한다. 현재 릴리즈는
+GitHub Release와 GitHub Actions `publish.yml`이 생성하는 platform별 artifact를
+기준으로 하며, NuGet/.NET global tool 배포는 아직 하지 않는다.
 
 ## 릴리즈 기준
 
@@ -10,7 +10,7 @@ release 자동화는 아직 하지 않는다.
 - 태그 형식: `v0.x.y`
 - 첫 릴리즈 버전: `v0.1.0`
 - 릴리즈 위치: GitHub Releases
-- 릴리즈 산출물: Windows x64 self-contained single-file `dotnet publish` 결과 zip
+- 릴리즈 산출물: platform별 self-contained single-file `dotnet publish` 결과 archive
 - 필수 검증: format, build, test, 실제 MCP client/repo smoke test
 
 `roslyn-language-server`는 릴리즈 zip에 번들하지 않는다. 사용자는 계속 별도로
@@ -51,6 +51,7 @@ dotnet tool install --global roslyn-language-server --prerelease
 0.1.1  diagnostics queue 버그 수정
 0.1.2  문서 또는 smoke script 보완
 0.2.0  tool option 추가 또는 응답 metadata 변경
+0.3.0  multi-OS release artifact 구성 변경
 ```
 
 이미 push된 태그는 움직이지 않는다. 릴리즈 후 수정이 필요하면 새 patch 버전을
@@ -58,34 +59,31 @@ dotnet tool install --global roslyn-language-server --prerelease
 
 ## Artifact 정책
 
-릴리즈 zip은 Windows x64 self-contained single-file publish 결과로 만든다. MCP
-서버 실행 파일 자체는 대상 환경의 별도 .NET runtime 설치를 요구하지 않는다.
-단, `roslyn-language-server`는 릴리즈 zip에 포함하지 않으며 사용자가 별도로
-설치해야 한다.
-
-현재 maintainer의 개발 및 검증 환경이 Windows x64이므로, 공식 릴리즈 artifact도
-검증 가능한 Windows x64만 배포한다. Linux, macOS, Windows ARM64 artifact는 아직
-공식 배포하지 않는다. 해당 환경 사용자는 source에서 직접 build한다.
+릴리즈 artifact는 GitHub Actions의 대상 OS runner에서 self-contained single-file
+publish 결과로 만든다. MCP 서버 실행 파일 자체는 대상 환경의 별도 .NET runtime
+설치를 요구하지 않는다. 단, `roslyn-language-server`는 릴리즈 artifact에 포함하지
+않으며 사용자가 별도로 설치해야 한다.
 
 기본 artifact:
 
 ```text
 roslyn-mcp-server-v0.x.y-win-x64.zip
+roslyn-mcp-server-v0.x.y-linux-x64.tar.gz
+roslyn-mcp-server-v0.x.y-osx-x64.tar.gz
+roslyn-mcp-server-v0.x.y-osx-arm64.tar.gz
 ```
 
-zip에는 MCP 서버 실행 파일, `LICENSE`, 그리고 .NET publish 출력에 필요한 파일만
-포함한다. single-file publish에서는 일반적으로 `roslyn-mcp-server.exe`와
-`LICENSE`만 포함된다. 다음 항목은 포함하지 않는다.
+archive에는 MCP 서버 실행 파일, `LICENSE`, 그리고 .NET publish 출력에 필요한
+파일만 포함한다. single-file publish에서는 일반적으로 `roslyn-mcp-server` 또는
+`roslyn-mcp-server.exe`와 `LICENSE`만 포함된다. 다음 항목은 포함하지 않는다.
 
 - `roslyn-language-server`
 - repository clone
 - `.local/` 아래 smoke 결과, 로그, 임시 파일
 - secrets 또는 개인 MCP client 설정
 
-나중에 Linux 또는 macOS artifact를 추가하려면 실제 대상 OS에서 smoke test를
-통과한 뒤 artifact 정책을 확장한다. Unix 계열 artifact는 실행 권한이 중요하므로,
-가능하면 대상 OS에서 만들고 압축한다. Windows에서 만든 Unix zip을 배포해야
-한다면 release note에 `chmod +x roslyn-mcp-server` 안내를 포함한다.
+Unix 계열 artifact는 실행 권한이 중요하므로 대상 OS runner에서 만들고 압축한다.
+release note와 설치 문서에는 필요 시 `chmod +x roslyn-mcp-server` 안내를 포함한다.
 
 ## 릴리즈 전 준비
 
@@ -142,7 +140,7 @@ git status --short
 `Known issues`에는 릴리즈 시점의 실제 제약을 적는다. 예를 들어
 `roslyn-language-server`가 prerelease dependency라는 점, 대형 repository에서
 `WorkspaceWarming`이 오래 지속될 수 있다는 점, diagnostics가 full build 결과가
-아니라는 점, 현재 공식 artifact가 Windows x64만 제공된다는 점을 포함할 수 있다.
+아니라는 점을 포함할 수 있다.
 
 ## 필수 검증
 
@@ -175,54 +173,22 @@ python scripts/smoke-tests/mcp_aspnetcore_smoke.py
 
 ## Artifact 생성
 
-아래 예시는 `v0.1.0` 릴리즈를 만드는 경우다. 다른 버전에서는 `$Version`만
-바꾼다.
+artifact는 GitHub Actions `Publish` workflow로 생성한다. 태그 없이 artifact 생성만
+검증하려면 수동 실행을 사용한다.
 
 ```powershell
-$Version = "0.1.0"
-$ReleaseRoot = ".local\release\v$Version"
-$Project = ".\src\RoslynMcpServer\RoslynMcpServer.csproj"
-$Rids = @("win-x64")
-
-Remove-Item -LiteralPath $ReleaseRoot -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path $ReleaseRoot | Out-Null
-
-foreach ($Rid in $Rids) {
-    $Name = "roslyn-mcp-server-v$Version-$Rid"
-    $PublishDir = Join-Path $ReleaseRoot "publish\$Name"
-    $ZipPath = Join-Path $ReleaseRoot "$Name.zip"
-
-    dotnet publish $Project `
-        -c Release `
-        -r $Rid `
-        --self-contained true `
-        -p:PublishSingleFile=true `
-        -p:IncludeNativeLibrariesForSelfExtract=true `
-        -p:DebugType=None `
-        -p:DebugSymbols=false `
-        -o $PublishDir
-
-    Compress-Archive -Path "$PublishDir\*" -DestinationPath $ZipPath -Force
-}
-
-Get-ChildItem $ReleaseRoot -Filter *.zip | Select-Object Name, Length
+gh workflow run publish.yml --ref main -f version=0.3.0
 ```
 
-생성된 zip을 하나 이상 풀어서 실행 파일과 `LICENSE`가 포함되어 있는지 확인한다.
-
-```powershell
-$CheckDir = Join-Path $ReleaseRoot "check-win-x64"
-Remove-Item -LiteralPath $CheckDir -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -Path (Join-Path $ReleaseRoot "roslyn-mcp-server-v$Version-win-x64.zip") -DestinationPath $CheckDir
-Get-ChildItem $CheckDir
-```
-
-artifact 생성물은 `.local/` 아래에만 둔다. `.local/` 아래 파일은 commit하지
-않는다.
+수동 실행은 GitHub Actions artifact만 업로드하고 GitHub Release를 만들지 않는다.
+workflow가 각 artifact에서 `roslyn-mcp-server --help`를 실행해 기본 실행 가능성을
+확인한다.
 
 ## 태그 생성
 
-검증과 artifact 확인이 끝난 뒤 annotated tag를 만든다.
+검증과 artifact 확인이 끝난 뒤 annotated tag를 만든다. `v*` tag push는
+`publish.yml`을 실행하고, 모든 platform artifact가 성공하면 GitHub Release를
+생성한다.
 
 ```powershell
 $Version = "0.1.0"
@@ -246,37 +212,25 @@ git push origin "v$Version"
 ```
 
 인증 또는 권한 문제로 push가 실패하면 force push나 history rewrite를 하지
-않는다. 로컬 변경, commit, tag, artifact 경로를 보존하고 사용자에게 실패 상태를
-보고한다.
+않는다. 로컬 변경, commit, tag를 보존하고 사용자에게 실패 상태를 보고한다.
 
 ## GitHub Release 작성
 
-GitHub Releases에서 새 릴리즈를 만든다.
+`v*` tag push 뒤 `Publish` workflow가 GitHub Release를 만든다.
 
 - tag: `v0.x.y`
 - title: `v0.x.y`
-- body: 준비한 릴리즈 노트
-- assets: 생성한 zip artifact 전체
+- body: workflow가 생성한 릴리즈 노트. 필요하면 생성 뒤 GitHub Release 본문만 보완한다.
+- assets: workflow가 생성한 platform별 artifact 전체
 
-GitHub CLI를 사용할 수 있다면 준비한 릴리즈 노트를 `$NotesPath`에 저장한 뒤
-다음처럼 생성할 수 있다.
-
-```powershell
-$Version = "0.1.0"
-$NotesPath = ".local\release\v$Version\release-notes.md"
-gh release create "v$Version" `
-    .local\release\v$Version\*.zip `
-    --title "v$Version" `
-    --notes-file $NotesPath
-```
-
-`gh` 사용은 필수가 아니다. GitHub 웹 UI로 생성해도 된다.
+workflow 실패나 인증 문제로 Release가 만들어지지 않았다면 실패 원인을 수정하고
+새 patch 버전을 준비한다. 이미 push된 tag를 움직이지 않는다.
 
 ## 릴리즈 후 정리
 
 릴리즈 후 다음 항목을 확인한다.
 
-- GitHub Release 페이지에서 zip artifact가 모두 보이는지 확인한다.
+- GitHub Release 페이지에서 platform별 artifact가 모두 보이는지 확인한다.
 - README 또는 `docs/usage.md`의 설치 안내가 현재 artifact 정책과 충돌하지 않는지
   확인한다.
 - 릴리즈에서 발견한 smoke 결과 요약이 필요하면 `docs/archive/smoke-tests/`에

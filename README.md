@@ -124,14 +124,18 @@ dotnet tool install --global roslyn-language-server --prerelease
 `roslyn-mcp-server` does not bundle Roslyn LS and is not currently published as a
 NuGet/.NET global tool.
 
-### Windows Release Zip
+### Release Artifacts
 
-Download `roslyn-mcp-server-v0.2.0-win-x64.zip` from the
-[v0.2.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.2.0)
-or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest),
-then extract the whole zip to a folder.
+Download the artifact for your OS from the
+[v0.3.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.3.0)
+or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest):
 
-The Windows artifact is self-contained and single-file. The server executable
+- `roslyn-mcp-server-v0.3.0-win-x64.zip`
+- `roslyn-mcp-server-v0.3.0-linux-x64.tar.gz`
+- `roslyn-mcp-server-v0.3.0-osx-x64.tar.gz`
+- `roslyn-mcp-server-v0.3.0-osx-arm64.tar.gz`
+
+The release artifacts are self-contained and single-file. The server executable
 does not require a separate .NET runtime installation, though `roslyn-language-server`
 and the target C# repository still need a compatible .NET SDK/runtime environment.
 
@@ -140,6 +144,10 @@ Point your MCP client at the extracted executable:
 ```text
 C:\Tools\roslyn-mcp-server\roslyn-mcp-server.exe
 ```
+
+On macOS or Linux, extract the `.tar.gz` and use the `roslyn-mcp-server`
+executable from the extracted folder. If your archive tool does not preserve
+the executable bit, run `chmod +x roslyn-mcp-server`.
 
 ### Build From Source
 
@@ -174,8 +182,9 @@ src/RoslynMcpServer/bin/Release/net10.0/roslyn-mcp-server
 After downloading or building the server, configure your MCP client to run the
 server executable from the repository root you want to inspect.
 
-If you prefer a self-built Windows release-style layout, publish instead of
-building:
+If you prefer a self-built release-style layout, publish instead of building.
+Use the runtime identifier for your target platform, such as `win-x64`,
+`linux-x64`, `osx-x64`, or `osx-arm64`:
 
 ```powershell
 git clone https://github.com/kirnot92/roslyn-mcp-server.git

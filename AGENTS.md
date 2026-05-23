@@ -19,7 +19,7 @@
 
 - NuGet/.NET global tool로 게시하지 않는다.
 - `roslyn-language-server`를 번들하지 않는다.
-- release 자동화는 아직 추가하지 않는다.
+- GitHub Release artifact는 workflow로 만들 수 있지만, NuGet/.NET global tool 게시 자동화는 추가하지 않는다.
 - rename, code action, formatting, apply edit 같은 write/refactoring tool을 구현하지 않는다.
 
 ## 외부 요구사항

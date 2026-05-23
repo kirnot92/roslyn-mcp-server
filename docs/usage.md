@@ -25,17 +25,25 @@ requirements may change before a stable release.
 
 ## Install `roslyn-mcp-server`
 
-On Windows x64, download `roslyn-mcp-server-v0.2.0-win-x64.zip` from the
-[v0.2.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.2.0)
-or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest).
-Extract the whole zip and point your MCP client at the extracted
-`roslyn-mcp-server.exe`.
+Download the artifact for your OS from the
+[v0.3.0 release](https://github.com/kirnot92/roslyn-mcp-server/releases/tag/v0.3.0)
+or the [latest release](https://github.com/kirnot92/roslyn-mcp-server/releases/latest):
 
-The Windows artifact is self-contained and single-file. The server executable
+- `roslyn-mcp-server-v0.3.0-win-x64.zip`
+- `roslyn-mcp-server-v0.3.0-linux-x64.tar.gz`
+- `roslyn-mcp-server-v0.3.0-osx-x64.tar.gz`
+- `roslyn-mcp-server-v0.3.0-osx-arm64.tar.gz`
+
+Extract the archive and point your MCP client at the extracted executable:
+`roslyn-mcp-server.exe` on Windows or `roslyn-mcp-server` on macOS/Linux.
+If your macOS or Linux archive tool does not preserve executable permissions,
+run `chmod +x roslyn-mcp-server`.
+
+The release artifacts are self-contained and single-file. The server executable
 does not require a separate .NET runtime installation, though `roslyn-language-server`
 and the target C# repository still need a compatible .NET SDK/runtime environment.
 
-For non-Windows platforms or local development, build from source:
+For local development or unsupported platforms, build from source:
 
 ```powershell
 git clone https://github.com/kirnot92/roslyn-mcp-server.git
