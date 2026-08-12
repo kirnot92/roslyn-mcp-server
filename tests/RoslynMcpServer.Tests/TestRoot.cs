@@ -2,6 +2,9 @@ namespace RoslynMcpServer.Tests;
 
 internal sealed class TestRoot : IDisposable
 {
+    private const int DeleteMaxAttempts = 10;
+    private static readonly TimeSpan DeleteRetryDelay = TimeSpan.FromMilliseconds(500);
+
     private TestRoot(string path)
     {
         this.Path = path;
@@ -23,7 +26,6 @@ internal sealed class TestRoot : IDisposable
             return;
         }
 
-        const int maxAttempts = 5;
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -31,9 +33,9 @@ internal sealed class TestRoot : IDisposable
                 Directory.Delete(this.Path, recursive: true);
                 return;
             }
-            catch (Exception ex) when (attempt < maxAttempts && IsTransientDeleteFailure(ex))
+            catch (Exception ex) when (attempt < DeleteMaxAttempts && IsTransientDeleteFailure(ex))
             {
-                Thread.Sleep(TimeSpan.FromMilliseconds(100 * attempt));
+                Thread.Sleep(DeleteRetryDelay);
             }
         }
     }

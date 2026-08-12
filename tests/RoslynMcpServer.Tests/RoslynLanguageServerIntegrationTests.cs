@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcpServer.Cli;
@@ -11,6 +12,10 @@ namespace RoslynMcpServer.Tests;
 
 public sealed class RoslynLanguageServerIntegrationTests
 {
+    // Each request can take 30 seconds, so leave room for one full retry after an initial timeout.
+    private static readonly TimeSpan RoslynSettleTimeout = TimeSpan.FromSeconds(65);
+    private static readonly TimeSpan RoslynSettleRetryDelay = TimeSpan.FromMilliseconds(500);
+
     [Fact]
     public async Task ReadTools_WorkAgainstInstalledRoslynLanguageServer()
     {
@@ -144,20 +149,32 @@ public sealed class RoslynLanguageServerIntegrationTests
         string query,
         Func<WorkspaceSymbolItem, bool> predicate)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
+        using var settleCts = new CancellationTokenSource(RoslynSettleTimeout);
+        var stopwatch = Stopwatch.StartNew();
+        var attempts = 0;
         object? lastResult = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            lastResult = await tools.FindSymbols(query);
-            if (lastResult is FindSymbolsResult symbols && symbols.Items.Any(predicate))
-            {
-                return symbols;
-            }
 
-            await Task.Delay(500);
+        try
+        {
+            while (true)
+            {
+                attempts++;
+                lastResult = await tools.FindSymbols(query, cancellationToken: settleCts.Token);
+                if (lastResult is FindSymbolsResult symbols && symbols.Items.Any(predicate))
+                {
+                    return symbols;
+                }
+
+                await Task.Delay(RoslynSettleRetryDelay, settleCts.Token);
+            }
+        }
+        catch (OperationCanceledException) when (settleCts.IsCancellationRequested)
+        {
         }
 
-        throw new XunitException($"Expected workspace symbol '{query}' before timeout. Last result: {lastResult}");
+        throw new XunitException(
+            $"Expected workspace symbol '{query}' after {attempts} attempts over {stopwatch.Elapsed.TotalSeconds:F1}s. " +
+            $"Last completed result: {lastResult}");
     }
 
     private static async Task<ImplementationsResult> WaitForImplementationAsync(
@@ -167,19 +184,35 @@ public sealed class RoslynLanguageServerIntegrationTests
         int column,
         Func<NavigationLocation, bool> predicate)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
+        using var settleCts = new CancellationTokenSource(RoslynSettleTimeout);
+        var stopwatch = Stopwatch.StartNew();
+        var attempts = 0;
         object? lastResult = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            lastResult = await tools.FindImplementations(file, line, column);
-            if (lastResult is ImplementationsResult implementations && implementations.Items.Any(predicate))
-            {
-                return implementations;
-            }
 
-            await Task.Delay(500);
+        try
+        {
+            while (true)
+            {
+                attempts++;
+                lastResult = await tools.FindImplementations(
+                    file,
+                    line,
+                    column,
+                    cancellationToken: settleCts.Token);
+                if (lastResult is ImplementationsResult implementations && implementations.Items.Any(predicate))
+                {
+                    return implementations;
+                }
+
+                await Task.Delay(RoslynSettleRetryDelay, settleCts.Token);
+            }
+        }
+        catch (OperationCanceledException) when (settleCts.IsCancellationRequested)
+        {
         }
 
-        throw new XunitException($"Expected implementation for {file}:{line}:{column} before timeout. Last result: {lastResult}");
+        throw new XunitException(
+            $"Expected implementation for {file}:{line}:{column} after {attempts} attempts over " +
+            $"{stopwatch.Elapsed.TotalSeconds:F1}s. Last completed result: {lastResult}");
     }
 }
